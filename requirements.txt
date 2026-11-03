@@ -1,0 +1,12 @@
+fastapi>=0.115
+uvicorn[standard]>=0.29
+sqlalchemy>=2.0
+pyjwt>=2.8
+python-multipart>=0.0.9
+
+# Masterizado (ver app/mastering.py)
+pedalboard
+matchering
+soundfile
+numpy
+# demucs   # solo si vas a usar separacion de stems

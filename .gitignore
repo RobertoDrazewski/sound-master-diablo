@@ -1,0 +1,14 @@
+# Datos en ejecucion: base, audios, cache y clave de firma
+data/
+*.db
+secret.key
+
+# Entorno
+venv/
+.venv/
+.env
+__pycache__/
+*.pyc
+
+# Sistema
+.DS_Store

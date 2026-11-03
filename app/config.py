@@ -1,0 +1,55 @@
+import os
+import secrets
+from pathlib import Path
+
+DATA_DIR = Path(os.getenv("DATA_DIR", "./data")).resolve()
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+(DATA_DIR / "tmp").mkdir(exist_ok=True)
+(DATA_DIR / "cache").mkdir(exist_ok=True)
+
+DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{DATA_DIR / 'app.db'}")
+
+# Clave de firma: variable de entorno o archivo generado una sola vez.
+_key_file = DATA_DIR / "secret.key"
+if os.getenv("SECRET_KEY"):
+    SECRET_KEY = os.environ["SECRET_KEY"]
+else:
+    if not _key_file.exists():
+        _key_file.write_text(secrets.token_urlsafe(48))
+        _key_file.chmod(0o600)
+    SECRET_KEY = _key_file.read_text().strip()
+
+# Retencion del ensayo crudo completo (dias)
+RAW_RETENTION_DAYS = int(os.getenv("RAW_RETENTION_DAYS", "30"))
+
+# Tope de disco por banda (GB). Ajustar segun el espacio libre del VPS.
+BAND_QUOTA_GB = float(os.getenv("BAND_QUOTA_GB", "15"))
+
+# Tamano maximo por archivo subido (MB)
+MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "3000"))
+
+# Duracion del fragmento de referencia que se guarda (segundos)
+REFERENCE_SECONDS = int(os.getenv("REFERENCE_SECONDS", "90"))
+
+# Vigencia de los links de reproduccion/descarga (segundos)
+LINK_TTL = int(os.getenv("LINK_TTL", "3600"))
+
+JWT_TTL_DAYS = int(os.getenv("JWT_TTL_DAYS", "30"))
+INVITE_TTL_DAYS = int(os.getenv("INVITE_TTL_DAYS", "7"))
+
+# Super admin inicial (solo se crea si no hay usuarios)
+SUPERADMIN_EMAIL = os.getenv("SUPERADMIN_EMAIL", "")
+SUPERADMIN_PASSWORD = os.getenv("SUPERADMIN_PASSWORD", "")
+
+# Origenes permitidos para el front (separados por coma)
+CORS_ORIGINS = [o for o in os.getenv("CORS_ORIGINS", "").split(",") if o]
+
+# Presets por genero: loudness objetivo (LUFS) cuando no se usa referencia.
+DEFAULT_GENRES = {
+    "metal": -9.0,
+    "punk rock": -10.0,
+    "rock": -11.0,
+    "stoner": -11.0,
+    "post punk": -12.0,
+    "instrumental": -13.0,
+}

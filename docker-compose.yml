@@ -1,0 +1,10 @@
+services:
+  api:
+    build: .
+    ports:
+      - "127.0.0.1:8000:8000"   # solo accesible desde esta maquina
+    env_file:
+      - .env
+    volumes:
+      - ./data:/data            # base de datos, audios y clave de firma
+    restart: unless-stopped
