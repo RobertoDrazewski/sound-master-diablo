@@ -106,6 +106,9 @@ def user_band_ids(db: Session, user: User) -> list[int]:
 
 # ----------------------------------------------------------------------- schemas
 
+SECTIONS = ("ensayo", "produccion", "master")
+SECTION_NAMES = {"ensayo": "Ensayos", "produccion": "Producción", "master": "Master"}
+
 class LoginIn(BaseModel):
     email: str
     password: str
@@ -351,6 +354,20 @@ def update_me(body: ProfileIn, user: User = Depends(current_user), db: Session =
     return {"ok": True, "name": user.name}
 
 
+class PasswordIn(BaseModel):
+    current: str
+    new: str = Field(min_length=10, max_length=200)
+
+
+@app.post("/me/password")
+def change_password(body: PasswordIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    if not verify_password(body.current, user.password_hash):
+        raise HTTPException(403, "La contraseña actual no es correcta")
+    user.password_hash = hash_password(body.new)
+    db.commit()
+    return {"ok": True}
+
+
 @app.post("/me/api-tokens")
 def create_api_token(body: TokenIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
     token = new_secret("pck_")
@@ -388,6 +405,138 @@ def create_band(body: BandIn, _: User = Depends(require_super), db: Session = De
     return {"id": band.id, "name": band.name}
 
 
+class UserAdminIn(BaseModel):
+    name: str | None = Field(None, max_length=120)
+    active: bool | None = None
+
+
+class RoleIn(BaseModel):
+    role: str
+
+
+def temp_password() -> str:
+    import secrets
+    alphabet = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    return "".join(secrets.choice(alphabet) for _ in range(12))
+
+
+@app.get("/admin/overview")
+def admin_overview(_: User = Depends(require_super), db: Session = Depends(get_db)):
+    total, _used, free = shutil.disk_usage(DATA_DIR)
+    used_bytes = int(db.query(func.coalesce(func.sum(Version.size_bytes), 0)).scalar() or 0)
+    return {"users": db.query(User).count(), "bands": db.query(Band).count(),
+            "tracks": db.query(Track).count(), "events": db.query(Event).count(),
+            "used_gb": round(used_bytes / 1e9, 2), "disk_total_gb": round(total / 1e9, 1),
+            "disk_free_gb": round(free / 1e9, 1), "ai_enabled": assistant.enabled()}
+
+
+@app.get("/admin/users")
+def admin_users(_: User = Depends(require_super), db: Session = Depends(get_db)):
+    rows = (db.query(Membership, Band).join(Band, Band.id == Membership.band_id).all())
+    by_user: dict[int, list] = {}
+    for m, b in rows:
+        by_user.setdefault(m.user_id, []).append({"id": b.id, "name": b.name, "role": m.role})
+    return [{"id": u.id, "email": u.email, "name": u.name, "photo": img_url("users", u.id, u.photo),
+             "is_super": u.is_super, "active": u.active, "created_at": u.created_at.isoformat(),
+             "bands": by_user.get(u.id, [])} for u in db.query(User).order_by(User.created_at).all()]
+
+
+@app.post("/admin/users/{user_id}/reset-password")
+def admin_reset_password(user_id: int, me: User = Depends(require_super), db: Session = Depends(get_db)):
+    u = db.get(User, user_id)
+    if not u:
+        raise HTTPException(404, "Usuario inexistente")
+    pw = temp_password()
+    u.password_hash = hash_password(pw)
+    db.commit()
+    return {"email": u.email, "name": u.name, "password": pw}
+
+
+@app.put("/admin/users/{user_id}")
+def admin_update_user(user_id: int, body: UserAdminIn, me: User = Depends(require_super),
+                      db: Session = Depends(get_db)):
+    u = db.get(User, user_id)
+    if not u:
+        raise HTTPException(404, "Usuario inexistente")
+    if body.name is not None:
+        u.name = body.name.strip()
+    if body.active is not None:
+        if u.id == me.id and not body.active:
+            raise HTTPException(422, "No podés desactivar tu propia cuenta")
+        u.active = body.active
+    db.commit()
+    return {"ok": True}
+
+
+@app.put("/admin/bands/{band_id}")
+def admin_rename_band(band_id: int, body: BandIn, _: User = Depends(require_super), db: Session = Depends(get_db)):
+    b = db.get(Band, band_id)
+    if not b:
+        raise HTTPException(404, "Banda inexistente")
+    name = body.name.strip()
+    if db.query(Band).filter(Band.name == name, Band.id != band_id).first():
+        raise HTTPException(409, "Ya existe una banda con ese nombre")
+    b.name = name
+    db.commit()
+    return {"ok": True}
+
+
+@app.put("/admin/bands/{band_id}/members/{user_id}")
+def admin_set_role(band_id: int, user_id: int, body: RoleIn, _: User = Depends(require_super),
+                   db: Session = Depends(get_db)):
+    if body.role not in ("admin", "member"):
+        raise HTTPException(422, "role debe ser admin o member")
+    m = db.query(Membership).filter_by(band_id=band_id, user_id=user_id).first()
+    if not m:
+        raise HTTPException(404, "No es integrante de esa banda")
+    m.role = body.role
+    db.commit()
+    return {"ok": True}
+
+
+@app.delete("/admin/bands/{band_id}")
+def admin_delete_band(band_id: int, confirm_name: str = "", _: User = Depends(require_super),
+                      db: Session = Depends(get_db)):
+    b = db.get(Band, band_id)
+    if not b:
+        raise HTTPException(404, "Banda inexistente")
+    if confirm_name.strip() != b.name:
+        raise HTTPException(422, "Escribí el nombre exacto de la banda para confirmar")
+    for t in db.query(Track).filter_by(band_id=band_id).all():
+        for v in t.versions:
+            remove_version_files(v)
+    for r in db.query(Reference).filter_by(band_id=band_id).all():
+        Path(r.path).unlink(missing_ok=True)
+    for a in db.query(Album).filter_by(band_id=band_id).all():
+        drop_photo_file("albums", a)
+    drop_photo_file("bands", b)
+    shutil.rmtree(DATA_DIR / "bands" / str(band_id), ignore_errors=True)
+    db.query(Job).filter(Job.version_id.in_(
+        db.query(Version.id).join(Track, Track.id == Version.track_id).filter(Track.band_id == band_id))).delete(
+        synchronize_session=False)
+    db.query(Track).filter_by(band_id=band_id).delete(synchronize_session=False)
+    db.query(Album).filter_by(band_id=band_id).delete(synchronize_session=False)
+    db.query(Event).filter_by(band_id=band_id).delete(synchronize_session=False)
+    db.query(Notification).filter_by(band_id=band_id).delete(synchronize_session=False)
+    db.query(Membership).filter_by(band_id=band_id).delete(synchronize_session=False)
+    db.query(Reference).filter_by(band_id=band_id).delete(synchronize_session=False)
+    db.query(Invite).filter_by(band_id=band_id).delete(synchronize_session=False)
+    db.delete(b)
+    db.commit()
+    return {"ok": True}
+
+
+
+def band_stats(db: Session, band_id: int) -> dict:
+    per = dict(db.query(Track.section, func.count(Track.id)).filter_by(band_id=band_id).group_by(Track.section).all())
+    masters = (db.query(func.count(Version.id)).join(Track, Track.id == Version.track_id)
+               .filter(Track.band_id == band_id, Version.kind == "master").scalar() or 0)
+    last = (db.query(func.max(Track.created_at)).filter_by(band_id=band_id).scalar())
+    return {"ensayos": per.get("ensayo", 0), "produccion": per.get("produccion", 0), "master": per.get("master", 0),
+            "masters_hechos": masters, "albumes": db.query(Album).filter_by(band_id=band_id).count(),
+            "ultima_actividad": last.isoformat() if last else None}
+
+
 @app.get("/admin/bands")
 def admin_bands(_: User = Depends(require_super), db: Session = Depends(get_db)):
     out = []
@@ -397,6 +546,7 @@ def admin_bands(_: User = Depends(require_super), db: Session = Depends(get_db))
         out.append({
             "id": b.id, "name": b.name, "photo": img_url("bands", b.id, b.photo),
             "used_gb": round(band_used_bytes(db, b.id) / 1e9, 2), "quota_gb": BAND_QUOTA_GB,
+            "stats": band_stats(db, b.id),
             "members": [{"user_id": u.id, "email": u.email, "name": u.name, "role": m.role}
                         for m, u in members],
         })
@@ -535,7 +685,7 @@ def list_tracks(band_id: int, section: str | None = None, user: User = Depends(c
                 db: Session = Depends(get_db)):
     need_member(db, user, band_id)
     q = db.query(Track).filter_by(band_id=band_id)
-    if section in ("master", "ensayo"):
+    if section in SECTIONS:
         q = q.filter_by(section=section)
     tracks = q.order_by(Track.id.desc()).all()
     return {"used_gb": round(band_used_bytes(db, band_id) / 1e9, 2), "quota_gb": BAND_QUOTA_GB,
@@ -556,8 +706,8 @@ def upload_track(band_id: int, title: str = Form(""), mode: str = Form("mix"),
         raise HTTPException(422, "Para varios archivos usa mode=stems")
     check_quota(db, band_id)
     name = safe_name(title) if title.strip() else safe_name(Path(files[0].filename or "").stem, "tema")
-    if section not in ("master", "ensayo"):
-        raise HTTPException(422, "section debe ser master o ensayo")
+    if section not in SECTIONS:
+        raise HTTPException(422, "section debe ser ensayo, produccion o master")
     track = Track(band_id=band_id, title=name, section=section, uploaded_by=user.id)
     db.add(track)
     db.flush()
@@ -568,7 +718,7 @@ def upload_track(band_id: int, title: str = Form(""), mode: str = Form("mix"),
         then = {"genre_id": master_genre_id, "reference_id": master_reference_id}
     ingest_files(db, user, track, mode, files, then)
     who = user.name or user.email
-    notify_band(db, band_id, f'{who} subió "{name}" a {"Ensayos" if section == "ensayo" else "Master"}',
+    notify_band(db, band_id, f'{who} subió "{name}" a {SECTION_NAMES[section]}',
                 exclude_user_id=user.id, kind="upload", link=f"#/band/{band_id}/{section}")
     db.commit()
     return track_out(track, db)
@@ -931,6 +1081,7 @@ def remove_band_photo(band_id: int, user: User = Depends(current_user), db: Sess
 # --------------------------------------------------------------------- canciones
 
 class TrackIn(BaseModel):
+    section: str | None = None
     title: str | None = Field(None, min_length=1, max_length=200)
     album_id: int | None = None
     clear_album: bool = False
@@ -942,6 +1093,13 @@ def update_track(track_id: int, body: TrackIn, user: User = Depends(current_user
     track = _track_for(db, user, track_id)
     if body.title:
         track.title = safe_name(body.title)
+    if body.section:
+        if body.section not in SECTIONS:
+            raise HTTPException(422, "Sección desconocida")
+        if body.section != track.section:
+            track.section = body.section
+            if body.section == "ensayo":
+                track.album_id = None
     if body.clear_album:
         track.album_id = None
     elif body.album_id:
@@ -985,7 +1143,7 @@ def list_albums(band_id: int, user: User = Depends(current_user), db: Session = 
     need_member(db, user, band_id)
     albums = db.query(Album).filter_by(band_id=band_id).order_by(Album.created_at.desc()).all()
     loose = (db.query(Track).filter(Track.band_id == band_id, Track.album_id == None,  # noqa: E711
-                                    Track.section == "master").order_by(Track.id.desc()).all())
+                                    Track.section != "ensayo").order_by(Track.id.desc()).all())
     return {"albums": [album_out(a, db) for a in albums], "loose": [track_out(t, db) for t in loose]}
 
 
