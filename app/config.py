@@ -53,3 +53,6 @@ DEFAULT_GENRES = {
     "post punk": -12.0,
     "instrumental": -13.0,
 }
+
+# Direccion publica (ej. https://diablomastermix.com.ar); se usa para armar los links de invitacion.
+PUBLIC_URL = os.getenv("PUBLIC_URL", "").rstrip("/")

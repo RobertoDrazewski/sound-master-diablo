@@ -14,7 +14,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from . import audio
-from .config import (BAND_QUOTA_GB, CORS_ORIGINS, DATA_DIR, DEFAULT_GENRES,
+from .config import (PUBLIC_URL, BAND_QUOTA_GB, CORS_ORIGINS, DATA_DIR, DEFAULT_GENRES,
                      INVITE_TTL_DAYS, MAX_UPLOAD_MB, RAW_RETENTION_DAYS,
                      REFERENCE_SECONDS, SUPERADMIN_EMAIL, SUPERADMIN_PASSWORD)
 from .db import (ApiToken, Band, Genre, Invite, Job, Membership, Reference,
@@ -332,7 +332,7 @@ def create_invite(body: InviteIn, request: Request, user: User = Depends(require
     db.add(Invite(token_hash=sha256(token), email=body.email.strip().lower(), band_id=body.band_id,
                   role=body.role, expires_at=now() + timedelta(days=INVITE_TTL_DAYS)))
     db.commit()
-    base = str(request.base_url).rstrip("/")
+    base = PUBLIC_URL or str(request.base_url).rstrip("/")
     return {"invite_token": token, "expires_in_days": INVITE_TTL_DAYS,
             "link_hint": f"{base}/#/invite/{token}"}
 
