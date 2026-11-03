@@ -41,6 +41,7 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(120), default="")
     password_hash: Mapped[str] = mapped_column(String(255))
+    photo: Mapped[str | None] = mapped_column(String(20), nullable=True)
     is_super: Mapped[bool] = mapped_column(Boolean, default=False)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
@@ -50,6 +51,18 @@ class Band(Base):
     __tablename__ = "bands"
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(120), unique=True)
+    photo: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
+class Album(Base):
+    __tablename__ = "albums"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    band_id: Mapped[int] = mapped_column(ForeignKey("bands.id", ondelete="CASCADE"), index=True)
+    title: Mapped[str] = mapped_column(String(160))
+    year: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    photo: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    created_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
 
@@ -111,6 +124,9 @@ class Track(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     band_id: Mapped[int] = mapped_column(ForeignKey("bands.id", ondelete="CASCADE"), index=True)
     title: Mapped[str] = mapped_column(String(200))
+    section: Mapped[str] = mapped_column(String(10), default="master", server_default="master")  # master | ensayo
+    album_id: Mapped[int | None] = mapped_column(ForeignKey("albums.id", ondelete="SET NULL"), nullable=True, index=True)
+    position: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     uploaded_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
@@ -151,5 +167,53 @@ class Job(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
+class Event(Base):
+    """Evento del calendario de una banda (ensayo, show, grabacion...)."""
+    __tablename__ = "events"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    band_id: Mapped[int] = mapped_column(ForeignKey("bands.id", ondelete="CASCADE"), index=True)
+    title: Mapped[str] = mapped_column(String(200))
+    starts_at: Mapped[datetime] = mapped_column(DateTime, index=True)  # UTC sin zona
+    place: Mapped[str] = mapped_column(String(200), default="")
+    notes: Mapped[str] = mapped_column(Text, default="")
+    created_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    band_id: Mapped[int | None] = mapped_column(ForeignKey("bands.id", ondelete="CASCADE"), nullable=True)
+    kind: Mapped[str] = mapped_column(String(20), default="info")
+    text: Mapped[str] = mapped_column(String(300))
+    link: Mapped[str] = mapped_column(String(200), default="")
+    read: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
 def init_db():
     Base.metadata.create_all(engine)
+    if _sqlite:
+        _migrate_sqlite()
+
+
+def _migrate_sqlite():
+    """Agrega columnas nuevas a bases creadas con versiones anteriores."""
+    from sqlalchemy import text
+
+    def add(conn, table, col, ddl):
+        cols = {r[1] for r in conn.execute(text(f"PRAGMA table_info({table})"))}
+        if col not in cols:
+            conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}"))
+            return True
+        return False
+
+    with engine.begin() as conn:
+        if add(conn, "tracks", "section", "VARCHAR(10) NOT NULL DEFAULT 'master'"):
+            conn.execute(text("UPDATE tracks SET section='ensayo' WHERE id IN "
+                              "(SELECT track_id FROM versions WHERE kind='raw')"))
+        add(conn, "tracks", "album_id", "INTEGER REFERENCES albums(id) ON DELETE SET NULL")
+        add(conn, "tracks", "position", "INTEGER NOT NULL DEFAULT 0")
+        add(conn, "users", "photo", "VARCHAR(20)")
+        add(conn, "bands", "photo", "VARCHAR(20)")

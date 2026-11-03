@@ -12,6 +12,7 @@ import soundfile as sf
 
 from . import audio
 from .config import DATA_DIR
+from .notify import notify_band
 from .db import Genre, Job, Reference, SessionLocal, Track, Version, now
 
 log = logging.getLogger("worker")
@@ -28,6 +29,8 @@ def remove_version_files(version: Version):
         if p:
             Path(p).unlink(missing_ok=True)
     for f in (DATA_DIR / "cache").glob(f"{version.id}.*"):
+        f.unlink(missing_ok=True)
+    for f in (DATA_DIR / "analysis").glob(f"{version.id}.*"):
         f.unlink(missing_ok=True)
 
 
@@ -55,6 +58,30 @@ def process_ingest(db, job: Job):
         _finish_version(db, version, src)
     finally:
         src.unlink(missing_ok=True)
+    if payload.get("then_master"):
+        _queue_master_after(db, version, payload["then_master"])
+
+
+def _queue_master_after(db, version: Version, then: dict):
+    """Encola el master apenas termina de procesarse el audio (opcion 'subir y masterizar')."""
+    track = db.get(Track, version.track_id)
+    lufs, label, ref_id = -14.0, "master", then.get("reference_id")
+    if then.get("genre_id"):
+        g = db.get(Genre, then["genre_id"])
+        if g:
+            lufs, label = g.target_lufs, f"master {g.name}"
+    if ref_id:
+        ref = db.get(Reference, ref_id)
+        if ref and ref.band_id in (None, track.band_id):
+            label = f"master ref: {ref.name}"
+        else:
+            ref_id = None
+    v = Version(track_id=track.id, kind="master", label=label, status="processing", created_by=version.created_by)
+    db.add(v)
+    db.flush()
+    db.add(Job(kind="master", version_id=v.id, created_by=version.created_by,
+               payload=json.dumps({"reference_id": ref_id, "lufs": lufs, "separate_stems": False})))
+    db.commit()
 
 
 def _sum_stems(stems: list[Version], dst: Path):
@@ -121,6 +148,9 @@ def process_master(db, job: Job):
         except SystemExit as e:  # master_ensayo usa sys.exit para reportar errores
             raise RuntimeError(str(e)) from None
         _finish_version(db, version, out)
+        notify_band(db, track.band_id, f'El master de "{track.title}" está listo',
+                    kind="master", link=f"#/band/{track.band_id}/{track.section}")
+        db.commit()
 
 
 def claim_job(db) -> Job | None:

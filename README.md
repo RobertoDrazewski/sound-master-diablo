@@ -73,3 +73,29 @@ El script para subir desde Reaper está en `reaper/` (ver `reaper/LEEME.md`).
 Los temas se guardan en FLAC (más un preview AAC liviano para el celular). El WAV y el MP3 se generan al pedirlos y quedan en caché. Los ensayos crudos (`raw`) se borran solos a los 30 días.
 
 Las referencias son fragmentos de música de terceros: solo se usan para procesar y no hay ningún endpoint para escucharlas ni bajarlas.
+
+## Herramientas de la banda
+
+- **Ensayos**: grabá desde el celular (hace falta https) o subí un audio; se guarda con nombre y toda la banda lo escucha y lo descarga. Masterizar con un clic.
+- **Producción**: grabá tomas o subí mezclas y pistas, probá el Asistente y pasá el tema a Master cuando esté listo. Cada tema se puede mover entre Ensayos, Producción y Master.
+- **Master**: subís la mezcla, elegís estilo o referencia y bajás la versión masterizada (WAV, MP3, FLAC).
+- **Álbumes**: orden de temas, tapa e historial por álbum.
+- **Tapas**: en cada álbum, "Crear tapa" arma la portada desde tu foto con estilos propios (gratis) y el título encima. Con `OPENAI_API_KEY` suma generación con IA a partir de un prompt (tiene costo; `COVER_AI_DAILY_LIMIT` por banda y por día).
+- **Calendario y avisos**: eventos de la banda y notificaciones para los integrantes.
+- **Asistente**: analiza el audio (volumen, picos, saturación, balance de graves/agudos, estéreo) y sugiere mejoras en lenguaje simple. Funciona sin costo y sin internet.
+
+### Consejo con OpenAI (opcional, apagado por defecto)
+
+Si definís `OPENAI_API_KEY` el asistente suma un resumen redactado a partir de las métricas (nunca se envía el audio). Tiene costo por uso; `ASSISTANT_DAILY_LIMIT` limita las consultas por banda y por día. Sin la clave, el botón no aparece.
+
+### Dependencias nuevas
+
+Se agregó `pillow` (fotos de perfil, banda y álbum): `pip install pillow`.
+
+### Administración
+
+El super admin ve todo en Admin: bandas (renombrar, borrar con confirmación, roles), personas (generar contraseña nueva, activar o desactivar), invitaciones, estilos y estado del servidor. Cada persona cambia su contraseña desde Tu cuenta.
+
+### Instalar como app
+
+En Android (Chrome) y iPhone (Safari: Compartir > Agregar a inicio) se instala con ícono propio. En celular hay menú inferior con las herramientas.

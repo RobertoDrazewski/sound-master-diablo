@@ -56,3 +56,11 @@ DEFAULT_GENRES = {
 
 # Direccion publica (ej. https://diablomastermix.com.ar); se usa para armar los links de invitacion.
 PUBLIC_URL = os.getenv("PUBLIC_URL", "").rstrip("/")
+
+# Asistente con IA (opcional, apagado si no hay clave). Solo se envian numeros del analisis, nunca audio.
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+ASSISTANT_DAILY_LIMIT = int(os.getenv("ASSISTANT_DAILY_LIMIT", "20"))  # consultas por banda por dia
+
+COVER_AI_MODEL = os.getenv("COVER_AI_MODEL", "gpt-image-1")
+COVER_AI_DAILY_LIMIT = int(os.getenv("COVER_AI_DAILY_LIMIT", "5"))  # imagenes con IA por banda por dia (tiene costo)

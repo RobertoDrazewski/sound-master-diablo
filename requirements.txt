@@ -10,3 +10,4 @@ matchering
 soundfile
 numpy
 # demucs   # solo si vas a usar separacion de stems
+pillow
