@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from . import analysis, assistant, audio, covers
+from . import analysis, assistant, audio, covers, release
 from .config import (ASSISTANT_DAILY_LIMIT, COVER_AI_DAILY_LIMIT, PUBLIC_URL, BAND_QUOTA_GB, CORS_ORIGINS, DATA_DIR, DEFAULT_GENRES,
                      INVITE_TTL_DAYS, MAX_UPLOAD_MB, RAW_RETENTION_DAYS,
                      REFERENCE_SECONDS, SUPERADMIN_EMAIL, SUPERADMIN_PASSWORD)
@@ -92,9 +92,10 @@ def band_role(db: Session, user: User, band_id: int) -> str | None:
 
 def need_member(db: Session, user: User, band_id: int, admin: bool = False) -> str:
     role = band_role(db, user, band_id)
-    # 404 y no 403: no revelar que la banda existe
-    if role is None or (admin and role != "admin"):
-        raise HTTPException(404 if role is None else 403, "No encontrado" if role is None else "Requiere admin de la banda")
+    # 404 y no 403: no revelar que la banda existe.
+    # Todos los integrantes tienen los mismos derechos dentro de su banda; `admin` se conserva por compatibilidad.
+    if role is None:
+        raise HTTPException(404, "No encontrado")
     return role
 
 
@@ -315,10 +316,13 @@ def save_photo(kind: str, obj, upload: UploadFile) -> None:
     except Exception:  # noqa: BLE001
         raise HTTPException(422, "Ese archivo no es una imagen válida") from None
     size = IMG_KINDS[kind]
-    im = ImageOps.fit(im, (size, size), Image.LANCZOS)
     key = uuid.uuid4().hex[:12]
     folder = DATA_DIR / "images" / kind
     folder.mkdir(parents=True, exist_ok=True)
+    if kind == "albums":  # copia grande para el paquete de lanzamiento (hasta 3000 px)
+        hd = min(3000, min(im.size))
+        ImageOps.fit(im, (hd, hd), Image.LANCZOS).save(folder / f"{obj.id}-{key}-hd.jpg", "JPEG", quality=92, optimize=True)
+    im = ImageOps.fit(im, (size, size), Image.LANCZOS)
     im.save(folder / f"{obj.id}-{key}.jpg", "JPEG", quality=85, optimize=True)
     drop_photo_file(kind, obj)
     obj.photo = key
@@ -327,6 +331,7 @@ def save_photo(kind: str, obj, upload: UploadFile) -> None:
 def drop_photo_file(kind: str, obj) -> None:
     if obj.photo:
         (DATA_DIR / "images" / kind / f"{obj.id}-{obj.photo}.jpg").unlink(missing_ok=True)
+        (DATA_DIR / "images" / kind / f"{obj.id}-{obj.photo}-hd.jpg").unlink(missing_ok=True)
 
 
 @app.get("/img/{kind}/{name}")
@@ -609,8 +614,10 @@ def create_invite(body: InviteIn, request: Request, user: User = Depends(require
 @app.post("/bands/{band_id}/invites")
 def band_invite(band_id: int, body: BandInviteIn, request: Request, user: User = Depends(current_user),
                 db: Session = Depends(get_db)):
-    """El admin de la banda suma a sus compañeros (como integrantes)."""
-    need_member(db, user, band_id, admin=True)
+    """Cualquier integrante suma a sus compañeros. Solo el admin de la banda puede sumar managers."""
+    role = need_member(db, user, band_id)
+    if role != "admin" and body.kind != "musico":
+        raise HTTPException(403, "Los integrantes solo pueden invitar músicos")
     return make_invite(db, request, user, band_id, body.email, "member", body.kind, body.instrument, body.sings)
 
 
@@ -638,9 +645,7 @@ def band_cancel_invite(band_id: int, invite_id: int, user: User = Depends(curren
 @app.put("/bands/{band_id}/members/{user_id}")
 def set_member_profile(band_id: int, user_id: int, body: MemberProfileIn, user: User = Depends(current_user),
                        db: Session = Depends(get_db)):
-    role = need_member(db, user, band_id)
-    if user_id != user.id and role != "admin":
-        raise HTTPException(403, "Solo podés editar tu propio lugar en la banda")
+    need_member(db, user, band_id)
     m = db.query(Membership).filter_by(band_id=band_id, user_id=user_id).first()
     if not m:
         raise HTTPException(404, "No es integrante de esa banda")
@@ -837,10 +842,6 @@ def _track_for(db: Session, user: User, track_id: int, admin: bool = False) -> T
     if not track:
         raise HTTPException(404, "No encontrado")
     need_member(db, user, track.band_id, admin=False)
-    if admin:
-        role = band_role(db, user, track.band_id)
-        if not (role == "admin" or track.uploaded_by == user.id):
-            raise HTTPException(403, "Solo quien lo subio o un admin de la banda")
     return track
 
 
@@ -984,6 +985,88 @@ def media(version_id: int, request: Request, fmt: str = "preview", t: str | None
 
 
 
+# ------------------------------------------------------------------- lanzamiento
+
+def _release_tracks(db: Session, a: Album) -> list[dict]:
+    out = []
+    for t in db.query(Track).filter_by(album_id=a.id).order_by(Track.position, Track.id).all():
+        vs = [v for v in t.versions if v.kind == "master" and v.status == "ready" and v.flac_path]
+        v = max(vs, key=lambda x: x.id) if vs else None
+        out.append({"track_id": t.id, "title": t.title, "version_id": v.id if v else None,
+                    "duration": round(v.duration, 1) if v else 0, "has_master": bool(v)})
+    return out
+
+
+def _release_out(a: Album, db: Session) -> dict:
+    tracks = _release_tracks(db, a)
+    hd = DATA_DIR / "images" / "albums" / f"{a.id}-{a.photo}-hd.jpg" if a.photo else None
+    cover_px = 0
+    if hd and hd.exists():
+        from PIL import Image
+        with Image.open(hd) as im:
+            cover_px = im.size[0]
+    elif a.photo:
+        cover_px = IMG_KINDS["albums"]
+    st = release.state(a.id)
+    return {"album_id": a.id, "title": a.title, "year": a.year, "cover": img_url("albums", a.id, a.photo),
+            "cover_px": cover_px, "tracks": tracks,
+            "total_seconds": round(sum(t["duration"] for t in tracks), 1),
+            "missing_masters": [t["title"] for t in tracks if not t["has_master"]],
+            "ready": bool(tracks) and all(t["has_master"] for t in tracks) and bool(a.photo),
+            "build": st}
+
+
+@app.get("/bands/{band_id}/releases")
+def list_releases(band_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    need_member(db, user, band_id)
+    return [_release_out(a, db) for a in db.query(Album).filter_by(band_id=band_id).order_by(Album.created_at.desc()).all()]
+
+
+@app.post("/albums/{album_id}/release/build")
+def release_build(album_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    a = _album_for(db, user, album_id)
+    info = _release_out(a, db)
+    if not info["tracks"]:
+        raise HTTPException(409, "El álbum no tiene temas")
+    if info["missing_masters"]:
+        raise HTTPException(409, "Faltan masters: " + ", ".join(info["missing_masters"]))
+    if release.state(a.id)["status"] == "building":
+        return release.state(a.id)
+    cover = DATA_DIR / "images" / "albums" / (f"{a.id}-{a.photo}-hd.jpg" if a.photo else "x")
+    if a.photo and not cover.exists():
+        cover = DATA_DIR / "images" / "albums" / f"{a.id}-{a.photo}.jpg"
+    band = db.get(Band, a.band_id)
+    release.start(a.id, {"album": a.title, "year": a.year, "band": band.name if band else "",
+                         "cover": str(cover) if a.photo and cover.exists() else None,
+                         "tracks": [{"title": t["title"], "flac": db.get(Version, t["version_id"]).flac_path,
+                                     "version_id": t["version_id"], "duration": t["duration"]} for t in info["tracks"]]},
+                  DATA_DIR)
+    return release.state(a.id)
+
+
+@app.get("/albums/{album_id}/release/link")
+def release_link(album_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    a = _album_for(db, user, album_id)
+    st = release.state(a.id)
+    if st["status"] != "ready":
+        raise HTTPException(409, "El paquete todavía no está listo")
+    return {"url": f"/albums/{a.id}/release/file?t={create_media_token(user.id, -a.id, 'release')}"}
+
+
+@app.get("/albums/{album_id}/release/file")
+def release_file(album_id: int, t: str | None = None, db: Session = Depends(get_db)):
+    uid = decode_media_token(t, -album_id, "release") if t else None
+    user = db.get(User, uid) if uid else None
+    if not user or not user.active:
+        raise HTTPException(401, "Link invalido o vencido")
+    a = _album_for(db, user, album_id)
+    path = release.zip_path(DATA_DIR, a.id)
+    if not path.exists():
+        raise HTTPException(404, "Preparalo de nuevo")
+    return FileResponse(path, media_type="application/zip",
+                        filename=f"{safe_name(a.title)} - lanzamiento.zip", content_disposition_type="attachment")
+
+
 # ------------------------------------------------------------------- asistente
 
 @app.get("/versions/{version_id}/analysis")
@@ -1051,7 +1134,7 @@ def band_members(band_id: int, user: User = Depends(current_user), db: Session =
     role = need_member(db, user, band_id)
     rows = (db.query(Membership, User).join(User, User.id == Membership.user_id)
             .filter(Membership.band_id == band_id).order_by(User.name).all())
-    show_email = role == "admin" or user.is_super
+    show_email = True
     return [{"user_id": u.id, "name": u.name or u.email.split("@")[0], "role": m.role,
              "kind": m.kind, "instrument": m.instrument, "sings": m.sings,
              "photo": img_url("users", u.id, u.photo),
@@ -1112,9 +1195,7 @@ def delete_event(event_id: int, user: User = Depends(current_user), db: Session 
     ev = db.get(Event, event_id)
     if not ev:
         raise HTTPException(404, "No encontrado")
-    role = need_member(db, user, ev.band_id)
-    if not (role == "admin" or user.is_super or ev.created_by == user.id):
-        raise HTTPException(403, "Solo quien lo creó o un admin de la banda")
+    need_member(db, user, ev.band_id)
     db.delete(ev)
     db.commit()
     return {"ok": True}

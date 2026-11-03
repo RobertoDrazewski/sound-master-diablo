@@ -45,6 +45,7 @@ const ICONS = {
   download: '<path d="M12 3v12M7 10l5 5 5-5M4 20h16"/>',
   mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
   sliders: '<path d="M4 6h8M18 6h2M4 12h2M12 12h8M4 18h10M20 18h0"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/>',
+  rocket: '<path d="M12 3c3.2 2.2 5 5.3 5 9l-2 3.5H9L7 12c0-3.7 1.8-6.8 5-9zM9 15.5 7 20l3.2-1.2M15 15.5l2 4.5-3.2-1.2M12 8.5v.01"/>',
   disc: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/>',
   calendar: '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>',
   users: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5M16 4.8a3.4 3.4 0 0 1 0 6.4M18 14.8c2 .7 3.2 2.4 3.5 5.2"/>',
@@ -221,6 +222,7 @@ const TOOLS = [
   ["produccion", "Producción", "music", "Trabajá tus temas antes del master"],
   ["master", "Master", "sliders", "Dejá el tema listo para publicar"],
   ["albumes", "Álbumes", "disc", "Armá el disco con su tapa"],
+  ["lanzamiento", "Lanzamiento", "rocket", "Todo listo para Spotify, Bandcamp o vinilo"],
   ["calendario", "Calendario", "calendar", "Ensayos y shows con aviso"],
   ["integrantes", "Integrantes", "users", "Quiénes están en la banda"],
 ];
@@ -391,6 +393,7 @@ function viewLanding() {
     ["sliders", "Master", "Subí la mezcla, elegí un estilo de referencia y bajá la versión masterizada."],
     ["spark", "Asistente", "Analiza tu audio y te explica qué corregir, en palabras simples."],
     ["disc", "Álbumes", "Ordená los temas y creá la tapa con tu foto o con inteligencia artificial."],
+    ["rocket", "Lanzamiento", "El álbum masterizado listo para Spotify, Bandcamp o para prensar un vinilo."],
     ["calendar", "Calendario", "Ensayos y shows con aviso automático a toda la banda."],
   ];
   setApp(`
@@ -402,7 +405,7 @@ function viewLanding() {
       <div class="land-hero">
         <h1>Diablo Master</h1>
         <p class="lead">De la sala de ensayo al master, sin productora.</p>
-        <p class="sub">Grabá el ensayo en el celular, mezclalo en tu estudio y masterizalo en un clic. Todo el equipo de la banda en un solo lugar.</p>
+        <p class="sub">Grabá el ensayo en el celular, mezclalo en tu estudio, masterizalo en un clic y publicá el disco donde quieras. Todo el equipo de la banda en un solo lugar.</p>
         <div class="cta">
           <a class="btn primary big" href="#/login">Entrar</a>
           <span class="muted">¿Te invitaron? Abrí el link que te pasaron.</span>
@@ -526,7 +529,7 @@ async function viewHome(nav) {
         <div class="grow"><h2 style="margin:0">${esc(b.name)}</h2><p class="muted small" style="margin:0">${b.role === "admin" ? "Administrás esta banda" : "Integrante"}</p></div>
         <a class="btn primary big rec-cta" href="#/band/${b.id}/ensayos">${ic("mic")} Grabar ensayo</a>
       </div>
-      <div class="tool-grid">${TOOLS.slice(0, 5).map(([k, l, i, d]) =>
+      <div class="tool-grid">${TOOLS.slice(0, 6).map(([k, l, i, d]) =>
         `<a class="tool-tile" href="#/band/${b.id}/${k}">${ic(i)}<strong>${l}</strong><span>${d}</span></a>`).join("")}</div>
     </section>`;
   }
@@ -555,6 +558,7 @@ async function viewBand(id, sub, nav) {
     case "produccion": return await viewProduccion(band, nav);
     case "master": return await viewMaster(band, nav);
     case "albumes": return await viewAlbums(band, nav);
+    case "lanzamiento": return await viewRelease(band, nav);
     case "calendario": return await viewCalendar(band, nav);
     case "integrantes": return await viewMembers(band, nav);
     default: return notFound();
@@ -562,7 +566,7 @@ async function viewBand(id, sub, nav) {
 }
 
 function bandHead(band, title, lead) {
-  const canEdit = band.role === "admin" || state.me.is_super;
+  const canEdit = !!band.role || state.me.is_super;
   return `<div class="page-head">
     <div class="band-photo" id="bphoto">${band.photo ? `<img src="${esc(band.photo)}" alt="Foto de ${esc(band.name)}">` : `<img src="/img/banda-sin-foto.jpg" alt="">`}
       ${canEdit ? `<button type="button" id="bphoto-btn" aria-label="Cambiar la foto de la banda" title="Cambiar la foto de la banda">${ic("camera")}</button>` : ""}</div>
@@ -1542,12 +1546,12 @@ function profileLabel(m) {
   if (m.sings) parts.push("canta");
   return parts.join(" y ");
 }
-function profileFields(m, p = "") {
+function profileFields(m, p = "", onlyMusico = false) {
   const kind = (m && m.kind) || "musico";
   return `
     <div class="seg" role="radiogroup" aria-label="Rol en la banda">
       <label><input type="radio" name="${p}kind" value="musico" ${kind === "musico" ? "checked" : ""}>Músico<span class="hint">Toca un instrumento</span></label>
-      <label><input type="radio" name="${p}kind" value="manager" ${kind === "manager" ? "checked" : ""}>Manager<span class="hint">Organiza, no toca</span></label>
+      ${onlyMusico ? "" : `<label><input type="radio" name="${p}kind" value="manager" ${kind === "manager" ? "checked" : ""}>Manager<span class="hint">Organiza, no toca</span></label>`}
     </div>
     <div class="${p}mus stack">
       <div class="field" style="margin:0"><label for="${p}ins">Instrumento</label>
@@ -1570,13 +1574,14 @@ function readProfile(root, p = "") {
 }
 
 async function viewMembers(band, nav) {
-  const isAdmin = band.role === "admin" || state.me.is_super;
+  const isAdmin = true; // todos los integrantes tienen los mismos derechos en su banda
+  const bandAdmin = band.role === "admin" || state.me.is_super;
   const [members, pending] = await Promise.all([
     api(`/bands/${band.id}/members`), isAdmin ? api(`/bands/${band.id}/invites`) : Promise.resolve([])]);
   if (nav !== state.nav) return;
   const myId = state.me.id;
   setApp(`
-    ${bandHead(band, "Integrantes", isAdmin ? "Sumá a tus compañeros: les llega un link para crear su cuenta y entrar a la banda." : "Quiénes están en la banda y qué hace cada uno.")}
+    ${bandHead(band, "Integrantes", "Sumá a tus compañeros: les llega un link para crear su cuenta y entrar a la banda.")}
     <section class="card"><ul class="upcoming">${members.map((m) => `
       <li>${avatar(m.photo, m.name, "")}<div class="grow"><strong>${esc(m.name)}</strong>${m.user_id === myId ? ` <span class="muted small">(vos)</span>` : ""}
           <div class="muted small">${esc(profileLabel(m))}${m.email ? " · " + esc(m.email) : ""}</div></div>
@@ -1588,7 +1593,7 @@ async function viewMembers(band, nav) {
     <section class="card"><h2>Sumar a un compañero</h2>
       <form id="inv" class="stack">
         <div class="field" style="margin:0"><label for="ie">Email</label><input id="ie" type="email" required autocomplete="off"></div>
-        ${profileFields(null, "i")}
+        ${profileFields(null, "i", !bandAdmin)}
         <div><button class="btn primary">Crear invitación</button></div>
       </form>
       <div id="invout" class="stack hidden" style="margin-top:1rem"></div>
@@ -1642,6 +1647,73 @@ async function viewMembers(band, nav) {
       });
     });
   }));
+}
+
+/* ===================== lanzamiento ===================== */
+async function viewRelease(band, nav) {
+  let list = await api(`/bands/${band.id}/releases`);
+  if (nav !== state.nav) return;
+  const dests = [
+    ["Spotify, Apple Music y YouTube Music", "Se publican a través de una distribuidora (DistroKid, TuneCore, CD Baby, Amuse). Le subís los WAV y la tapa del paquete, y ella lo manda a todas las plataformas."],
+    ["Bandcamp", "Recibe la música directo de la banda. Subís los WAV y la tapa, ponés el precio y compartís el link."],
+    ["Vinilo y CD", "Para prensar, la planta pide los WAV (separados por lado en el vinilo) y la tapa. El paquete trae una guía con lo que tenés que preguntar."],
+  ];
+  const mins = (s) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
+  const card = (r) => {
+    const b = r.build || {};
+    const building = b.status === "building";
+    const ready = b.status === "ready";
+    const checks = [
+      ...r.tracks.map((t) => `<li class="${t.has_master ? "ok" : "no"}">${t.has_master ? "✓" : "✗"} ${esc(t.title)}${t.has_master ? ` <span class="muted small">${mins(t.duration)}</span>` : ` <span class="small">falta el master</span>`}</li>`),
+      `<li class="${r.cover ? "ok" : "no"}">${r.cover ? "✓" : "✗"} Tapa${r.cover ? ` <span class="muted small">${r.cover_px} px${r.cover_px < 3000 ? " (se agranda a 3000 px)" : ""}</span>` : ` <span class="small">falta la tapa, agregala en Álbumes</span>`}</li>`,
+    ].join("");
+    return `<article class="card release" data-album="${r.album_id}">
+      <div class="album"><div><div class="cover">${r.cover ? `<img src="${esc(r.cover)}" alt="Tapa de ${esc(r.title)}">` : `<img src="/img/album-sin-tapa.jpg" alt="">`}</div></div>
+      <div>
+        <h3 style="margin:0">${esc(r.title)}</h3>
+        <p class="muted small" style="margin:0 0 .6rem">${r.year ? r.year + " · " : ""}${r.tracks.length} ${r.tracks.length === 1 ? "tema" : "temas"}${r.total_seconds ? " · " + mins(r.total_seconds) : ""}</p>
+        ${r.tracks.length ? `<ul class="checks">${checks}</ul>` : `<p class="muted">Este álbum no tiene temas. Sumalos en Álbumes.</p>`}
+        <div class="row" style="margin-top:.9rem;gap:.6rem;flex-wrap:wrap">
+          ${ready ? `<button class="btn primary" data-act="download">${ic("download")} Descargar paquete (${esc(b.size_mb)} MB)</button>` : ""}
+          <button class="btn ${ready ? "" : "primary"}" data-act="build" ${building || !r.tracks.length || r.missing_masters.length ? "disabled" : ""}>${building ? "Preparando…" : ready ? "Volver a preparar" : "Preparar paquete"}</button>
+        </div>
+        ${building ? `<p class="muted small" style="margin-top:.5rem">${esc(b.step || "Preparando")}… ${b.total ? Math.round((b.done / b.total) * 100) : 0}%</p>` : ""}
+        ${b.status === "error" ? `<p class="small" style="color:var(--err);margin-top:.5rem">No se pudo preparar: ${esc(b.error || "error")}</p>` : ""}
+        ${ready ? `<p class="muted small" style="margin-top:.5rem">Incluye los WAV 24 bits, los MP3 320, la tapa en 3000 px y una guía para publicar. Queda disponible 24 horas.</p>` : ""}
+      </div></div></article>`;
+  };
+  setApp(`
+    ${bandHead(band, "Lanzamiento", "Cuando el álbum está masterizado, armá el paquete para publicarlo donde quieran o prensarlo.")}
+    <div id="rel">${list.length ? list.map(card).join("") : `<div class="card empty">${ic("rocket")}Todavía no tienen álbumes.<br><a href="#/band/${band.id}/albumes">Armá el primero en Álbumes</a></div>`}</div>
+    <section class="card"><h2>Dónde publicarlo</h2><div class="dest">${dests.map(([t, d]) => `<div><h3>${esc(t)}</h3><p class="muted">${esc(d)}</p></div>`).join("")}</div></section>`);
+  wireBandHead(band);
+  let timer = null;
+  const stop = () => { if (timer) { clearInterval(timer); timer = null; } };
+  const paint = () => { if (nav !== state.nav) return stop(); $("#rel").innerHTML = list.length ? list.map(card).join("") : $("#rel").innerHTML; };
+  const poll = () => {
+    if (timer || !list.some((r) => r.build && r.build.status === "building")) return;
+    timer = setInterval(async () => {
+      if (nav !== state.nav) return stop();
+      try { list = await api(`/bands/${band.id}/releases`); } catch (e) { return stop(); }
+      paint();
+      if (!list.some((r) => r.build && r.build.status === "building")) stop();
+    }, 2000);
+  };
+  poll();
+  $("#rel").addEventListener("click", async (ev) => {
+    const btn = ev.target.closest("button[data-act]");
+    if (!btn) return;
+    const id = btn.closest("[data-album]").dataset.album;
+    try {
+      if (btn.dataset.act === "build") {
+        await api(`/albums/${id}/release/build`, { method: "POST" });
+        list = await api(`/bands/${band.id}/releases`); paint(); poll();
+      } else {
+        const r = await api(`/albums/${id}/release/link`);
+        const a = document.createElement("a"); a.href = r.url; a.download = ""; document.body.appendChild(a); a.click(); a.remove();
+      }
+    } catch (e) { toast(e.message, "err"); }
+  });
 }
 
 /* ===================== referencias ===================== */

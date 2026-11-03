@@ -93,8 +93,10 @@ Si definís `OPENAI_API_KEY` el asistente suma un resumen redactado a partir de 
 Se agregó `pillow` (fotos de perfil, banda y álbum): `pip install pillow`.
 
 ### Integrantes
+Solo el super admin crea bandas y nombra a su admin. Dentro de la banda todos los integrantes tienen los mismos derechos: pueden invitar a otros músicos, editar el lugar de cada uno y sacar integrantes. Solo el admin de la banda o el super admin pueden sumar managers, y solo el super admin puede sacar a un admin. Cada integrante figura como músico (con instrumento y si canta) o como manager.
 
-El super admin crea las bandas y nombra a su admin. El admin de la banda suma a sus compañeros desde Integrantes con un link de invitación (email, si es músico o manager, instrumento y si canta), cancela invitaciones pendientes y saca integrantes. Cada persona edita su propio lugar en la banda.
+### Lanzamiento
+Cuando los temas de un álbum tienen master y el álbum tiene tapa, en Lanzamiento se arma un paquete (ZIP) con los WAV 24 bits, los MP3 320, la tapa en 3000 px, la lista de temas y una guía para publicar en plataformas, en Bandcamp o para prensar un vinilo o un CD. El paquete se genera en segundo plano, se guarda en `DATA_DIR/cache/release` y se borra solo a las 24 horas.
 
 ### Administración
 
