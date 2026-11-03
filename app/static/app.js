@@ -46,6 +46,7 @@ const ICONS = {
   mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
   sliders: '<path d="M4 6h8M18 6h2M4 12h2M12 12h8M4 18h10M20 18h0"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/>',
   rocket: '<path d="M12 3c3.2 2.2 5 5.3 5 9l-2 3.5H9L7 12c0-3.7 1.8-6.8 5-9zM9 15.5 7 20l3.2-1.2M15 15.5l2 4.5-3.2-1.2M12 8.5v.01"/>',
+  logout: '<path d="M9 4H5v16h4M16 8l4 4-4 4M20 12H9"/>',
   disc: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/>',
   calendar: '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>',
   users: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5M16 4.8a3.4 3.4 0 0 1 0 6.4M18 14.8c2 .7 3.2 2.4 3.5 5.2"/>',
@@ -262,7 +263,9 @@ function renderShell(active) {
   h += link("#/refs", "Referencias", "target", active.key === "refs");
   if (me.is_super) h += link("#/admin", "Admin", "shield", active.key === "admin");
   h += link("#/account", "Tu cuenta", "user", active.key === "account");
+  h += `<button type="button" class="nav-link nav-out" id="side-out">${ic("logout")}Cerrar sesión</button>`;
   $("#side").innerHTML = h;
+  $("#side-out").addEventListener("click", () => logout(false));
   closeDrawer();
   const cb = currentBand();
   const tb = $("#tabbar");

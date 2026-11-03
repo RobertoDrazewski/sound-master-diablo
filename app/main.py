@@ -1440,5 +1440,16 @@ def remove_album_photo(album_id: int, user: User = Depends(current_user), db: Se
 # Se monta al final para que las rutas de la API tengan prioridad sobre los archivos estaticos.
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 
+
+@app.middleware("http")
+async def revalidate_shell(request: Request, call_next):
+    """El front (html, js, css) se revalida siempre, para que un deploy nuevo se vea al instante aunque haya caché en el medio."""
+    resp = await call_next(request)
+    p = request.url.path
+    if (p == "/" or p.endswith((".js", ".css", ".html", ".webmanifest"))) and "cache-control" not in resp.headers:
+        resp.headers["Cache-Control"] = "no-cache"
+    return resp
+
+
 STATIC_DIR = Path(__file__).parent / "static"
 app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="front")

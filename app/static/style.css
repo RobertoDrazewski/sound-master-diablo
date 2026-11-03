@@ -88,11 +88,11 @@ body.public .shell { display: block; }
 body.public .app { max-width: none; padding: 0; }
 
 .side-title { font-family: var(--display); font-weight: 600; font-size: 1.05rem; color: var(--muted); padding: .4rem .7rem; margin: 0; letter-spacing: .03em; }
-.side a.nav-link {
+.side a.nav-link, .side button.nav-link {
   display: flex; align-items: center; gap: .65rem; padding: .55rem .7rem; border-radius: 9px;
   color: var(--text); text-decoration: none; font-size: .96rem; min-height: 40px;
 }
-.side a.nav-link:hover { background: var(--surface-2); }
+.side a.nav-link:hover, .side button.nav-link:hover { background: var(--surface-2); }
 .side a.nav-link.active { background: var(--surface-2); box-shadow: inset 3px 0 0 var(--ember); }
 .side .band-link { font-weight: 600; }
 .side .band-link .avatar { width: 28px; height: 28px; border-radius: 8px; font-size: .8rem; }
@@ -427,3 +427,6 @@ tr.inactive { opacity: .55; }
 .dest { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem 1.5rem; }
 .dest h3 { margin: 0 0 .3rem; font-size: 1.25rem; } .dest p { margin: 0; font-size: .95rem; }
 .dest { margin-top: .9rem; }
+
+.nav-out { width: 100%; background: none; border: 0; font: inherit; text-align: left; cursor: pointer; color: var(--muted); }
+.nav-out:hover { color: var(--text); }
