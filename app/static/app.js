@@ -1792,62 +1792,76 @@ async function viewReaper(nav) {
   setApp(`
     <div class="page-head"><div class="grow"><p class="muted small" style="margin:0">Para quien graba y mezcla en Reaper</p>
       <h1 style="margin:0">Conectar Reaper</h1>
-      <p class="lead" style="margin-top:.4rem">Con un script, subís tu ensayo, tu mezcla o tus pistas a Diablo Master sin salir de Reaper. Se configura una sola vez y después son tres clics.</p></div></div>
+      <p class="lead" style="margin-top:.4rem">Mandá tu ensayo o tu mezcla a la banda sin salir de Reaper. Lo conectás una sola vez, en unos 5 minutos. Después, subir un tema son tres clics.</p></div></div>
 
-    <section class="card"><h2>Cómo funciona</h2>
+    <section class="card"><h2>Qué vas a lograr</h2>
       <div class="dest">
-        <div><h3>1. Grabás y mezclás en Reaper</h3><p class="muted">Como siempre: multipista, tus efectos, tu mezcla. No cambia nada de tu forma de trabajar.</p></div>
-        <div><h3>2. Ejecutás el script</h3><p class="muted">Reaper exporta el proyecto solo y lo sube a la banda que elegiste. No tenés que renderizar ni abrir el navegador.</p></div>
-        <div><h3>3. La banda lo escucha</h3><p class="muted">Aparece en Ensayos, Producción o Master, con aviso a todos. Desde ahí lo bajan, le piden consejo al Asistente o lo masterizan en un clic.</p></div>
+        <div><h3>Grabás y mezclás como siempre</h3><p class="muted">Tus pistas, tus efectos, tu mezcla. Reaper sigue siendo tu estudio.</p></div>
+        <div><h3>Apretás un botón y se sube</h3><p class="muted">Reaper arma el audio solo y lo manda a la banda. No tenés que exportar ni abrir el navegador.</p></div>
+        <div><h3>Toda la banda lo escucha</h3><p class="muted">Aparece acá con aviso a todos. Lo escuchan, lo bajan y lo pasan por el master con un clic.</p></div>
       </div></section>
 
-    <section class="card"><h2>Instalación, una sola vez</h2>
+    <section class="card"><h2>Parte 1: conectarlo (se hace una sola vez)</h2>
+      <p class="muted" style="margin-top:0">Vas a necesitar dos cosas: un archivito que le enseña a Reaper a hablar con esta web, y tu clave personal para que sepa que sos vos. Seguí los pasos en orden.</p>
       <ol class="steps">
-        <li><strong>Descargá el script.</strong>
-          <div class="row" style="margin-top:.5rem"><a class="btn primary" href="/reaper/DiabloMaster_subir.lua" download="DiabloMaster_subir.lua">${ic("download")} Descargar el script</a></div>
-          <p class="muted small">Es un archivo de texto (<code>DiabloMaster_subir.lua</code>). Guardalo en una carpeta que no vayas a borrar, por ejemplo Documentos. Reaper lo lee desde ahí.</p></li>
-        <li><strong>Generá tu token personal.</strong> Es la llave que le dice al script que sos vos.
-          <div class="row" style="margin-top:.5rem"><button class="btn" id="mk-token">Generar mi token</button></div>
+        <li><strong>Descargá el archivito.</strong>
+          <div class="row" style="margin-top:.5rem"><a class="btn primary" href="/reaper/DiabloMaster_subir.lua" download="DiabloMaster_subir.lua">${ic("download")} Descargar el archivo</a></div>
+          <p class="muted small">Se llama <code>DiabloMaster_subir.lua</code>. Se guarda en la carpeta <em>Descargas</em>. Podés ignorar que dice "lua": es el tipo de archivo que lee Reaper.</p></li>
+        <li><strong>Pasalo a <em>Documentos</em>.</strong> Movelo de Descargas a Documentos y no lo borres, porque Reaper lo lee desde ahí cada vez. Si lo borrás, tenés que descargarlo de nuevo.</li>
+        <li><strong>Generá tu clave personal.</strong> Es una clave larga que empieza con <code>pck_</code>. Es solo tuya: no la compartas.
+          <div class="row" style="margin-top:.5rem"><button class="btn" id="mk-token">Generar mi clave</button></div>
           <div id="token-out" class="stack hidden" style="margin-top:.6rem"></div>
-          <p class="muted small">El token se muestra una sola vez: copialo y guardalo. Si lo perdés, generás otro.</p></li>
-        <li><strong>Cargá el script en Reaper.</strong> Menú <em>Actions &gt; Show action list…</em>, tocá <em>New action…</em> y después <em>Load ReaScript…</em>. Elegí el archivo que descargaste. Va a aparecer en la lista como <code>Script: DiabloMaster_subir.lua</code>.</li>
-        <li><strong>Ejecutalo y conectalo.</strong> En esa lista, escribí <code>Diablo</code> en el filtro, seleccionalo y tocá <em>Run</em>. La primera vez te pide dos datos:
-          <div class="copybox" style="margin:.5rem 0"><span class="grow">${esc(site)}</span><button type="button" class="btn small" data-copy="${esc(site)}">Copiar</button></div>
-          <p class="muted small" style="margin:0">Pegá esa dirección en <em>Dirección de la web</em> y tu token en <em>Token personal</em>. Después elegís tu banda. Esto no se vuelve a pedir.</p></li>
-        <li><strong>Opcional: un atajo de teclado.</strong> Con el script seleccionado en la lista, tocá <em>Add…</em> en <em>Shortcuts for selected action</em> y apretá las teclas que quieras.</li>
-      </ol></section>
-
-    <section class="card"><h2>Cada vez que quieras subir</h2>
-      <ol class="steps">
-        <li><strong>Guardá el proyecto</strong> (${save}). Reaper no exporta un proyecto sin nombre.</li>
-        <li><strong>Ejecutá el script</strong> (con tu atajo, o desde <em>Actions &gt; Show action list…</em>).</li>
-        <li><strong>Completá la ventana:</strong>
+          <p class="muted small">Se muestra una sola vez. Tocá <em>Copiar</em> y pegala en un lugar seguro, por ejemplo una nota del celular. Si la perdés, generás otra.</p></li>
+        <li><strong>Abrí Reaper y buscá el menú <em>Actions</em></strong> (arriba, en la barra de menús). Tocá <em>Show action list…</em>. Se abre una ventana llamada <em>Actions</em> con una lista larga.</li>
+        <li><strong>Cargá el archivito.</strong> En esa ventana, abajo, tocá el botón <em>New action…</em> y elegí <em>Load ReaScript…</em>. Se abre un selector de archivos: andá a <em>Documentos</em>, elegí <code>DiabloMaster_subir.lua</code> y tocá <em>Abrir</em>.
+          <p class="muted small" style="margin:.4rem 0 0">Cómo saber que salió bien: en la lista aparece una línea que dice <code>Script: DiabloMaster_subir.lua</code>.</p></li>
+        <li><strong>Ejecutalo por primera vez.</strong> Arriba de la lista hay un casillero que dice <em>Filter</em>: escribí <code>Diablo</code>. Tocá la línea del script y después el botón <em>Run</em>. Reaper te pide dos datos:
           <ul class="plain">
-            <li><em>Nombre del tema o ensayo:</em> cómo se va a llamar en la web.</li>
-            <li><em>Qué subir:</em> <code>cancion</code> manda la mezcla completa (lo que sale por el Master). <code>pistas</code> manda una pista por archivo: bajo, batería, guitarras…</li>
-            <li><em>Dónde:</em> <code>ensayo</code> para el registro del ensayo, <code>produccion</code> para mezclas y tomas de trabajo, <code>master</code> si ya está listo para publicar.</li>
-          </ul></li>
-        <li><strong>Esperá el aviso</strong> "Listo, se subió". Los archivos grandes se mandan por partes y la ventana de mensajes de Reaper muestra el avance.</li>
+            <li><em>Dirección de la web:</em> copiá y pegá esta dirección:
+              <div class="copybox" style="margin:.4rem 0"><span class="grow">${esc(site)}</span><button type="button" class="btn small" data-copy="${esc(site)}">Copiar</button></div></li>
+            <li><em>Token personal:</em> pegá la clave que generaste en el paso 3.</li>
+          </ul>
+          <p class="muted small" style="margin:.4rem 0 0">Después te muestra tus bandas. Si tenés una sola, la elige sola. Si tenés varias, escribí el número de la que quieras. Esto no se vuelve a pedir.</p></li>
+        <li><strong>Opcional: ponele una tecla.</strong> Con el script seleccionado en la lista, tocá <em>Add…</em> (a la izquierda, abajo) y apretá la combinación que quieras, por ejemplo Cmd+Shift+U. Así lo ejecutás sin abrir la lista.</li>
       </ol></section>
 
-    <section class="card"><h2>El flujo para una banda que mezcla en Reaper</h2>
+    <section class="card"><h2>Parte 2: subir un ensayo o un tema</h2>
       <ol class="steps">
-        <li>Grabás el ensayo multipista y lo subís como <code>ensayo</code>: queda guardado y la banda lo escucha.</li>
-        <li>Mezclás cada tema y lo subís como <code>cancion</code> a <code>produccion</code>. Podés usar el Asistente para ver qué corregir.</li>
-        <li>En Producción, tocás <em>Master</em> sobre el tema y elegís el estilo de referencia. Diablo Master lo masteriza.</li>
-        <li>Con los temas masterizados armás el álbum y en <em>Lanzamiento</em> bajás el paquete para Spotify, Bandcamp o vinilo.</li>
+        <li><strong>Guardá el proyecto</strong> (${save}). Si el proyecto no tiene nombre, Reaper no puede exportarlo y el script te lo avisa.</li>
+        <li><strong>Ejecutá el script:</strong> con tu tecla, o desde <em>Actions &gt; Show action list…</em>, escribiendo <code>Diablo</code> en el filtro y tocando <em>Run</em>.</li>
+        <li><strong>Completá la ventanita.</strong> Tiene tres casilleros:
+          <ul class="plain">
+            <li><em>Nombre del tema o ensayo:</em> cómo lo va a ver la banda. Por ejemplo "Camino al sur" o "Ensayo 3-11".</li>
+            <li><em>Qué subir:</em> escribí <code>cancion</code> para subir la mezcla final, tal como suena todo junto. O escribí <code>pistas</code> para subir cada instrumento por separado (bajo, batería, guitarras…), por si alguien más quiere mezclar.</li>
+            <li><em>Dónde:</em> escribí <code>ensayo</code> para guardar cómo sonó el ensayo (se borra solo a los 30 días), <code>produccion</code> para una mezcla en la que seguís trabajando, o <code>master</code> si ya está lista para masterizar.</li>
+          </ul>
+          <p class="muted small" style="margin:.4rem 0 0">El cuarto casillero (<em>Cambiar conexión</em>) dejalo en <code>no</code>. Tocá <em>OK</em>.</p></li>
+        <li><strong>Esperá sin cerrar Reaper.</strong> Reaper tarda un rato en preparar el audio y subirlo: más si el ensayo es largo. Si es muy grande, lo sube de a partes y en la ventana de mensajes ves el avance. Cuando termina, aparece un cartel que dice <em>Listo</em>.</li>
+      </ol>
+      <h3>Dos ejemplos para copiar</h3>
+      <div class="dest">
+        <div><h3>Grabé el ensayo de hoy</h3><p class="muted">Nombre: <code>Ensayo 3-11</code><br>Qué subir: <code>cancion</code><br>Dónde: <code>ensayo</code></p></div>
+        <div><h3>Terminé de mezclar un tema</h3><p class="muted">Nombre: <code>Camino al sur</code><br>Qué subir: <code>cancion</code><br>Dónde: <code>produccion</code></p></div>
+      </div></section>
+
+    <section class="card"><h2>Y después, ¿qué pasa con lo que subí?</h2>
+      <ol class="steps">
+        <li>Entrá a la banda y abrí <strong>Ensayos</strong> o <strong>Producción</strong>, según lo que hayas elegido. Ahí está tu tema y toda la banda lo puede escuchar y bajar.</li>
+        <li>En Producción, el <strong>Asistente</strong> escucha tu mezcla y te dice qué corregir en palabras simples.</li>
+        <li>Cuando te guste, tocá <strong>Master</strong> sobre el tema, elegí el estilo de referencia y se masteriza solo.</li>
+        <li>Con los temas masterizados armás el disco en <strong>Álbumes</strong>, y en <strong>Lanzamiento</strong> bajás todo listo para Spotify, Bandcamp o vinilo.</li>
       </ol></section>
 
-    <section class="card"><h2>Tips y problemas comunes</h2>
+    <section class="card"><h2>Si algo sale mal</h2>
       <ul class="plain">
-        <li><strong>Para subir una mezcla sin master:</strong> sacá los limitadores del track Master antes de ejecutar el script. Si no, sube con el efecto puesto.</li>
-        <li><strong>Para subir solo una parte:</strong> hacé una selección de tiempo en el proyecto y el script exporta solo eso.</li>
-        <li><strong>Formato:</strong> el script usa el último formato de render que usaste. Hacé un render manual una vez (<em>File &gt; Render</em>) con WAV 24 bit o FLAC.</li>
-        <li><strong>"Primero guardá el proyecto":</strong> apretá ${save}, poné un nombre y volvé a ejecutar.</li>
-        <li><strong>"No pude conectar":</strong> revisá que la dirección sea exactamente <code>${esc(site)}</code> y que el token esté completo, sin espacios. Para cambiarlos, ejecutá el script y escribí <code>si</code> en <em>Cambiar conexión</em>.</li>
-        <li><strong>"Todavía no estás en ninguna banda":</strong> pedile a tu admin que te invite a la banda.</li>
-        <li><strong>Pistas:</strong> se exportan todas las pistas del proyecto. Silenciá o sacá las que no quieras subir.</li>
-        <li>El script no cambia tus ajustes de render. Funciona en Mac y Windows (usa <code>curl</code>, que ya viene en los dos).</li>
+        <li><strong>"Primero guardá el proyecto":</strong> apretá ${save}, poné un nombre y volvé a ejecutar el script.</li>
+        <li><strong>"No pude conectar":</strong> revisá que la dirección sea exactamente <code>${esc(site)}</code> y que la clave esté completa, sin espacios de más. Para cambiarlas, ejecutá el script y en el cuarto casillero (<em>Cambiar conexión</em>) escribí <code>si</code>.</li>
+        <li><strong>"Todavía no estás en ninguna banda":</strong> pedile a quien administra la banda que te invite.</li>
+        <li><strong>La mezcla suena distinta a la tuya:</strong> el script sube lo que sale por el canal Master de Reaper. Si querés subirla sin masterizar, sacá del Master los limitadores y maximizadores antes de ejecutar.</li>
+        <li><strong>Subir solo un pedazo:</strong> marcá con el mouse un tramo del proyecto (selección de tiempo) y el script sube solo eso.</li>
+        <li><strong>Pistas separadas:</strong> el script sube todas las pistas del proyecto. Silenciá las que no quieras mandar.</li>
+        <li><strong>Calidad del audio:</strong> el script usa el último formato que hayas usado en <em>File &gt; Render</em>. Hacé un render de prueba una vez con <em>WAV 24 bit</em> o <em>FLAC</em>.</li>
+        <li><strong>Para sacar el archivito de Reaper:</strong> en la lista de Actions, seleccionalo y tocá <em>Delete</em>.</li>
       </ul></section>`);
   $$("[data-copy]").forEach((b) => b.addEventListener("click", () => copyText(b.dataset.copy)));
   $("#mk-token").addEventListener("click", async (ev) => {
@@ -1857,7 +1871,7 @@ async function viewReaper(nav) {
         const out = $("#token-out");
         out.classList.remove("hidden");
         out.innerHTML = `<div class="copybox"><span class="grow">${esc(r.token)}</span><button type="button" class="btn small" id="cp-token">Copiar</button></div>
-          <p class="small" style="color:var(--amber);margin:0">Copialo ahora: no se vuelve a mostrar.</p>`;
+          <p class="small" style="color:var(--amber);margin:0">Copiala ahora: no se vuelve a mostrar.</p>`;
         $("#cp-token").addEventListener("click", () => copyText(r.token));
       } catch (e) { toast(e.message, "err"); }
     });
