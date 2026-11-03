@@ -105,21 +105,27 @@ local function main()
   local r1, r2 = reaper.GetProjectName(proj, "")
   local pname = (type(r2) == "string" and r2) or (type(r1) == "string" and r1) or ""
   pname = pname:gsub("%.[Rr][Pp][Pp]$", "")
-  if pname == "" then pname = "Sin titulo" end
+  if pname == "" then
+    msg("Primero guarda el proyecto (Cmd+S en Mac, Ctrl+S en Windows) y volve a ejecutar el script.\n\nReaper no puede exportar un proyecto que todavia no tiene nombre.")
+    return
+  end
 
-  local ok, vals = reaper.GetUserInputs("Diablo Master - subir a " .. get("band_name"), 3,
-    "Nombre del tema,Que subir (cancion / pistas),Cambiar conexion (si / no),extrawidth=200",
-    pname .. ",cancion,no")
+  local ok, vals = reaper.GetUserInputs("Diablo Master - subir a " .. get("band_name"), 4,
+    "Nombre del tema o ensayo,Que subir (cancion / pistas),Donde (ensayo / produccion / master),Cambiar conexion (si / no),extrawidth=220",
+    pname .. ",cancion," .. (get("section") ~= "" and get("section") or "ensayo") .. ",no")
   if not ok then return end
-  local title, what, reconf = vals:match("^(.-),(.-),(.*)$")
+  local title, what, where, reconf = vals:match("^(.-),(.-),(.-),(.*)$")
   title = clean(title)
   what = clean(what):lower()
+  where = clean(where):lower()
+  local section = (where:find("^mas") and "master") or (where:find("^prod") and "produccion") or "ensayo"
+  set("section", section)
   if clean(reconf):lower() == "si" then
     if configure() and choose_band() then msg("Conexion actualizada. Volve a ejecutar el script.") end
     return
   end
   if title == "" then title = pname end
-  local mode = (what:find("pista") or what:find("stem")) and "stems" or "mix"
+  local mode = (what:find("pista") or what:find("stem")) and "stems" or (section == "ensayo" and "raw" or "mix")
 
   if reaper.CountMediaItems(proj) == 0 then
     msg("El proyecto no tiene audio. Arrastra un archivo de audio a una pista (o grabá algo) y volve a ejecutar.")
@@ -179,16 +185,73 @@ local function main()
     return
   end
 
-  local args = { "-m 7200", "-w " .. q("\nHTTP:%{http_code}"), "-F " .. q("title=" .. title), "-F " .. q("mode=" .. mode), "-F " .. q("section=produccion") }
-  for _, f in ipairs(files) do args[#args + 1] = "-F " .. q("files=@" .. f) end
+  local function fsize(path)
+    local fh = io.open(path, "rb")
+    if not fh then return 0 end
+    local n = fh:seek("end") or 0
+    fh:close()
+    return n
+  end
+  local BIG = 90 * 1024 * 1024      -- Cloudflare corta los envios de mas de 100 MB: lo grande se manda por partes
+  local PART = 50 * 1024 * 1024
+  local big = false
+  for _, f in ipairs(files) do if fsize(f) > BIG then big = true end end
 
-  reaper.ShowConsoleMsg("Diablo Master: subiendo " .. #files .. " archivo(s)...\n")
-  local code, body = with_auth(get("url") .. "/bands/" .. get("band") .. "/tracks", get("token"), table.concat(args, " "))
-  local http = tostring(body):match("HTTP:(%d+)")
+  local code, body, http
+  local base = get("url") .. "/bands/" .. get("band")
+  if not big then
+    local args = { "-m 7200", "-w " .. q("\nHTTP:%{http_code}"), "-F " .. q("title=" .. title), "-F " .. q("mode=" .. mode), "-F " .. q("section=" .. section) }
+    for _, f in ipairs(files) do args[#args + 1] = "-F " .. q("files=@" .. f) end
+    reaper.ShowConsoleMsg("Diablo Master: subiendo " .. #files .. " archivo(s)...\n")
+    code, body = with_auth(base .. "/tracks", get("token"), table.concat(args, " "))
+    http = tostring(body):match("HTTP:(%d+)")
+  else
+    local items, failed = {}, nil
+    for n, f in ipairs(files) do
+      local uid = ("%08x%08x%08x%08x"):format(math.random(0, 0x7fffffff), math.random(0, 0x7fffffff), os.time(), n)
+      local total = fsize(f)
+      local fh = io.open(f, "rb")
+      local idx = 0
+      while true do
+        local data = fh:read(PART)
+        if not data then break end
+        local part = dir .. SEP .. "parte.bin"
+        local pf = io.open(part, "wb")
+        pf:write(data) pf:close()
+        data = nil
+        local okp = false
+        for try = 1, 3 do
+          local c, b2 = with_auth(get("url") .. "/uploads/" .. uid .. "/" .. idx, get("token"),
+            "-m 1800 -X PUT -H 'Content-Type: application/octet-stream' --data-binary @" .. q(part) .. " -w " .. q("\nHTTP:%{http_code}"))
+          if c == 0 and tostring(b2):match("HTTP:(%d+)") == "200" then okp = true break end
+          failed = tostring(b2):sub(1, 300)
+        end
+        os.remove(part)
+        if not okp then break end
+        failed = nil
+        idx = idx + 1
+        reaper.ShowConsoleMsg(("Diablo Master: %s, parte %d de %d\n"):format(f:match("[^/\\]+$") or f, idx, math.ceil(total / PART)))
+      end
+      fh:close()
+      if failed then break end
+      items[#items + 1] = ('{"upload_id":"%s","filename":"%s","parts":%d}'):format(uid, ((f:match("[^/\\]+$") or "audio.wav"):gsub('"', "")), idx)
+    end
+    if failed then
+      code, http, body = 1, "fallo", "No se pudo subir una parte: " .. failed
+    else
+      local jf = dir .. SEP .. "items.json"
+      local jh = io.open(jf, "w")
+      jh:write("[" .. table.concat(items, ",") .. "]") jh:close()
+      code, body = with_auth(base .. "/tracks/chunked", get("token"),
+        "-m 1800 -w " .. q("\nHTTP:%{http_code}") .. " -F " .. q("title=" .. title) .. " -F " .. q("mode=" .. mode) ..
+        " -F " .. q("section=" .. section) .. " -F " .. q("items=<" .. jf))
+      http = tostring(body):match("HTTP:(%d+)")
+    end
+  end
   clear_dir(dir)
 
   if code == 0 and http == "200" then
-    msg("Listo: \"" .. title .. "\" se subio a " .. get("band_name") .. ".\nYa lo pueden escuchar y masterizar desde la web.")
+    msg("Listo: \"" .. title .. "\" se subio a " .. get("band_name") .. " (" .. section .. ").\nYa lo puede escuchar toda la banda desde la web.")
   else
     msg("No se pudo subir (HTTP " .. tostring(http) .. ").\n\n" .. tostring(body):sub(1, 400))
   end

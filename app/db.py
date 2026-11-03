@@ -134,6 +134,7 @@ class Track(Base):
     section: Mapped[str] = mapped_column(String(10), default="master", server_default="master")  # master | ensayo
     album_id: Mapped[int | None] = mapped_column(ForeignKey("albums.id", ondelete="SET NULL"), nullable=True, index=True)
     position: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    session: Mapped[str] = mapped_column(String(120), default="", server_default="")  # "ensayo del 12/10": agrupa temas
     uploaded_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
@@ -222,6 +223,7 @@ def _migrate_sqlite():
                               "(SELECT track_id FROM versions WHERE kind='raw')"))
         add(conn, "tracks", "album_id", "INTEGER REFERENCES albums(id) ON DELETE SET NULL")
         add(conn, "tracks", "position", "INTEGER NOT NULL DEFAULT 0")
+        add(conn, "tracks", "session", "VARCHAR(120) NOT NULL DEFAULT ''")
         for t in ("memberships", "invites"):
             add(conn, t, "kind", "VARCHAR(10) NOT NULL DEFAULT 'musico'")
             add(conn, t, "instrument", "VARCHAR(120) NOT NULL DEFAULT ''")

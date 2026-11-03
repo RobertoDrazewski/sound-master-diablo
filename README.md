@@ -66,7 +66,7 @@ Servir siempre por HTTPS (Let's Encrypt): hay contraseñas y tokens en tránsito
 
 ## Reaper
 
-El script para subir desde Reaper está en `reaper/` (ver `reaper/LEEME.md`).
+El script para subir desde Reaper está en `reaper/` (ver `reaper/LEEME.md`). La web trae una guía paso a paso en el menú **Conectar Reaper**, y el script se descarga desde ahí (copia en `app/static/reaper/`).
 
 ## Almacenamiento
 

@@ -124,10 +124,10 @@ async function api(path, { method = "GET", json, form } = {}) {
   }
   return data;
 }
-function uploadWithProgress(url, form, onProgress) {
+function uploadWithProgress(url, form, onProgress, method = "POST") {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open("POST", url);
+    xhr.open(method, url);
     if (session.token) xhr.setRequestHeader("Authorization", "Bearer " + session.token);
     xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded / e.total); };
     xhr.onload = () => {
@@ -142,6 +142,38 @@ function uploadWithProgress(url, form, onProgress) {
     xhr.onerror = () => reject(new ApiError("Se cortó la conexión mientras subía", 0));
     xhr.send(form);
   });
+}
+// Cloudflare corta los envios de mas de 100 MB: lo grande se manda en partes de 50 MB y se arma en el servidor.
+const BIG_FILE = 90 * 1024 * 1024, PART_SIZE = 50 * 1024 * 1024;
+async function chunkUpload(file, onProgress) {
+  const uid = Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("");
+  const parts = Math.ceil(file.size / PART_SIZE);
+  for (let i = 0; i < parts; i++) {
+    const blob = file.slice(i * PART_SIZE, (i + 1) * PART_SIZE);
+    let ok = false, last = null;
+    for (let t = 0; t < 3 && !ok; t++) {
+      try { await uploadWithProgress(`/uploads/${uid}/${i}`, blob, (p) => onProgress((i + p) / parts), "PUT"); ok = true; }
+      catch (e) { last = e; if (e.status && e.status < 500) throw e; }
+    }
+    if (!ok) throw last;
+  }
+  return { upload_id: uid, filename: file.name, parts };
+}
+// Sube un tema (uno o varios archivos si son pistas). Devuelve cuando el servidor ya lo recibio.
+async function sendTrack(bandId, { title, mode, section, session, files }, onProgress) {
+  const base = { title, mode, section, session: session || "" };
+  if (files.every((f) => f.size <= BIG_FILE)) {
+    const fd = new FormData();
+    Object.entries(base).forEach(([k, v]) => fd.append(k, v));
+    files.forEach((f) => fd.append("files", f));
+    return uploadWithProgress(`/bands/${bandId}/tracks`, fd, onProgress);
+  }
+  const items = [];
+  for (let i = 0; i < files.length; i++) items.push(await chunkUpload(files[i], (p) => onProgress((i + p) / files.length)));
+  const fd = new FormData();
+  Object.entries(base).forEach(([k, v]) => fd.append(k, v));
+  fd.append("items", JSON.stringify(items));
+  return uploadWithProgress(`/bands/${bandId}/tracks/chunked`, fd, () => {});
 }
 function logout(expired = false) {
   session.token = null;
@@ -260,6 +292,7 @@ function renderShell(active) {
     if (cur) h += `<div class="side-tools">${TOOLS.map(([k, l, i]) => link(`#/band/${b.id}/${k}`, l, i, active.tool === k)).join("")}</div>`;
   }
   h += `</div><div class="side-sep"></div>`;
+  h += link("#/reaper", "Conectar Reaper", "headphones", active.key === "reaper");
   h += link("#/refs", "Referencias", "target", active.key === "refs");
   if (me.is_super) h += link("#/admin", "Admin", "shield", active.key === "admin");
   h += link("#/account", "Tu cuenta", "user", active.key === "account");
@@ -378,6 +411,7 @@ async function router() {
       case "home": renderShell({ key: "home" }); return await viewHome(nav);
       case "band": return await viewBand(arg, sub, nav);
       case "refs": renderShell({ key: "refs" }); return await viewRefs(nav);
+      case "reaper": renderShell({ key: "reaper" }); return await viewReaper(nav);
       case "admin": renderShell({ key: "admin" }); return await viewAdmin(nav);
       case "account": renderShell({ key: "account" }); return await viewAccount(nav);
       default: renderShell({ key: "" }); return notFound();
@@ -700,8 +734,17 @@ function paintTracks(data, ctx, emptyText) {
   state.albums = ctx.albums;
   const box = $("#tracks");
   if (!box) return;
+  const groups = [];
+  const seen = new Map();
+  for (const t of data.tracks) {
+    const key = t.session || "";
+    if (!seen.has(key)) { seen.set(key, { key, items: [] }); groups.push(seen.get(key)); }
+    seen.get(key).items.push(t);
+  }
+  const grouped = groups.some((g) => g.key);
   box.innerHTML = data.tracks.length
-    ? data.tracks.map((t) => trackCard(t, ctx)).join("")
+    ? groups.map((g) => (grouped ? `<h3 class="sess-title">${g.key ? esc(g.key) : "Sin ensayo"} <span class="muted small">${g.items.length} ${g.items.length === 1 ? "tema" : "temas"}</span></h3>` : "")
+        + g.items.map((t) => trackCard(t, ctx)).join("")).join("")
     : `<div class="card empty">${ic("headphones")}${emptyText}</div>`;
   state.openAssist.forEach((id) => {
     const el = $("#as-" + id);
@@ -932,7 +975,7 @@ const SECTION_CFG = {
     recTitle: "Grabar un ensayo",
     recText: "Tocá el botón rojo para empezar. Dejá esta pantalla abierta mientras grabás y poné el celu cerca del centro de la sala.",
     namePrefix: "Ensayo", fixedMode: null, stems: false,
-    modes: [["raw", "Ensayo completo", "Se borra solo a los {days} días"], ["mix", "Una canción", "Se guarda siempre"]],
+    modes: [["raw", "Ensayo completo", "Se borra solo a los {days} días"], ["mix", "Una canción", "Se guarda siempre"], ["multi", "Varias canciones", "Cada archivo es un tema"]],
     empty: "Todavía no hay ensayos.<br>Grabá el primero con el botón rojo.",
   },
   produccion: {
@@ -941,7 +984,7 @@ const SECTION_CFG = {
     recTitle: "Grabar una toma",
     recText: "Grabá una idea, un demo o una toma de tu tema. Después lo escuchás, le pedís consejo al Asistente y lo mandás a Master cuando esté listo.",
     namePrefix: "Toma", fixedMode: "mix", stems: true,
-    modes: [["mix", "Una toma o mezcla", "El tema ya armado"], ["stems", "Pistas separadas", "Una por instrumento"]],
+    modes: [["mix", "Una toma o mezcla", "El tema ya armado"], ["stems", "Pistas separadas", "Una por instrumento"], ["multi", "Varias canciones", "Cada archivo es un tema"]],
     empty: "Todavía no hay temas en producción.<br>Grabá una toma o subí tu mezcla.",
   },
 };
@@ -958,18 +1001,23 @@ async function viewRecordSection(band, nav, cfg) {
     ${bandHead(band, cfg.title, cfg.lead)}
     <div id="usage" class="stack" style="margin-bottom:1rem"></div>
     <section class="card" id="recorder" aria-label="Grabador"></section>
+    <p class="muted small" style="margin:-.2rem 0 .8rem">${ic("headphones")} ¿Grabás y mezclás en Reaper? <a href="#/reaper">Conectalo y subí desde ahí</a>.</p>
     <details class="card"><summary>Subir un audio que ya tengo</summary>
       <form id="up" class="stack" style="margin-top:1rem">
         <div class="seg" role="radiogroup" aria-label="Qué vas a subir">
           ${cfg.modes.map(([v, l, h], i) => `<label><input type="radio" name="mode" value="${v}" ${i === 0 ? "checked" : ""}>${l}<span class="hint">${h.replace("{days}", days)}</span></label>`).join("")}
         </div>
-        <div class="field" style="margin-bottom:0"><label for="title">Nombre</label>
+        <div class="field" style="margin-bottom:0" id="title-box"><label for="title">Nombre</label>
           <input id="title" type="text" maxlength="200" placeholder="Ej: ${cfg.section === "ensayo" ? "Ensayo 3/11" : "Camino al sur"}"></div>
-        <div class="drop" id="drop" tabindex="0" role="button" aria-label="Elegir un archivo de audio">
+        <div class="field" style="margin-bottom:0"><label for="sess">Ensayo (opcional)</label>
+          <input id="sess" type="text" maxlength="120" list="sess-list" placeholder="Ej: Ensayo del 12/10. Agrupa los temas del mismo ensayo.">
+          <datalist id="sess-list">${[...new Set(data.tracks.map((t) => t.session).filter(Boolean))].map((s) => `<option value="${esc(s)}">`).join("")}</datalist></div>
+        <div class="drop" id="drop" tabindex="0" role="button" aria-label="Elegir archivos de audio">
           <strong>Tocá para elegir el audio</strong><br><span class="small">o arrastralo hasta acá (WAV, FLAC, MP3, M4A…)</span>
           <input type="file" id="file" accept="audio/*,.wav,.flac,.mp3,.m4a,.aif,.aiff,.ogg,.webm" hidden>
         </div>
         <div id="picked" class="small muted"></div>
+        <div id="names" class="stack" hidden></div>
         <div class="progress hidden" id="prog" role="progressbar" aria-label="Progreso de la subida"><i></i></div>
         <button class="btn primary" id="send" disabled>Subir</button>
       </form></details>
@@ -985,35 +1033,51 @@ async function viewRecordSection(band, nav, cfg) {
   list.addEventListener("change", onTrackChange);
   setupRecorder(band, nav, run, cfg);
 
-  const form = $("#up"), send = $("#send"), picked = $("#picked");
+  const form = $("#up"), send = $("#send"), picked = $("#picked"), names = $("#names");
   let files = [];
   const mode = () => form.elements.mode.value;
+  const multi = () => mode() === "multi";
+  const baseName = (f) => f.name.replace(/\.[^.]+$/, "");
   const take = (fs) => {
-    files = mode() === "stems" ? fs : fs.slice(0, 1);
-    picked.textContent = files.map((f) => `${f.name} (${fmtSize(f.size)})`).join(" · ");
-    if (files.length && !$("#title").value.trim() && mode() !== "stems") $("#title").value = files[0].name.replace(/\.[^.]+$/, "");
+    files = mode() === "stems" || multi() ? fs : fs.slice(0, 1);
+    picked.textContent = multi() ? "" : files.map((f) => `${f.name} (${fmtSize(f.size)})`).join(" · ");
+    $("#title-box").hidden = multi();
+    names.hidden = !multi() || !files.length;
+    names.innerHTML = multi() ? files.map((f, i) => `<div class="field" style="margin:0"><label for="nm${i}">${esc(f.name)} <span class="muted small">(${fmtSize(f.size)})</span></label>
+      <input id="nm${i}" type="text" maxlength="200" value="${esc(baseName(f))}" data-nm="${i}"></div>`).join("") : "";
+    if (files.length && !multi() && !$("#title").value.trim() && mode() !== "stems") $("#title").value = baseName(files[0]);
     send.disabled = !files.length;
+    send.textContent = multi() && files.length > 1 ? `Subir ${files.length} canciones` : "Subir";
   };
   setupDrop($("#drop"), $("#file"), take);
-  $$('input[name="mode"]', form).forEach((r) => r.addEventListener("change", () => { $("#file").multiple = mode() === "stems"; take(files); }));
+  $$('input[name="mode"]', form).forEach((r) => r.addEventListener("change", () => { $("#file").multiple = mode() === "stems" || multi(); take(files); }));
   form.addEventListener("submit", async (ev) => {
     ev.preventDefault();
     if (!files.length) return;
     const title = $("#title").value.trim();
     if (mode() === "stems" && !title) { toast("Poné el nombre del tema para agrupar las pistas.", "err"); $("#title").focus(); return; }
-    const fd = new FormData();
-    fd.append("title", title);
-    fd.append("mode", mode());
-    fd.append("section", cfg.section);
-    files.forEach((f) => fd.append("files", f));
+    const session = $("#sess").value.trim();
     const prog = $("#prog"), bar = $("i", prog);
     send.disabled = true; prog.classList.remove("hidden");
+    const jobs = multi()
+      ? files.map((f, i) => ({ title: ($(`#nm${i}`).value.trim() || baseName(f)), mode: cfg.section === "ensayo" ? "mix" : "mix", files: [f] }))
+      : [{ title, mode: mode(), files }];
+    let done = 0;
     try {
-      await uploadWithProgress(`/bands/${band.id}/tracks`, fd, (p) => { bar.style.width = Math.round(p * 100) + "%"; });
-      toast("Listo. Lo estamos procesando, aparece abajo.", "ok");
-      files = []; $("#file").value = ""; $("#title").value = ""; picked.textContent = "";
+      for (const job of jobs) {
+        await sendTrack(band.id, { ...job, section: cfg.section, session }, (p) => { bar.style.width = Math.round(((done + p) / jobs.length) * 100) + "%"; });
+        done += 1;
+        if (jobs.length > 1) send.textContent = `Subiendo ${done} de ${jobs.length}…`;
+      }
+      toast(jobs.length > 1 ? `Listo: ${jobs.length} canciones. Se están procesando, aparecen abajo.` : "Listo. Lo estamos procesando, aparece abajo.", "ok");
+      files = []; $("#file").value = ""; $("#title").value = ""; picked.textContent = ""; names.innerHTML = ""; names.hidden = true;
+      send.textContent = "Subir";
       await run();
-    } catch (e) { toast(e.message, "err"); send.disabled = !files.length; }
+    } catch (e) {
+      toast(`${done ? `Subí ${done} de ${jobs.length}. ` : ""}${e.message}`, "err");
+      files = files.slice(done); take(files);
+      if (done) await run();
+    }
     finally { prog.classList.add("hidden"); bar.style.width = "0"; }
   });
 }
@@ -1716,6 +1780,87 @@ async function viewRelease(band, nav) {
         const a = document.createElement("a"); a.href = r.url; a.download = ""; document.body.appendChild(a); a.click(); a.remove();
       }
     } catch (e) { toast(e.message, "err"); }
+  });
+}
+
+/* ===================== conectar con Reaper ===================== */
+async function viewReaper(nav) {
+  const site = location.origin;
+  const band = currentBand();
+  const mac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+  const save = mac ? "Cmd+S" : "Ctrl+S";
+  setApp(`
+    <div class="page-head"><div class="grow"><p class="muted small" style="margin:0">Para quien graba y mezcla en Reaper</p>
+      <h1 style="margin:0">Conectar Reaper</h1>
+      <p class="lead" style="margin-top:.4rem">Con un script, subís tu ensayo, tu mezcla o tus pistas a Diablo Master sin salir de Reaper. Se configura una sola vez y después son tres clics.</p></div></div>
+
+    <section class="card"><h2>Cómo funciona</h2>
+      <div class="dest">
+        <div><h3>1. Grabás y mezclás en Reaper</h3><p class="muted">Como siempre: multipista, tus efectos, tu mezcla. No cambia nada de tu forma de trabajar.</p></div>
+        <div><h3>2. Ejecutás el script</h3><p class="muted">Reaper exporta el proyecto solo y lo sube a la banda que elegiste. No tenés que renderizar ni abrir el navegador.</p></div>
+        <div><h3>3. La banda lo escucha</h3><p class="muted">Aparece en Ensayos, Producción o Master, con aviso a todos. Desde ahí lo bajan, le piden consejo al Asistente o lo masterizan en un clic.</p></div>
+      </div></section>
+
+    <section class="card"><h2>Instalación, una sola vez</h2>
+      <ol class="steps">
+        <li><strong>Descargá el script.</strong>
+          <div class="row" style="margin-top:.5rem"><a class="btn primary" href="/reaper/DiabloMaster_subir.lua" download="DiabloMaster_subir.lua">${ic("download")} Descargar el script</a></div>
+          <p class="muted small">Es un archivo de texto (<code>DiabloMaster_subir.lua</code>). Guardalo en una carpeta que no vayas a borrar, por ejemplo Documentos. Reaper lo lee desde ahí.</p></li>
+        <li><strong>Generá tu token personal.</strong> Es la llave que le dice al script que sos vos.
+          <div class="row" style="margin-top:.5rem"><button class="btn" id="mk-token">Generar mi token</button></div>
+          <div id="token-out" class="stack hidden" style="margin-top:.6rem"></div>
+          <p class="muted small">El token se muestra una sola vez: copialo y guardalo. Si lo perdés, generás otro.</p></li>
+        <li><strong>Cargá el script en Reaper.</strong> Menú <em>Actions &gt; Show action list…</em>, tocá <em>New action…</em> y después <em>Load ReaScript…</em>. Elegí el archivo que descargaste. Va a aparecer en la lista como <code>Script: DiabloMaster_subir.lua</code>.</li>
+        <li><strong>Ejecutalo y conectalo.</strong> En esa lista, escribí <code>Diablo</code> en el filtro, seleccionalo y tocá <em>Run</em>. La primera vez te pide dos datos:
+          <div class="copybox" style="margin:.5rem 0"><span class="grow">${esc(site)}</span><button type="button" class="btn small" data-copy="${esc(site)}">Copiar</button></div>
+          <p class="muted small" style="margin:0">Pegá esa dirección en <em>Dirección de la web</em> y tu token en <em>Token personal</em>. Después elegís tu banda. Esto no se vuelve a pedir.</p></li>
+        <li><strong>Opcional: un atajo de teclado.</strong> Con el script seleccionado en la lista, tocá <em>Add…</em> en <em>Shortcuts for selected action</em> y apretá las teclas que quieras.</li>
+      </ol></section>
+
+    <section class="card"><h2>Cada vez que quieras subir</h2>
+      <ol class="steps">
+        <li><strong>Guardá el proyecto</strong> (${save}). Reaper no exporta un proyecto sin nombre.</li>
+        <li><strong>Ejecutá el script</strong> (con tu atajo, o desde <em>Actions &gt; Show action list…</em>).</li>
+        <li><strong>Completá la ventana:</strong>
+          <ul class="plain">
+            <li><em>Nombre del tema o ensayo:</em> cómo se va a llamar en la web.</li>
+            <li><em>Qué subir:</em> <code>cancion</code> manda la mezcla completa (lo que sale por el Master). <code>pistas</code> manda una pista por archivo: bajo, batería, guitarras…</li>
+            <li><em>Dónde:</em> <code>ensayo</code> para el registro del ensayo, <code>produccion</code> para mezclas y tomas de trabajo, <code>master</code> si ya está listo para publicar.</li>
+          </ul></li>
+        <li><strong>Esperá el aviso</strong> "Listo, se subió". Los archivos grandes se mandan por partes y la ventana de mensajes de Reaper muestra el avance.</li>
+      </ol></section>
+
+    <section class="card"><h2>El flujo para una banda que mezcla en Reaper</h2>
+      <ol class="steps">
+        <li>Grabás el ensayo multipista y lo subís como <code>ensayo</code>: queda guardado y la banda lo escucha.</li>
+        <li>Mezclás cada tema y lo subís como <code>cancion</code> a <code>produccion</code>. Podés usar el Asistente para ver qué corregir.</li>
+        <li>En Producción, tocás <em>Master</em> sobre el tema y elegís el estilo de referencia. Diablo Master lo masteriza.</li>
+        <li>Con los temas masterizados armás el álbum y en <em>Lanzamiento</em> bajás el paquete para Spotify, Bandcamp o vinilo.</li>
+      </ol></section>
+
+    <section class="card"><h2>Tips y problemas comunes</h2>
+      <ul class="plain">
+        <li><strong>Para subir una mezcla sin master:</strong> sacá los limitadores del track Master antes de ejecutar el script. Si no, sube con el efecto puesto.</li>
+        <li><strong>Para subir solo una parte:</strong> hacé una selección de tiempo en el proyecto y el script exporta solo eso.</li>
+        <li><strong>Formato:</strong> el script usa el último formato de render que usaste. Hacé un render manual una vez (<em>File &gt; Render</em>) con WAV 24 bit o FLAC.</li>
+        <li><strong>"Primero guardá el proyecto":</strong> apretá ${save}, poné un nombre y volvé a ejecutar.</li>
+        <li><strong>"No pude conectar":</strong> revisá que la dirección sea exactamente <code>${esc(site)}</code> y que el token esté completo, sin espacios. Para cambiarlos, ejecutá el script y escribí <code>si</code> en <em>Cambiar conexión</em>.</li>
+        <li><strong>"Todavía no estás en ninguna banda":</strong> pedile a tu admin que te invite a la banda.</li>
+        <li><strong>Pistas:</strong> se exportan todas las pistas del proyecto. Silenciá o sacá las que no quieras subir.</li>
+        <li>El script no cambia tus ajustes de render. Funciona en Mac y Windows (usa <code>curl</code>, que ya viene en los dos).</li>
+      </ul></section>`);
+  $$("[data-copy]").forEach((b) => b.addEventListener("click", () => copyText(b.dataset.copy)));
+  $("#mk-token").addEventListener("click", async (ev) => {
+    await withBusy(ev.currentTarget, async () => {
+      try {
+        const r = await api("/me/api-tokens", { method: "POST", json: { label: "Reaper" } });
+        const out = $("#token-out");
+        out.classList.remove("hidden");
+        out.innerHTML = `<div class="copybox"><span class="grow">${esc(r.token)}</span><button type="button" class="btn small" id="cp-token">Copiar</button></div>
+          <p class="small" style="color:var(--amber);margin:0">Copialo ahora: no se vuelve a mostrar.</p>`;
+        $("#cp-token").addEventListener("click", () => copyText(r.token));
+      } catch (e) { toast(e.message, "err"); }
+    });
   });
 }
 

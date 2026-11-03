@@ -174,6 +174,7 @@ class MasterIn(BaseModel):
 # ------------------------------------------------------------------------ helpers
 
 def safe_name(text: str, fallback: str = "sin-nombre") -> str:
+    text = text.replace("/", "-").replace("\\", "-").replace(":", "-")
     text = re.sub(r"[^\w\- .()]", "", text, flags=re.UNICODE).strip()
     return text[:120] or fallback
 
@@ -213,7 +214,7 @@ def track_out(t: Track, db: Session) -> dict:
     who = db.get(User, t.uploaded_by)
     return {
         "id": t.id, "band_id": t.band_id, "title": t.title, "section": t.section,
-        "album_id": t.album_id, "position": t.position,
+        "album_id": t.album_id, "position": t.position, "session": t.session or "",
         "uploaded_by": who.name or who.email if who else None,
         "created_at": t.created_at.isoformat(),
         "versions": [version_out(v, db) for v in t.versions],
@@ -794,7 +795,7 @@ def list_tracks(band_id: int, section: str | None = None, user: User = Depends(c
 
 @app.post("/bands/{band_id}/tracks")
 def upload_track(band_id: int, title: str = Form(""), mode: str = Form("mix"),
-                 section: str = Form("master"), master_genre_id: int | None = Form(None),
+                 section: str = Form("master"), session: str = Form(""), master_genre_id: int | None = Form(None),
                  master_reference_id: int | None = Form(None), files: list[UploadFile] = File(...), user: User = Depends(current_user),
                  db: Session = Depends(get_db)):
     """mode: mix (una cancion), stems (una pista por archivo) o raw (ensayo completo, vence)."""
@@ -807,7 +808,8 @@ def upload_track(band_id: int, title: str = Form(""), mode: str = Form("mix"),
     name = safe_name(title) if title.strip() else safe_name(Path(files[0].filename or "").stem, "tema")
     if section not in SECTIONS:
         raise HTTPException(422, "section debe ser ensayo, produccion o master")
-    track = Track(band_id=band_id, title=name, section=section, uploaded_by=user.id)
+    track = Track(band_id=band_id, title=name, section=section, session=safe_name(session, "")[:120] if session.strip() else "",
+                  uploaded_by=user.id)
     db.add(track)
     db.flush()
     then = None
@@ -821,6 +823,94 @@ def upload_track(band_id: int, title: str = Form(""), mode: str = Form("mix"),
                 exclude_user_id=user.id, kind="upload", link=f"#/band/{band_id}/{section}")
     db.commit()
     return track_out(track, db)
+
+
+# ------------------------------------------------- subida por partes (archivos de mas de 100 MB)
+
+CHUNK_MAX = 90 * 1024 * 1024
+_UID_RE = re.compile(r"^[0-9a-f]{32}$")
+
+
+def _chunk_dir(user_id: int, upload_id: str) -> Path:
+    if not _UID_RE.match(upload_id):
+        raise HTTPException(422, "upload_id invalido")
+    return DATA_DIR / "tmp" / "chunks" / f"{user_id}-{upload_id}"
+
+
+def _purge_old_chunks():
+    base = DATA_DIR / "tmp" / "chunks"
+    if not base.exists():
+        return
+    limit = datetime.now().timestamp() - 24 * 3600
+    for d in base.iterdir():
+        try:
+            if d.stat().st_mtime < limit:
+                shutil.rmtree(d, ignore_errors=True)
+        except OSError:
+            pass
+
+
+@app.put("/uploads/{upload_id}/{index}")
+async def put_chunk(upload_id: str, index: int, request: Request, user: User = Depends(current_user)):
+    """Recibe una parte (hasta 90 MB) de un archivo grande. Se arma al final con /tracks/chunked."""
+    if not 0 <= index < 2000:
+        raise HTTPException(422, "indice invalido")
+    folder = _chunk_dir(user.id, upload_id)
+    if index == 0:
+        _purge_old_chunks()
+    folder.mkdir(parents=True, exist_ok=True)
+    dest = folder / f"{index:06d}.part"
+    size = 0
+    with open(dest, "wb") as out:
+        async for piece in request.stream():
+            size += len(piece)
+            if size > CHUNK_MAX:
+                out.close()
+                dest.unlink(missing_ok=True)
+                raise HTTPException(413, "La parte pesa mas de 90 MB")
+            out.write(piece)
+    total = sum(p.stat().st_size for p in folder.iterdir())
+    if total > MAX_UPLOAD_MB * 1024 * 1024:
+        shutil.rmtree(folder, ignore_errors=True)
+        raise HTTPException(413, f"El archivo supera {MAX_UPLOAD_MB} MB")
+    return {"ok": True, "size": size}
+
+
+@app.post("/bands/{band_id}/tracks/chunked")
+def upload_track_chunked(band_id: int, title: str = Form(""), mode: str = Form("mix"), section: str = Form("master"),
+                         session: str = Form(""), items: str = Form(...), user: User = Depends(current_user),
+                         db: Session = Depends(get_db)):
+    """Arma los archivos que se subieron por partes y crea el tema, igual que /tracks."""
+    need_member(db, user, band_id)
+    try:
+        entries = json.loads(items)
+        assert isinstance(entries, list) and 0 < len(entries) <= 40
+    except Exception:  # noqa: BLE001
+        raise HTTPException(422, "items invalido") from None
+    uploads, assembled = [], []
+    try:
+        for e in entries:
+            folder = _chunk_dir(user.id, str(e.get("upload_id", "")))
+            parts = int(e.get("parts", 0))
+            names = [folder / f"{i:06d}.part" for i in range(parts)]
+            if parts < 1 or not all(p.exists() for p in names):
+                raise HTTPException(422, "Faltan partes del archivo: volve a subirlo")
+            whole = DATA_DIR / "tmp" / f"{uuid.uuid4().hex}.assembling"
+            assembled.append(whole)
+            with open(whole, "wb") as out:
+                for p in names:
+                    with open(p, "rb") as src:
+                        shutil.copyfileobj(src, out, 1024 * 1024)
+            shutil.rmtree(folder, ignore_errors=True)
+            uploads.append(UploadFile(file=open(whole, "rb"), filename=safe_name(str(e.get("filename", "audio.wav")), "audio.wav")))
+        return upload_track(band_id=band_id, title=title, mode=mode, section=section, session=session,
+                            master_genre_id=None, master_reference_id=None, files=uploads, user=user, db=db)
+    finally:
+        for u in uploads:
+            u.file.close()
+        for w in assembled:
+            w.unlink(missing_ok=True)
+
 
 
 @app.post("/tracks/{track_id}/versions")
@@ -1258,6 +1348,7 @@ def remove_band_photo(band_id: int, user: User = Depends(current_user), db: Sess
 
 class TrackIn(BaseModel):
     section: str | None = None
+    session: str | None = Field(None, max_length=120)
     title: str | None = Field(None, min_length=1, max_length=200)
     album_id: int | None = None
     clear_album: bool = False
@@ -1269,6 +1360,8 @@ def update_track(track_id: int, body: TrackIn, user: User = Depends(current_user
     track = _track_for(db, user, track_id)
     if body.title:
         track.title = safe_name(body.title)
+    if body.session is not None:
+        track.session = safe_name(body.session, "")[:120] if body.session.strip() else ""
     if body.section:
         if body.section not in SECTIONS:
             raise HTTPException(422, "Sección desconocida")
