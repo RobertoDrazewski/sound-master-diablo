@@ -1506,16 +1506,113 @@ async function viewCalendar(band, nav) {
 }
 
 /* ===================== INTEGRANTES ===================== */
+const INSTRUMENTS = ["Guitarra", "Bajo", "Batería", "Voz", "Teclados", "Percusión", "Saxo", "Violín", "Trompeta", "DJ / Electrónica"];
+function profileLabel(m) {
+  if (m.kind === "manager") return "Manager";
+  const parts = [m.instrument || "Músico"];
+  if (m.sings) parts.push("canta");
+  return parts.join(" y ");
+}
+function profileFields(m, p = "") {
+  const kind = (m && m.kind) || "musico";
+  return `
+    <div class="seg" role="radiogroup" aria-label="Rol en la banda">
+      <label><input type="radio" name="${p}kind" value="musico" ${kind === "musico" ? "checked" : ""}>Músico<span class="hint">Toca un instrumento</span></label>
+      <label><input type="radio" name="${p}kind" value="manager" ${kind === "manager" ? "checked" : ""}>Manager<span class="hint">Organiza, no toca</span></label>
+    </div>
+    <div class="${p}mus stack">
+      <div class="field" style="margin:0"><label for="${p}ins">Instrumento</label>
+        <input id="${p}ins" type="text" list="${p}inslist" maxlength="120" value="${esc((m && m.instrument) || "")}" placeholder="Ej: Guitarra">
+        <datalist id="${p}inslist">${INSTRUMENTS.map((i) => `<option value="${esc(i)}">`).join("")}</datalist></div>
+      <label class="check"><input type="checkbox" id="${p}sings" ${m && m.sings ? "checked" : ""}> También canta</label>
+    </div>`;
+}
+function wireProfileFields(root, p = "") {
+  const sync = () => {
+    const mgr = root.querySelector(`input[name="${p}kind"]:checked`).value === "manager";
+    root.querySelector(`.${p}mus`).hidden = mgr;
+  };
+  $$(`input[name="${p}kind"]`, root).forEach((r) => r.addEventListener("change", sync));
+  sync();
+}
+function readProfile(root, p = "") {
+  const kind = root.querySelector(`input[name="${p}kind"]:checked`).value;
+  return { kind, instrument: kind === "manager" ? "" : $(`#${p}ins`, root).value.trim(), sings: kind === "manager" ? false : $(`#${p}sings`, root).checked };
+}
+
 async function viewMembers(band, nav) {
-  const members = await api(`/bands/${band.id}/members`);
+  const isAdmin = band.role === "admin" || state.me.is_super;
+  const [members, pending] = await Promise.all([
+    api(`/bands/${band.id}/members`), isAdmin ? api(`/bands/${band.id}/invites`) : Promise.resolve([])]);
   if (nav !== state.nav) return;
+  const myId = state.me.id;
   setApp(`
-    ${bandHead(band, "Integrantes")}
+    ${bandHead(band, "Integrantes", isAdmin ? "Sumá a tus compañeros: les llega un link para crear su cuenta y entrar a la banda." : "Quiénes están en la banda y qué hace cada uno.")}
     <section class="card"><ul class="upcoming">${members.map((m) => `
-      <li>${avatar(m.photo, m.name, "")}<div class="grow"><strong>${esc(m.name)}</strong>${m.email ? `<div class="muted small">${esc(m.email)}</div>` : ""}</div>
-        <span class="badge">${m.role === "admin" ? "Admin de la banda" : "Integrante"}</span></li>`).join("")}</ul></section>
-    <p class="muted small">${state.me.is_super ? `Para sumar gente, creá una invitación desde <a href="#/admin">Admin</a>.` : "Para sumar a alguien, pedile una invitación a quien administra la app."}</p>`);
+      <li>${avatar(m.photo, m.name, "")}<div class="grow"><strong>${esc(m.name)}</strong>${m.user_id === myId ? ` <span class="muted small">(vos)</span>` : ""}
+          <div class="muted small">${esc(profileLabel(m))}${m.email ? " · " + esc(m.email) : ""}</div></div>
+        ${m.role === "admin" ? `<span class="badge">Admin de la banda</span>` : ""}
+        ${m.user_id === myId || isAdmin ? `<button class="icon-btn" data-edit="${m.user_id}" aria-label="Editar el lugar de ${esc(m.name)} en la banda" title="Editar">${ic("edit")}</button>` : ""}
+        ${isAdmin && m.user_id !== myId && (m.role !== "admin" || state.me.is_super) ? `<button class="icon-btn" data-rm="${m.user_id}" aria-label="Sacar a ${esc(m.name)} de la banda" title="Sacar de la banda">${ic("x")}</button>` : ""}
+      </li>`).join("")}</ul></section>
+    ${isAdmin ? `
+    <section class="card"><h2>Sumar a un compañero</h2>
+      <form id="inv" class="stack">
+        <div class="field" style="margin:0"><label for="ie">Email</label><input id="ie" type="email" required autocomplete="off"></div>
+        ${profileFields(null, "i")}
+        <div><button class="btn primary">Crear invitación</button></div>
+      </form>
+      <div id="invout" class="stack hidden" style="margin-top:1rem"></div>
+      ${pending.length ? `<h3 style="margin-top:1.4rem">Invitaciones pendientes</h3><ul class="upcoming">${pending.map((i) => `
+        <li><div class="grow">${esc(i.email)}<div class="muted small">${esc(profileLabel(i))} · vence ${fmtDay(i.expires_at)}</div></div>
+          <button class="btn small" data-cancel="${i.id}">Cancelar</button></li>`).join("")}</ul>` : ""}
+    </section>` : ""}`);
   wireBandHead(band);
+  const reload = () => viewMembers(band, nav);
+
+  if (isAdmin) {
+    wireProfileFields($("#inv"), "i");
+    $("#inv").addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      const email = $("#ie").value.trim();
+      await withBusy($("#inv button.primary"), async () => {
+        try {
+          const r = await api(`/bands/${band.id}/invites`, { method: "POST", json: { email, ...readProfile($("#inv"), "i") } });
+          const link = r.link_hint || `${location.origin}/#/invite/${r.invite_token}`;
+          const wa = `https://wa.me/?text=${encodeURIComponent(`Te sumé a "${band.name}" en Diablo Master. Entrá acá y creá tu cuenta: ${link}`)}`;
+          const out = $("#invout");
+          out.classList.remove("hidden");
+          out.innerHTML = `<p>Listo. Pasale este link a <strong>${esc(email)}</strong> (sirve una sola vez y vence en ${esc(r.expires_in_days)} días):</p>
+            <div class="copybox"><span class="grow">${esc(link)}</span><button type="button" class="btn small" id="cp">Copiar</button></div>
+            <a class="btn" href="${esc(wa)}" target="_blank" rel="noopener">Mandar por WhatsApp</a>
+            <p class="small muted">Cuando la persona entre, aparece en la lista.</p>`;
+          $("#cp").addEventListener("click", () => copyText(link));
+        } catch (e) { toast(e.message, "err"); }
+      });
+    });
+    $$("[data-cancel]").forEach((b) => b.addEventListener("click", async () => {
+      try { await api(`/bands/${band.id}/invites/${b.dataset.cancel}`, { method: "DELETE" }); toast("Invitación cancelada", "ok"); reload(); }
+      catch (e) { toast(e.message, "err"); }
+    }));
+    $$("[data-rm]").forEach((b) => b.addEventListener("click", async () => {
+      if (!confirm("¿Sacar a esta persona de la banda? Deja de ver sus temas.")) return;
+      try { await api(`/bands/${band.id}/members/${b.dataset.rm}`, { method: "DELETE" }); toast("Listo", "ok"); reload(); }
+      catch (e) { toast(e.message, "err"); }
+    }));
+  }
+  $$("[data-edit]").forEach((b) => b.addEventListener("click", () => {
+    const uid = Number(b.dataset.edit), m = members.find((x) => x.user_id === uid);
+    openModal(`<form id="pf" class="stack"><h2>${uid === myId ? "Tu lugar en la banda" : esc(m.name)}</h2>${profileFields(m, "e")}
+      <div class="row" style="justify-content:flex-end"><button type="button" class="btn" id="pc">Cancelar</button><button class="btn primary">Guardar</button></div></form>`, (md) => {
+      wireProfileFields(md, "e");
+      $("#pc", md).addEventListener("click", closeModal);
+      $("#pf", md).addEventListener("submit", async (ev) => {
+        ev.preventDefault();
+        try { await api(`/bands/${band.id}/members/${uid}`, { method: "PUT", json: readProfile(md, "e") }); closeModal(); toast("Guardado", "ok"); reload(); }
+        catch (e) { toast(e.message, "err"); }
+      });
+    });
+  }));
 }
 
 /* ===================== referencias ===================== */
