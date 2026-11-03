@@ -37,21 +37,16 @@ local function clear_dir(d)
 end
 
 local function curl(args)
-  local cmd = "curl -sS " .. args
-  local out = reaper.ExecProcess(cmd, -1) or ""
+  local bin = WIN and "curl" or "/usr/bin/curl"
+  local cmd = bin .. " -sS " .. args
+  local out = reaper.ExecProcess(cmd, 0) or ""
   local code, body = out:match("^(%-?%d+)\n?(.*)$")
   return tonumber(code) or -1, body or out
 end
 
 local function with_auth(url, token, extra)
-  -- el token va en un archivo temporal (no queda en la lista de procesos)
-  local hdr = tmpdir() .. SEP .. "hdr.txt"
-  local fh = io.open(hdr, "w")
-  if not fh then return -1, "No pude escribir un archivo temporal" end
-  fh:write("Authorization: Bearer " .. token .. "\n")
-  fh:close()
-  local code, body = curl("-H @" .. q(hdr) .. " " .. extra .. " " .. q(url))
-  os.remove(hdr)
+  local hdr = "Authorization: Bearer " .. token
+  local code, body = curl("-H " .. q(hdr) .. " " .. extra .. " " .. q(url))
   return code, body
 end
 
@@ -74,7 +69,8 @@ local function choose_band()
   local url, token = get("url"), get("token")
   local code, body = with_auth(url .. "/me", token, "-m 30")
   if code ~= 0 or not body:find('"bands"') then
-    msg("No pude conectar con " .. url .. "\nRevisa la direccion y el token.\n\n" .. tostring(body):sub(1, 300))
+    msg("No pude conectar con " .. url .. "\nRevisa la direccion y el token.\n\n(codigo " .. tostring(code) .. ") " .. tostring(body):sub(1, 300))
+    set("token", "")
     return false
   end
   local bands = {}
@@ -106,7 +102,8 @@ local function main()
   end
 
   local proj = 0
-  local _, pname = reaper.GetProjectName(proj, "")
+  local r1, r2 = reaper.GetProjectName(proj, "")
+  local pname = (type(r2) == "string" and r2) or (type(r1) == "string" and r1) or ""
   pname = pname:gsub("%.[Rr][Pp][Pp]$", "")
   if pname == "" then pname = "Sin titulo" end
 
@@ -123,6 +120,11 @@ local function main()
   end
   if title == "" then title = pname end
   local mode = (what:find("pista") or what:find("stem")) and "stems" or "mix"
+
+  if reaper.CountMediaItems(proj) == 0 then
+    msg("El proyecto no tiene audio. Arrastra un archivo de audio a una pista (o grabá algo) y volve a ejecutar.")
+    return
+  end
 
   local dir = tmpdir()
   clear_dir(dir)
@@ -165,11 +167,19 @@ local function main()
     end
   end
   if #files == 0 then
-    msg("No se genero ningun archivo de audio. Hace un render manual una vez (File > Render) con formato WAV y volve a probar.")
+    local seen, k = {}, 0
+    while true do
+      local f2 = reaper.EnumerateFiles(dir, k)
+      if not f2 then break end
+      seen[#seen + 1] = f2
+      k = k + 1
+    end
+    msg("No se genero ningun archivo de audio.\nCarpeta: " .. dir .. "\nContiene: " .. (#seen > 0 and table.concat(seen, ", ") or "nada") ..
+        "\n\nHace un render manual una vez (File > Render) con formato WAV y volve a probar.")
     return
   end
 
-  local args = { "-m 7200", "-w " .. q("\nHTTP:%{http_code}"), "-F " .. q("title=" .. title), "-F " .. q("mode=" .. mode) }
+  local args = { "-m 7200", "-w " .. q("\nHTTP:%{http_code}"), "-F " .. q("title=" .. title), "-F " .. q("mode=" .. mode), "-F " .. q("section=produccion") }
   for _, f in ipairs(files) do args[#args + 1] = "-F " .. q("files=@" .. f) end
 
   reaper.ShowConsoleMsg("Diablo Master: subiendo " .. #files .. " archivo(s)...\n")

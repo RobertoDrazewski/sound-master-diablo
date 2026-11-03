@@ -92,6 +92,10 @@ Si definís `OPENAI_API_KEY` el asistente suma un resumen redactado a partir de 
 
 Se agregó `pillow` (fotos de perfil, banda y álbum): `pip install pillow`.
 
+### Integrantes
+
+El super admin crea las bandas y nombra a su admin. El admin de la banda suma a sus compañeros desde Integrantes con un link de invitación (email, si es músico o manager, instrumento y si canta), cancela invitaciones pendientes y saca integrantes. Cada persona edita su propio lugar en la banda.
+
 ### Administración
 
 El super admin ve todo en Admin: bandas (renombrar, borrar con confirmación, roles), personas (generar contraseña nueva, activar o desactivar), invitaciones, estilos y estado del servidor. Cada persona cambia su contraseña desde Tu cuenta.

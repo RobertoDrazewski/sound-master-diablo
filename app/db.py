@@ -73,6 +73,9 @@ class Membership(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     band_id: Mapped[int] = mapped_column(ForeignKey("bands.id", ondelete="CASCADE"), index=True)
     role: Mapped[str] = mapped_column(String(20), default="member")  # admin | member
+    kind: Mapped[str] = mapped_column(String(10), default="musico")  # manager | musico
+    instrument: Mapped[str] = mapped_column(String(120), default="")
+    sings: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class Invite(Base):
@@ -82,6 +85,10 @@ class Invite(Base):
     email: Mapped[str] = mapped_column(String(255))
     band_id: Mapped[int] = mapped_column(ForeignKey("bands.id", ondelete="CASCADE"))
     role: Mapped[str] = mapped_column(String(20), default="member")
+    kind: Mapped[str] = mapped_column(String(10), default="musico")
+    instrument: Mapped[str] = mapped_column(String(120), default="")
+    sings: Mapped[bool] = mapped_column(Boolean, default=False)
+    invited_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime)
     used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
@@ -215,5 +222,10 @@ def _migrate_sqlite():
                               "(SELECT track_id FROM versions WHERE kind='raw')"))
         add(conn, "tracks", "album_id", "INTEGER REFERENCES albums(id) ON DELETE SET NULL")
         add(conn, "tracks", "position", "INTEGER NOT NULL DEFAULT 0")
+        for t in ("memberships", "invites"):
+            add(conn, t, "kind", "VARCHAR(10) NOT NULL DEFAULT 'musico'")
+            add(conn, t, "instrument", "VARCHAR(120) NOT NULL DEFAULT ''")
+            add(conn, t, "sings", "BOOLEAN NOT NULL DEFAULT 0")
+        add(conn, "invites", "invited_by", "INTEGER REFERENCES users(id) ON DELETE SET NULL")
         add(conn, "users", "photo", "VARCHAR(20)")
         add(conn, "bands", "photo", "VARCHAR(20)")

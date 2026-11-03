@@ -385,27 +385,38 @@ window.addEventListener("hashchange", router);
 
 /* ===================== inicio público, login, invitación ===================== */
 function viewLanding() {
+  const tools = [
+    ["mic", "Ensayos", "Grabá desde el celular, ponele nombre y la banda lo escucha y lo descarga."],
+    ["music", "Producción", "Demos, tomas y mezclas ordenadas antes del master. Subí desde Reaper con un clic."],
+    ["sliders", "Master", "Subí la mezcla, elegí un estilo de referencia y bajá la versión masterizada."],
+    ["spark", "Asistente", "Analiza tu audio y te explica qué corregir, en palabras simples."],
+    ["disc", "Álbumes", "Ordená los temas y creá la tapa con tu foto o con inteligencia artificial."],
+    ["calendar", "Calendario", "Ensayos y shows con aviso automático a toda la banda."],
+  ];
   setApp(`
-    <section class="hero">
-      <div class="hero-top">
+    <section class="land">
+      <header class="land-top">
         <a class="brand" href="#/"><img src="/logo-login.png" alt=""><span class="brand-name">diablomastermix.com.ar</span></a>
         <a class="btn" href="#/login">Entrar</a>
+      </header>
+      <div class="land-hero">
+        <h1>Diablo Master</h1>
+        <p class="lead">De la sala de ensayo al master, sin productora.</p>
+        <p class="sub">Grabá el ensayo en el celular, mezclalo en tu estudio y masterizalo en un clic. Todo el equipo de la banda en un solo lugar.</p>
+        <div class="cta">
+          <a class="btn primary big" href="#/login">Entrar</a>
+          <span class="muted">¿Te invitaron? Abrí el link que te pasaron.</span>
+        </div>
+        <span class="chip-reaper">${ic("headphones")} Se conecta con REAPER</span>
       </div>
-      <h1>Diablo<br>Master</h1>
-      <p class="lead">El estudio de tu banda, sin ser ingeniero de audio.</p>
-      <div class="cta">
-        <a class="btn primary big" href="#/login">Entrar</a>
-        <span class="muted">¿Te invitaron? Abrí el link que te pasaron.</span>
+      <div class="land-tools" aria-label="Qué podés hacer">
+        ${tools.map(([i, t, d]) => `<article class="land-tool"><h2>${ic(i)}${t}</h2><p>${d}</p></article>`).join("")}
       </div>
-    </section>
-    <section class="tools" aria-label="Qué podés hacer">
-      <div class="tool-row"><h2>Ensayos</h2><p>Grabá el ensayo desde el celular y guardalo con nombre. Toda la banda lo escucha y lo baja cuando quiere.</p><img src="/img/herramienta-ensayos.jpg" alt="" loading="lazy"></div>
-      <div class="tool-row"><h2>Master</h2><p>Subí tu mezcla, elegí cómo querés que suene y bajá la versión masterizada. Con un clic.</p><img src="/img/herramienta-master.jpg" alt="" loading="lazy"></div>
-      <div class="tool-row"><h2>Asistente</h2><p>Escucha tu audio y te dice qué está bien y qué corregir, en palabras simples.</p><img src="/img/herramienta-asistente.jpg" alt="" loading="lazy"></div>
-      <div class="tool-row"><h2>Álbumes</h2><p>Armá el disco con el orden de los temas y la tapa. Queda todo el historial de la banda.</p><img src="/img/herramienta-albumes.jpg" alt="" loading="lazy"></div>
-      <div class="tool-row"><h2>Calendario</h2><p>Agendá el próximo ensayo o show y la banda recibe el aviso.</p><img src="/img/herramienta-calendario.jpg" alt="" loading="lazy"></div>
-    </section>
-    <footer class="foot"><span>diablomastermix.com.ar · Solo para bandas invitadas</span><a class="btn" href="#/login">Entrar</a></footer>`);
+      <footer class="land-foot">
+        <span class="mark"><img src="/logo-mark.png" alt="">© ${new Date().getFullYear()} Diablo Master · Propiedad de Puma Code</span>
+        <span><a href="https://www.puma-code.com" target="_blank" rel="noopener">www.puma-code.com</a></span>
+      </footer>
+    </section>`);
 }
 
 function authShell(inner, artText) {

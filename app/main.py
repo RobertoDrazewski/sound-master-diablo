@@ -128,6 +128,30 @@ class InviteIn(BaseModel):
     email: str
     band_id: int
     role: str = "member"
+    kind: str = "musico"
+    instrument: str = Field("", max_length=120)
+    sings: bool = False
+
+
+class BandInviteIn(BaseModel):
+    email: str = Field(min_length=3, max_length=255)
+    kind: str = "musico"
+    instrument: str = Field("", max_length=120)
+    sings: bool = False
+
+
+class MemberProfileIn(BaseModel):
+    kind: str = "musico"
+    instrument: str = Field("", max_length=120)
+    sings: bool = False
+
+
+def clean_profile(kind: str, instrument: str, sings: bool) -> tuple[str, str, bool]:
+    if kind not in ("manager", "musico"):
+        raise HTTPException(422, "kind debe ser manager o musico")
+    if kind == "manager":
+        return "manager", "", False
+    return "musico", " ".join(instrument.split())[:120], bool(sings)
 
 
 class GenreIn(BaseModel):
@@ -263,7 +287,8 @@ def accept_invite(body: AcceptInviteIn, db: Session = Depends(get_db)):
         db.add(user)
         db.flush()
     if not db.query(Membership).filter_by(user_id=user.id, band_id=inv.band_id).first():
-        db.add(Membership(user_id=user.id, band_id=inv.band_id, role=inv.role))
+        db.add(Membership(user_id=user.id, band_id=inv.band_id, role=inv.role, kind=inv.kind,
+                          instrument=inv.instrument, sings=inv.sings))
     inv.used_at = now()
     db.commit()
     return {"token": create_session_jwt(user.id)}
@@ -553,20 +578,89 @@ def admin_bands(_: User = Depends(require_super), db: Session = Depends(get_db))
     return out
 
 
+def make_invite(db: Session, request: Request, inviter: User, band_id: int, email: str, role: str,
+                kind: str, instrument: str, sings: bool) -> dict:
+    if role not in ("admin", "member"):
+        raise HTTPException(422, "role debe ser admin o member")
+    if not db.get(Band, band_id):
+        raise HTTPException(404, "Banda inexistente")
+    email = email.strip().lower()
+    if "@" not in email:
+        raise HTTPException(422, "Poné un email válido")
+    kind, instrument, sings = clean_profile(kind, instrument, sings)
+    existing = db.query(User).filter(User.email == email).first()
+    if existing and db.query(Membership).filter_by(user_id=existing.id, band_id=band_id).first():
+        raise HTTPException(409, "Esa persona ya está en la banda")
+    token = new_secret()
+    db.add(Invite(token_hash=sha256(token), email=email, band_id=band_id, role=role, kind=kind,
+                  instrument=instrument, sings=sings, invited_by=inviter.id,
+                  expires_at=now() + timedelta(days=INVITE_TTL_DAYS)))
+    db.commit()
+    base = PUBLIC_URL or str(request.base_url).rstrip("/")
+    return {"invite_token": token, "expires_in_days": INVITE_TTL_DAYS, "link_hint": f"{base}/#/invite/{token}"}
+
+
 @app.post("/admin/invites")
 def create_invite(body: InviteIn, request: Request, user: User = Depends(require_super),
                   db: Session = Depends(get_db)):
-    if body.role not in ("admin", "member"):
-        raise HTTPException(422, "role debe ser admin o member")
-    if not db.get(Band, body.band_id):
-        raise HTTPException(404, "Banda inexistente")
-    token = new_secret()
-    db.add(Invite(token_hash=sha256(token), email=body.email.strip().lower(), band_id=body.band_id,
-                  role=body.role, expires_at=now() + timedelta(days=INVITE_TTL_DAYS)))
+    return make_invite(db, request, user, body.band_id, body.email, body.role, body.kind, body.instrument, body.sings)
+
+
+@app.post("/bands/{band_id}/invites")
+def band_invite(band_id: int, body: BandInviteIn, request: Request, user: User = Depends(current_user),
+                db: Session = Depends(get_db)):
+    """El admin de la banda suma a sus compañeros (como integrantes)."""
+    need_member(db, user, band_id, admin=True)
+    return make_invite(db, request, user, band_id, body.email, "member", body.kind, body.instrument, body.sings)
+
+
+@app.get("/bands/{band_id}/invites")
+def band_pending_invites(band_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    need_member(db, user, band_id, admin=True)
+    rows = (db.query(Invite).filter(Invite.band_id == band_id, Invite.used_at == None,  # noqa: E711
+                                    Invite.expires_at > now()).order_by(Invite.id.desc()).all())
+    return [{"id": i.id, "email": i.email, "kind": i.kind, "instrument": i.instrument, "sings": i.sings,
+             "expires_at": i.expires_at.isoformat()} for i in rows]
+
+
+@app.delete("/bands/{band_id}/invites/{invite_id}")
+def band_cancel_invite(band_id: int, invite_id: int, user: User = Depends(current_user),
+                       db: Session = Depends(get_db)):
+    need_member(db, user, band_id, admin=True)
+    inv = db.query(Invite).filter_by(id=invite_id, band_id=band_id).first()
+    if not inv:
+        raise HTTPException(404, "No encontrada")
+    db.delete(inv)
     db.commit()
-    base = PUBLIC_URL or str(request.base_url).rstrip("/")
-    return {"invite_token": token, "expires_in_days": INVITE_TTL_DAYS,
-            "link_hint": f"{base}/#/invite/{token}"}
+    return {"ok": True}
+
+
+@app.put("/bands/{band_id}/members/{user_id}")
+def set_member_profile(band_id: int, user_id: int, body: MemberProfileIn, user: User = Depends(current_user),
+                       db: Session = Depends(get_db)):
+    role = need_member(db, user, band_id)
+    if user_id != user.id and role != "admin":
+        raise HTTPException(403, "Solo podés editar tu propio lugar en la banda")
+    m = db.query(Membership).filter_by(band_id=band_id, user_id=user_id).first()
+    if not m:
+        raise HTTPException(404, "No es integrante de esa banda")
+    m.kind, m.instrument, m.sings = clean_profile(body.kind, body.instrument, body.sings)
+    db.commit()
+    return {"ok": True}
+
+
+@app.delete("/bands/{band_id}/members/{user_id}")
+def band_remove_member(band_id: int, user_id: int, user: User = Depends(current_user),
+                       db: Session = Depends(get_db)):
+    need_member(db, user, band_id, admin=True)
+    m = db.query(Membership).filter_by(band_id=band_id, user_id=user_id).first()
+    if not m:
+        raise HTTPException(404, "No es integrante de esa banda")
+    if m.role == "admin" and not user.is_super:
+        raise HTTPException(403, "Solo el super admin puede sacar a un admin de la banda")
+    db.delete(m)
+    db.commit()
+    return {"ok": True}
 
 
 @app.delete("/admin/bands/{band_id}/members/{user_id}")
@@ -959,6 +1053,7 @@ def band_members(band_id: int, user: User = Depends(current_user), db: Session =
             .filter(Membership.band_id == band_id).order_by(User.name).all())
     show_email = role == "admin" or user.is_super
     return [{"user_id": u.id, "name": u.name or u.email.split("@")[0], "role": m.role,
+             "kind": m.kind, "instrument": m.instrument, "sings": m.sings,
              "photo": img_url("users", u.id, u.photo),
              **({"email": u.email} if show_email else {})} for m, u in rows]
 
