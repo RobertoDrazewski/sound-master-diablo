@@ -155,20 +155,38 @@ async function getGenres(force = false) {
   return state.genres;
 }
 function pickImage(onFile) {
+  // En iPhone el input tiene que estar dentro de la pagina o el navegador lo descarta antes de elegir la foto.
   const inp = document.createElement("input");
   inp.type = "file"; inp.accept = "image/*";
-  inp.onchange = () => { if (inp.files[0]) onFile(inp.files[0]); };
+  inp.style.cssText = "position:fixed;left:-9999px;top:0;opacity:0";
+  const done = () => setTimeout(() => inp.remove(), 60000);
+  inp.addEventListener("change", () => { const f = inp.files && inp.files[0]; inp.remove(); if (f) onFile(f); });
+  document.body.appendChild(inp);
   inp.click();
+  done();
+}
+// Achica la foto en el telefono antes de subirla (las fotos del iPhone pesan mucho).
+async function shrinkImage(file, max = 1280) {
+  try {
+    const bmp = await createImageBitmap(file, { imageOrientation: "from-image" });
+    const k = Math.min(1, max / Math.max(bmp.width, bmp.height));
+    const c = document.createElement("canvas");
+    c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+    c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+    const blob = await new Promise((r) => c.toBlob(r, "image/jpeg", 0.88));
+    return blob ? new File([blob], "foto.jpg", { type: "image/jpeg" }) : file;
+  } catch (e) { return file; }
 }
 async function sendPhoto(url, file) {
+  toast("Subiendo foto…");
   const fd = new FormData();
-  fd.append("file", file);
+  fd.append("file", await shrinkImage(file));
   try {
     await uploadWithProgress(url, fd, () => {});
     state.me = await api("/me");
     toast("Foto actualizada", "ok");
     router();
-  } catch (e) { toast(e.message, "err"); }
+  } catch (e) { toast(e.message || "No se pudo subir la foto", "err"); }
 }
 
 /* ===================== estructura de pantalla ===================== */
