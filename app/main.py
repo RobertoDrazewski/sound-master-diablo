@@ -121,6 +121,10 @@ class AcceptInviteIn(BaseModel):
     password: str = Field(min_length=10)
 
 
+class AcceptInviteSessionIn(BaseModel):
+    token: str
+
+
 class BandIn(BaseModel):
     name: str = Field(min_length=1, max_length=120)
 
@@ -273,6 +277,37 @@ def login(body: LoginIn, request: Request, db: Session = Depends(get_db)):
         raise HTTPException(401, "Email o contrasena incorrectos")
     throttle.ok(key)
     return {"token": create_session_jwt(user.id)}
+
+
+def _valid_invite(db: Session, token: str) -> Invite:
+    inv = db.query(Invite).filter(Invite.token_hash == sha256(token)).first()
+    if not inv or inv.used_at or inv.expires_at < now():
+        raise HTTPException(400, "Invitacion invalida o vencida")
+    return inv
+
+
+@app.get("/auth/invite-info")
+def invite_info(token: str, db: Session = Depends(get_db)):
+    """Datos minimos para que la pantalla de invitacion sepa si la persona ya tiene cuenta."""
+    inv = _valid_invite(db, token)
+    band = db.get(Band, inv.band_id)
+    exists = db.query(User).filter(User.email == inv.email).first() is not None
+    return {"email": inv.email, "band": band.name if band else "", "exists": exists}
+
+
+@app.post("/auth/accept-invite-session")
+def accept_invite_session(body: AcceptInviteSessionIn, user: User = Depends(current_user),
+                          db: Session = Depends(get_db)):
+    """Quien ya tiene cuenta y esta con la sesion abierta se suma a la banda sin repetir la contrasena."""
+    inv = _valid_invite(db, body.token)
+    if user.email.lower() != inv.email.lower():
+        raise HTTPException(403, f"Esta invitacion es para {inv.email}. Cerra sesion y abri el link de nuevo.")
+    if not db.query(Membership).filter_by(user_id=user.id, band_id=inv.band_id).first():
+        db.add(Membership(user_id=user.id, band_id=inv.band_id, role=inv.role, kind=inv.kind,
+                          instrument=inv.instrument, sings=inv.sings))
+    inv.used_at = now()
+    db.commit()
+    return {"ok": True, "band_id": inv.band_id}
 
 
 @app.post("/auth/accept-invite")

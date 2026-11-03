@@ -490,24 +490,61 @@ function viewLogin() {
   });
 }
 
-function viewInvite(token) {
+async function viewInvite(token) {
   if (!token) { location.hash = "#/login"; return; }
+  let info;
+  try { info = await api(`/auth/invite-info?token=${encodeURIComponent(token)}`); }
+  catch (e) {
+    setApp(authShell(`<div>${AUTH_BRAND}<h1>Invitación no válida</h1>
+      <p class="muted">${esc(e.message)}. Pedile a quien te invitó que te mande otra.</p>
+      <a class="btn primary block big" href="#/login">Ir a entrar</a></div>`, "Entrá y sumate a tu banda."));
+    return;
+  }
+  // ¿Ya está con la sesión abierta con ese mismo email? Entonces se suma con un toque.
+  let me = null;
+  if (session.token) {
+    try {
+      const r = await fetch("/me", { headers: { Authorization: "Bearer " + session.token } });
+      me = r.ok ? await r.json() : null;
+    } catch { me = null; }
+  }
+  if (info.exists && me && me.email && me.email.toLowerCase() === info.email.toLowerCase()) {
+    setApp(authShell(`<div>${AUTH_BRAND}
+      <h1>Te invitaron a ${esc(info.band)}</h1>
+      <p class="muted">Vas a sumar esta banda a tu cuenta (${esc(info.email)}). Tus otras bandas siguen igual.</p>
+      <button class="btn primary block big" id="join">Sumarme a ${esc(info.band)}</button></div>`, "Entrá y sumate a tu banda."));
+    $("#join").addEventListener("click", async (ev) => {
+      await withBusy(ev.currentTarget, async () => {
+        try {
+          const r = await api("/auth/accept-invite-session", { method: "POST", json: { token } });
+          state.me = null;
+          location.hash = `#/band/${r.band_id}/ensayos`;
+        } catch (e) { toast(e.message, "err"); }
+      });
+    });
+    return;
+  }
+  const nuevo = !info.exists;
   setApp(authShell(`
     <form id="f">
       ${AUTH_BRAND}
-      <h1>Te invitaron a una banda</h1>
-      <p class="muted">Elegí tu nombre y una contraseña para entrar.</p>
-      <div class="field"><label for="name">Tu nombre</label><input id="name" type="text" autocomplete="name" maxlength="120" required></div>
-      <div class="field"><label for="pw">Contraseña (mínimo 10 caracteres)</label><input id="pw" type="password" autocomplete="new-password" minlength="10" required></div>
-      <button class="btn primary block big">Crear cuenta y entrar</button>
-      <p class="muted small" style="margin-top:1rem">Si ya tenías cuenta con este email, poné tu contraseña de siempre.</p>
+      <h1>Te invitaron a ${esc(info.band)}</h1>
+      ${nuevo
+        ? `<p class="muted">Creá tu cuenta con <strong>${esc(info.email)}</strong>. Elegí tu nombre y una contraseña.</p>
+           <div class="field"><label for="name">Tu nombre</label><input id="name" type="text" autocomplete="off" maxlength="120" required></div>
+           <div class="field"><label for="pw">Contraseña (mínimo 10 caracteres)</label><input id="pw" type="password" autocomplete="new-password" minlength="10" required></div>
+           <button class="btn primary block big">Crear cuenta y entrar</button>`
+        : `<p class="muted"><strong>${esc(info.email)}</strong> ya tiene cuenta en Diablo Master. Poné la contraseña de esa cuenta y esta banda se suma a las que ya tenés.</p>
+           <div class="field"><label for="pw">Tu contraseña de siempre</label><input id="pw" type="password" autocomplete="off" required></div>
+           <button class="btn primary block big">Sumarme a ${esc(info.band)}</button>
+           <p class="muted small" style="margin-top:1rem">Si estás con otra cuenta abierta en este navegador, cerrá sesión primero o abrí el link en una ventana privada.</p>`}
     </form>`, "Entrá y sumate a tu banda."));
   $("#f").addEventListener("submit", async (ev) => {
     ev.preventDefault();
     await withBusy($("button", ev.target), async () => {
       try {
         const r = await api("/auth/accept-invite", {
-          method: "POST", json: { token, name: $("#name").value.trim(), password: $("#pw").value },
+          method: "POST", json: { token, name: nuevo ? $("#name").value.trim() : "", password: $("#pw").value },
         });
         session.token = r.token;
         state.me = null;
