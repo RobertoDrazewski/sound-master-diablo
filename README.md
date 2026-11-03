@@ -1,4 +1,4 @@
-# sound-master-diablo
+# Diablo Master
 
 Masterizador de ensayos para bandas.
 
@@ -11,7 +11,7 @@ cp .env.example .env        # completar SUPERADMIN_EMAIL y SUPERADMIN_PASSWORD
 docker compose up --build
 ```
 
-La API queda en http://localhost:8000 (documentación interactiva en `/docs`). Los datos se guardan en `./data`, que no se sube al repo.
+La app queda en http://localhost:8010 (la documentación técnica de la API está en `/docs`). Los datos se guardan en `./data`, que no se sube al repo.
 
 ## Instalación en la VPS
 
@@ -39,8 +39,10 @@ pip install -r requirements.txt
 ```bash
 export SUPERADMIN_EMAIL="vos@tudominio.com"
 export SUPERADMIN_PASSWORD="una-clave-larga"
-uvicorn app.main:app --host 127.0.0.1 --port 8000
+uvicorn app.main:app --host 127.0.0.1 --port 8010
 ```
+
+Para probar en tu compu entrá a http://localhost:8010 (el puerto se puede cambiar con `--port`).
 
 Dejar **un solo proceso** (sin `--workers`): la cola de masterizado corre en un hilo dentro del proceso y procesa de a un trabajo.
 
@@ -61,6 +63,10 @@ Servir siempre por HTTPS (Let's Encrypt): hay contraseñas y tokens en tránsito
 3. Reproducción y descarga: `GET /versions/{id}/link?fmt=preview|flac|wav|mp3` devuelve una URL firmada de 1 hora.
 4. Masterizar: `POST /tracks/{id}/master` con `reference_id` (imitar una referencia) o `genre_id` (preset del género); seguimiento en `GET /jobs/{id}`.
 5. Para Reaper: `POST /me/api-tokens` genera un token personal (`pck_...`) que se usa como `Authorization: Bearer`.
+
+## Reaper
+
+El script para subir desde Reaper está en `reaper/` (ver `reaper/LEEME.md`).
 
 ## Almacenamiento
 

@@ -32,7 +32,7 @@ MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "3000"))
 REFERENCE_SECONDS = int(os.getenv("REFERENCE_SECONDS", "90"))
 
 # Vigencia de los links de reproduccion/descarga (segundos)
-LINK_TTL = int(os.getenv("LINK_TTL", "3600"))
+LINK_TTL = int(os.getenv("LINK_TTL", "21600"))  # 6 h: alcanza para escuchar un ensayo largo
 
 JWT_TTL_DAYS = int(os.getenv("JWT_TTL_DAYS", "30"))
 INVITE_TTL_DAYS = int(os.getenv("INVITE_TTL_DAYS", "7"))

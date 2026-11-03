@@ -41,7 +41,7 @@ async def lifespan(_: FastAPI):
     worker.stop()
 
 
-app = FastAPI(title="Masterizador de ensayos", lifespan=lifespan)
+app = FastAPI(title="Diablo Master", lifespan=lifespan)
 if CORS_ORIGINS:
     app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_methods=["*"],
                        allow_headers=["*"])
@@ -334,7 +334,7 @@ def create_invite(body: InviteIn, request: Request, user: User = Depends(require
     db.commit()
     base = str(request.base_url).rstrip("/")
     return {"invite_token": token, "expires_in_days": INVITE_TTL_DAYS,
-            "link_hint": f"{base}/invite?token={token}"}
+            "link_hint": f"{base}/#/invite/{token}"}
 
 
 @app.delete("/admin/bands/{band_id}/members/{user_id}")
@@ -397,7 +397,8 @@ def list_references(genre_id: int | None = None, user: User = Depends(current_us
     if genre_id:
         q = q.filter(Reference.genre_id == genre_id)
     return [{"id": r.id, "name": r.name, "genre_id": r.genre_id, "genre": r.genre.name,
-             "scope": "global" if r.band_id is None else "band", "band_id": r.band_id}
+             "scope": "global" if r.band_id is None else "band", "band_id": r.band_id,
+             "mine": r.uploaded_by == user.id}
             for r in q.order_by(Reference.name).all()]
 
 
@@ -452,6 +453,7 @@ def list_tracks(band_id: int, user: User = Depends(current_user), db: Session = 
     need_member(db, user, band_id)
     tracks = db.query(Track).filter_by(band_id=band_id).order_by(Track.id.desc()).all()
     return {"used_gb": round(band_used_bytes(db, band_id) / 1e9, 2), "quota_gb": BAND_QUOTA_GB,
+            "raw_retention_days": RAW_RETENTION_DAYS,
             "tracks": [track_out(t, db) for t in tracks]}
 
 
@@ -635,3 +637,11 @@ def media(version_id: int, request: Request, fmt: str = "preview", t: str | None
     disposition = "inline" if fmt == "preview" else "attachment"
     return FileResponse(path, media_type=MEDIA_TYPES[ext], filename=filename,
                         content_disposition_type=disposition)
+
+
+# ---------------------------------------------------------------- front (al final)
+# Se monta al final para que las rutas de la API tengan prioridad sobre los archivos estaticos.
+from fastapi.staticfiles import StaticFiles  # noqa: E402
+
+STATIC_DIR = Path(__file__).parent / "static"
+app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="front")

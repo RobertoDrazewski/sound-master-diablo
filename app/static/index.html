@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Diablo Master</title>
+  <meta name="theme-color" content="#0b0b0c">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Diablo Master">
+  <meta name="description" content="Masterizá y compartí los temas de tu banda.">
+  <meta property="og:title" content="Diablo Master">
+  <meta property="og:description" content="Masterizá y compartí los temas de tu banda.">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="/compartir.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/favicon.png" type="image/png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header id="topbar" class="topbar" hidden></header>
+  <main id="app" class="app" aria-live="polite"></main>
+
+  <div id="player" class="player" hidden>
+    <div class="player-info">
+      <span class="player-title" id="player-title"></span>
+      <button class="icon-btn" id="player-close" aria-label="Cerrar reproductor">✕</button>
+    </div>
+    <audio id="audio" controls preload="none"></audio>
+  </div>
+
+  <dialog id="modal" class="modal"></dialog>
+  <div id="toasts" class="toasts" aria-live="assertive"></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

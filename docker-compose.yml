@@ -2,7 +2,7 @@ services:
   api:
     build: .
     ports:
-      - "127.0.0.1:8000:8000"   # solo accesible desde esta maquina
+      - "127.0.0.1:8010:8000"   # solo accesible desde esta maquina (8010 afuera, 8000 adentro)
     env_file:
       - .env
     volumes:
