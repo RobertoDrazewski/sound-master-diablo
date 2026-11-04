@@ -62,6 +62,6 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 ASSISTANT_DAILY_LIMIT = int(os.getenv("ASSISTANT_DAILY_LIMIT", "20"))  # consultas por banda por dia
 
-COVER_AI_MODEL = os.getenv("COVER_AI_MODEL", "gpt-image-1")
-COVER_AI_QUALITY = os.getenv("COVER_AI_QUALITY", "medium")  # low | medium | high (cuesta mas cuanto mas alta)
+COVER_AI_MODEL = os.getenv("COVER_AI_MODEL", "gpt-image-2.5-sunburst")
+COVER_AI_QUALITY = os.getenv("COVER_AI_QUALITY", "high")  # low | medium | high (cuesta mas cuanto mas alta; high ronda USD 0.05 por imagen)
 COVER_AI_DAILY_LIMIT = int(os.getenv("COVER_AI_DAILY_LIMIT", "5"))  # imagenes con IA por banda por dia (tiene costo)

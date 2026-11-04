@@ -194,7 +194,12 @@ def generate_ai(prompt: str, src: bytes | None) -> tuple[bytes, str]:
     """Imagen con IA (de pago). Prueba el modelo configurado y, si la cuenta no lo tiene habilitado, uno de respaldo.
     Devuelve (jpeg, aviso). Cloudflare corta a los ~100 s, por eso el limite total."""
     full = ARTIST_BRIEF + prompt.strip()
-    models = [COVER_AI_MODEL] + [m for m in ("dall-e-3",) if m != COVER_AI_MODEL]
+    # El modelo configurado primero; despues los vigentes de OpenAI (sunburst = el mas capaz, flare = el mas rapido)
+    # y los anteriores, por si la cuenta todavia los tiene. Un modelo que no existe falla al instante.
+    models = []
+    for m in (COVER_AI_MODEL, "gpt-image-2.5-sunburst", "gpt-image-2.5-flare", "gpt-image-1", "dall-e-3"):
+        if m not in models:
+            models.append(m)
     deadline = time.monotonic() + 80
     notice, errors = "", []
     for i, model in enumerate(models):

@@ -80,7 +80,7 @@ Las referencias son fragmentos de música de terceros: solo se usan para procesa
 - **Producción**: grabá tomas o subí mezclas y pistas, probá el Asistente y pasá el tema a Master cuando esté listo. Cada tema se puede mover entre Ensayos, Producción y Master.
 - **Master**: subís la mezcla, elegís estilo o referencia y bajás la versión masterizada (WAV, MP3, FLAC).
 - **Álbumes**: orden de temas, tapa e historial por álbum.
-- **Tapas**: en cada álbum, "Crear tapa" arma la portada desde tu foto con estilos propios (gratis) y el título encima. Con `OPENAI_API_KEY` suma generación con IA a partir de un prompt (tiene costo; `COVER_AI_DAILY_LIMIT` por banda y por día, `COVER_AI_QUALITY` = low/medium/high). Si la cuenta no tiene habilitado `COVER_AI_MODEL` (gpt-image-1 pide verificar la organización), usa `dall-e-3` de respaldo. Casilla opcional de aviso de contenido explícito, siempre abajo a la derecha.
+- **Tapas**: en cada álbum, "Crear tapa" arma la portada desde tu foto con estilos propios (gratis) y el título encima. Con `OPENAI_API_KEY` suma generación con IA a partir de un prompt (tiene costo; `COVER_AI_DAILY_LIMIT` por banda y por día, `COVER_AI_QUALITY` = low/medium/high). Modelo por defecto `gpt-image-2.5-sunburst` (`COVER_AI_MODEL`); si la cuenta no lo tiene, prueba `gpt-image-2.5-flare` y después los anteriores (`gpt-image-1`, `dall-e-3`). Algunos modelos de imagen piden verificar la organización en OpenAI. Casilla opcional de aviso de contenido explícito, siempre abajo a la derecha.
 - **Calendario y avisos**: eventos de la banda y notificaciones para los integrantes.
 - **Asistente**: analiza el audio (volumen, picos, saturación, balance de graves/agudos, estéreo) y sugiere mejoras en lenguaje simple. Funciona sin costo y sin internet.
 
