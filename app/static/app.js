@@ -1482,9 +1482,21 @@ async function viewAlbums(band, nav) {
           <textarea id="cprompt" maxlength="600" placeholder="Ej: una maceta con una planta en el patio de una casa de adobe en Mendoza, estilo collage de revista vieja"></textarea></div>
           <p class="small muted" style="margin:.3rem 0 0">Si subís una foto, la IA la usa de base. Cada imagen generada tiene un costo para la app.</p></div>
         <label class="check"><input type="checkbox" id="ctxt" checked> Escribir el nombre del álbum sobre la tapa</label>
+        <div class="field" style="margin:0"><label>Tipografía del título</label>
+          <div class="seg" role="radiogroup" aria-label="Tipografía">${opts.fonts.map((f, i) =>
+            `<label><input type="radio" name="cfont" value="${f.id}" ${i === 0 ? "checked" : ""}><span class="fnt fnt-${f.id}">${esc(f.name)}</span><span class="hint">${esc(f.hint)}</span></label>`).join("")}</div></div>
+        <div class="field" style="margin:0"><label for="clogo">Logo de la banda (opcional)</label>
+          <input id="clogo" type="file" accept="image/*">
+          <p class="small muted" style="margin:.3rem 0 0">Se pega tal cual lo subís, sin que la IA lo toque. Si es PNG con fondo transparente, se respeta.</p>
+          <div class="field-row" style="margin-top:.5rem"><div><label for="clpos">Dónde</label><select id="clpos"><option value="arriba">Arriba al centro</option><option value="centro">En el centro</option></select></div>
+            <div><label for="clsize">Tamaño</label><select id="clsize"><option value="chico">Chico</option><option value="mediano" selected>Mediano</option><option value="grande">Grande</option></select></div></div></div>
         <label class="check"><input type="checkbox" id="cexp"> Agregar el aviso de contenido explícito (siempre abajo a la derecha)</label>
         <div class="field-row"><div><label for="ctit">Título</label><input id="ctit" type="text" maxlength="60" value="${esc(a.title)}"></div>
           <div><label for="csub">Debajo (opcional)</label><input id="csub" type="text" maxlength="50" value="${esc(sub0)}"></div></div>
+        <div class="upl hidden" id="cprog" role="progressbar" aria-label="Generando la tapa">
+          <div class="upl-top"><span class="glow-ico">${ic("flame")}</span><span class="upl-t">La IA está dibujando tu tapa…</span><span class="upl-pct">0%</span></div>
+          <div class="progress"><i></i></div>
+          <p class="small muted" style="margin:.45rem 0 0">Es una estimación: la IA tarda entre 20 segundos y 1 minuto.</p></div>
         <div id="cprev" class="cover" style="width:min(100%,300px);height:auto;aspect-ratio:1;margin:0 auto" hidden></div>
         <div class="row" style="justify-content:flex-end"><button type="button" class="btn" id="cx">Cancelar</button>
           <button class="btn" id="cview">Ver tapa</button><button type="button" class="btn primary" id="cuse" disabled>Usar como tapa</button></div>
@@ -1508,10 +1520,28 @@ async function viewAlbums(band, nav) {
         fd.append("subtitle", $("#csub", m).value);
         fd.append("show_text", $("#ctxt", m).checked ? "true" : "false");
         fd.append("explicit", $("#cexp", m).checked ? "true" : "false");
+        fd.append("font", (m.querySelector('input[name="cfont"]:checked') || {}).value || "clasica");
+        fd.append("logo_pos", $("#clpos", m).value);
+        fd.append("logo_size", $("#clsize", m).value);
+        const logoFile = $("#clogo", m).files[0];
+        if (logoFile) fd.append("logo", logoFile);
         fd.append("prompt", $("#cprompt", m).value);
         if (file) fd.append("file", file);
         if (mode === "style" && !file && fd.get("style") !== "oscuro") { toast("Subí una foto o elegí el estilo Oscuro.", "err"); return; }
         $("#cview", m).textContent = mode === "ai" ? "Generando…" : "Armando…";
+        const pb = $("#cprog", m); let tick = null;
+        if (mode === "ai") {
+          const t0 = Date.now(), bar = $("i", pb);
+          pb.classList.remove("hidden"); $("#cprev", m).hidden = true;
+          const paint = () => {
+            const s = (Date.now() - t0) / 1000;
+            const pct = Math.round(94 * (1 - Math.exp(-s / 28)));   // se acerca a 94% y no llega hasta que termina
+            bar.style.width = pct + "%"; $(".upl-pct", pb).textContent = pct + "%";
+            $(".upl-t", pb).textContent = `La IA está dibujando tu tapa… ${Math.round(s)} s`;
+            pb.setAttribute("aria-valuenow", String(pct));
+          };
+          paint(); tick = setInterval(paint, 500);
+        }
         await withBusy($("#cview", m), async () => {
           try {
             const res = await fetch(`/albums/${a.id}/cover-preview`, { method: "POST", headers: { Authorization: "Bearer " + session.token }, body: fd });
@@ -1523,6 +1553,7 @@ async function viewAlbums(band, nav) {
             box.innerHTML = `<img src="${URL.createObjectURL(blob)}" alt="Vista previa de la tapa">`;
             $("#cuse", m).disabled = false;
           } catch (e) { toast(e.message, "err"); }
+          if (tick) { clearInterval(tick); $("i", pb).style.width = "100%"; $(".upl-pct", pb).textContent = "100%"; setTimeout(() => pb.classList.add("hidden"), 600); }
           $("#cview", m).textContent = "Ver tapa";
         });
       });

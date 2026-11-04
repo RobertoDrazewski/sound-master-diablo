@@ -1510,7 +1510,7 @@ def set_album_photo(album_id: int, file: UploadFile = File(...), user: User = De
 
 @app.get("/cover-options")
 def cover_options(user: User = Depends(current_user)):
-    return {"styles": covers.STYLES, "ai_available": covers.ai_enabled(), "ai_daily_limit": COVER_AI_DAILY_LIMIT}
+    return {"styles": covers.STYLES, "fonts": [{"id": k, "name": v[2], "hint": v[3]} for k, v in covers.FONTS.items()], "ai_available": covers.ai_enabled(), "ai_daily_limit": COVER_AI_DAILY_LIMIT}
 
 
 _cover_ai_usage: dict[tuple[int, str], int] = {}
@@ -1519,7 +1519,8 @@ _cover_ai_usage: dict[tuple[int, str], int] = {}
 @app.post("/albums/{album_id}/cover-preview")
 def cover_preview(album_id: int, mode: str = Form("style"), style: str = Form("ember"),
                   title: str = Form(""), subtitle: str = Form(""), show_text: bool = Form(True),
-                  prompt: str = Form(""), explicit: bool = Form(False), file: UploadFile | None = File(None),
+                  prompt: str = Form(""), explicit: bool = Form(False), font: str = Form("clasica"), logo_pos: str = Form("arriba"),
+                  logo_size: str = Form("mediano"), file: UploadFile | None = File(None), logo: UploadFile | None = File(None),
                   user: User = Depends(current_user), db: Session = Depends(get_db)):
     """Arma una tapa y la devuelve sin guardarla; el cliente la sube como tapa si le gusta."""
     a = _album_for(db, user, album_id)
@@ -1528,6 +1529,13 @@ def cover_preview(album_id: int, mode: str = Form("style"), style: str = Form("e
         src = file.file.read(MAX_IMAGE_MB * 1024 * 1024 + 1)
         if len(src) > MAX_IMAGE_MB * 1024 * 1024:
             raise HTTPException(413, f"La foto pesa más de {MAX_IMAGE_MB} MB")
+    logo_bytes = None
+    if logo is not None and logo.filename:
+        logo_bytes = logo.file.read(MAX_IMAGE_MB * 1024 * 1024 + 1)
+        if len(logo_bytes) > MAX_IMAGE_MB * 1024 * 1024:
+            raise HTTPException(413, f"El logo pesa más de {MAX_IMAGE_MB} MB")
+    if font not in covers.FONTS:
+        font = "clasica"
     title = title.strip() or a.title
     try:
         if mode == "ai":
@@ -1540,8 +1548,10 @@ def cover_preview(album_id: int, mode: str = Form("style"), style: str = Form("e
                 raise HTTPException(429, "Se alcanzó el límite de imágenes con IA de hoy para esta banda. Mañana vuelve.")
             jpeg, notice = covers.generate_ai(prompt.strip()[:600], src)
             _cover_ai_usage[key] = _cover_ai_usage.get(key, 0) + 1
+            if logo_bytes:
+                jpeg = covers.add_logo(jpeg, logo_bytes, logo_pos, logo_size)
             if show_text:
-                jpeg = covers.add_text(jpeg, title, subtitle, explicit)
+                jpeg = covers.add_text(jpeg, title, subtitle, explicit, font)
             if explicit:
                 jpeg = covers.add_explicit(jpeg)
         else:
@@ -1550,7 +1560,7 @@ def cover_preview(album_id: int, mode: str = Form("style"), style: str = Form("e
             if src is None and style != "oscuro":
                 raise HTTPException(422, "Subí una foto o elegí el estilo Oscuro")
             notice = ""
-            jpeg = covers.render(src, style, title, subtitle, show_text, explicit)
+            jpeg = covers.render(src, style, title, subtitle, show_text, explicit, font, logo_bytes, logo_pos, logo_size)
     except ValueError as e:
         raise HTTPException(422, str(e)) from None
     except RuntimeError as e:

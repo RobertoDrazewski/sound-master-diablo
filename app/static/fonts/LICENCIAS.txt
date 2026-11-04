@@ -1,0 +1,5 @@
+Tipografías de las tapas (SIL Open Font License 1.1, https://openfontlicense.org):
+- Metal Mania (Brenda Gallo)
+- Pirata One (Rodrigo Fuenzalida)
+- New Rocker (Jeremy Tribby)
+Se distribuyen sin modificar, tal como las publica Google Fonts.

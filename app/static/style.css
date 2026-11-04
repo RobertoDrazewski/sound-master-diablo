@@ -455,3 +455,13 @@ code { padding: .1rem .35rem; border-radius: 5px; background: var(--surface-2); 
 .proc-bar > i { display: block; width: 40%; height: 100%; background: linear-gradient(90deg, var(--amber), var(--ember)); box-shadow: 0 0 8px rgba(255, 110, 20, .8); animation: procslide 1.3s ease-in-out infinite; }
 @keyframes procslide { 0% { transform: translateX(-110%); } 100% { transform: translateX(260%); } }
 @media (prefers-reduced-motion: reduce) { .glow-ico, .proc-bar > i { animation: none; } }
+
+/* tipografias de las tapas (se ven en su propio estilo al elegirlas) */
+@font-face { font-family: "Metal Mania"; src: url("/fonts/MetalMania-Regular.ttf") format("truetype"); font-display: swap; }
+@font-face { font-family: "Pirata One"; src: url("/fonts/PirataOne-Regular.ttf") format("truetype"); font-display: swap; }
+@font-face { font-family: "New Rocker"; src: url("/fonts/NewRocker-Regular.ttf") format("truetype"); font-display: swap; }
+.fnt { font-size: 1.15rem; line-height: 1.2; }
+.fnt-metal { font-family: "Metal Mania", cursive; }
+.fnt-gotica { font-family: "Pirata One", cursive; font-size: 1.3rem; }
+.fnt-rocker { font-family: "New Rocker", cursive; }
+.fnt-clasica { font-weight: 700; letter-spacing: .02em; }

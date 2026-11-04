@@ -13,6 +13,15 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
 from .config import COVER_AI_MODEL, COVER_AI_QUALITY, OPENAI_API_KEY
 
 FONT = Path(__file__).parent / "assets" / "cover-font.ttf"
+FONT_DIR = Path(__file__).parent / "static" / "fonts"
+# id -> (archivo, todo en mayusculas, nombre, pista). Las que no son "clasica" se ven mejor con mayusculas y minusculas.
+FONTS = {
+    "clasica": (FONT, True, "Clásica", "Condensada y fuerte"),
+    "metal": (FONT_DIR / "MetalMania-Regular.ttf", False, "Metal", "Filosa, de portada de metal"),
+    "gotica": (FONT_DIR / "PirataOne-Regular.ttf", False, "Gótica", "Estilo antiguo, se lee fácil"),
+    "rocker": (FONT_DIR / "NewRocker-Regular.ttf", False, "Rocker", "Rock pesado, con filo"),
+}
+LOGO_SIZES = {"chico": .30, "mediano": .46, "grande": .64}
 SIZE = 1000
 STYLES = [
     {"id": "ember", "name": "Brasas", "hint": "Foto en negro y naranja"},
@@ -64,20 +73,20 @@ def _bottom_shade(im: Image.Image) -> Image.Image:
     return Image.composite(Image.new("RGB", (w, h), INK), im, shade)
 
 
-def _fit_font(draw, text: str, max_w: int, start: int) -> ImageFont.FreeTypeFont:
+def _fit_font(draw, text: str, max_w: int, start: int, path=FONT) -> ImageFont.FreeTypeFont:
     size = start
     while size > 48:
-        f = ImageFont.truetype(str(FONT), size)
+        f = ImageFont.truetype(str(path), size)
         if max(draw.textlength(line, font=f) for line in text.split("\n")) <= max_w:
             return f
         size -= 6
-    return ImageFont.truetype(str(FONT), 48)
+    return ImageFont.truetype(str(path), 48)
 
 
-def _wrap(draw, text: str, font_start: int, max_w: int):
+def _wrap(draw, text: str, font_start: int, max_w: int, path=FONT):
     """Parte el titulo en hasta 3 renglones; si no entra, achica la letra hasta que entre completo."""
     for size in range(font_start, 70, -10):
-        f = ImageFont.truetype(str(FONT), size)
+        f = ImageFont.truetype(str(path), size)
         words, lines, cur = text.split(), [], ""
         for w in words:
             t = (cur + " " + w).strip()
@@ -92,26 +101,52 @@ def _wrap(draw, text: str, font_start: int, max_w: int):
     return "\n".join(lines[:3]), 70
 
 
-def _text(im: Image.Image, title: str, subtitle: str, narrow: bool = False) -> Image.Image:
+def _text(im: Image.Image, title: str, subtitle: str, narrow: bool = False, font: str = "clasica") -> Image.Image:
+    path, upper, _, _ = FONTS.get(font, FONTS["clasica"])
     im = _bottom_shade(im)
     d = ImageDraw.Draw(im)
     pad = int(SIZE * .07)
     max_w = SIZE - 2 * pad - (250 if narrow else 0)   # deja lugar al sello de contenido explicito
-    wrapped, start = _wrap(d, title.upper(), 190, max_w)
-    f = _fit_font(d, wrapped, max_w, start)
-    sub_f = ImageFont.truetype(str(FONT), 46)
+    wrapped, start = _wrap(d, title.upper() if upper else title, 190, max_w, path)
+    f = _fit_font(d, wrapped, max_w, start, path)
+    sub_f = ImageFont.truetype(str(path), 46)
     lines = wrapped.split("\n")
-    line_h = f.size * .92
+    line_h = f.size * (.92 if upper else 1.0)
     y = SIZE - pad - (sub_f.size + 18 if subtitle else 0) - line_h * len(lines)
     for ln in lines:
         d.text((pad, y), ln, font=f, fill=BONE)
         y += line_h
     if subtitle:
-        d.text((pad, y + 6), subtitle.upper(), font=sub_f, fill=AMBER)
+        d.text((pad, y + 6), subtitle.upper() if upper else subtitle, font=sub_f, fill=AMBER)
     return im
 
 
-def render(src: bytes | None, style: str, title: str, subtitle: str, show_text: bool, explicit: bool = False) -> bytes:
+def _paste_logo(im: Image.Image, logo: bytes, pos: str, size: str) -> Image.Image:
+    """Pega el logo tal cual lo subio la banda (con su transparencia, sin efectos), arriba al centro o en el centro."""
+    try:
+        lg = Image.open(io.BytesIO(logo))
+        lg = ImageOps.exif_transpose(lg).convert("RGBA")
+    except Exception:  # noqa: BLE001
+        raise ValueError("El logo no es una imagen válida") from None
+    max_w = int(SIZE * LOGO_SIZES.get(size, LOGO_SIZES["mediano"]))
+    max_h = int(SIZE * .42)
+    k = min(max_w / lg.width, max_h / lg.height)
+    lg = lg.resize((max(1, round(lg.width * k)), max(1, round(lg.height * k))), Image.LANCZOS)
+    base = im.convert("RGBA")
+    x = (SIZE - lg.width) // 2
+    y = int(SIZE * .09) if pos != "centro" else (SIZE - lg.height) // 2
+    base.alpha_composite(lg, (x, y))
+    return base.convert("RGB")
+
+
+def add_logo(jpeg: bytes, logo: bytes, pos: str, size: str) -> bytes:
+    out = io.BytesIO()
+    _paste_logo(Image.open(io.BytesIO(jpeg)).convert("RGB"), logo, pos, size).save(out, "JPEG", quality=92, optimize=True)
+    return out.getvalue()
+
+
+def render(src: bytes | None, style: str, title: str, subtitle: str, show_text: bool, explicit: bool = False,
+           font: str = "clasica", logo: bytes | None = None, logo_pos: str = "arriba", logo_size: str = "mediano") -> bytes:
     if style == "oscuro" or src is None:
         im = _smoke_background()
     else:
@@ -128,8 +163,10 @@ def render(src: bytes | None, style: str, title: str, subtitle: str, show_text: 
             im = _vignette(_grain(g.convert("RGB"), 26), .8)
         else:
             im = _vignette(im, .6)
+    if logo:
+        im = _paste_logo(im, logo, logo_pos, logo_size)
     if show_text and title.strip():
-        im = _text(im, title.strip()[:60], subtitle.strip()[:50], explicit)
+        im = _text(im, title.strip()[:60], subtitle.strip()[:50], explicit, font)
     out = io.BytesIO()
     im.save(out, "JPEG", quality=90, optimize=True)
     return add_explicit(out.getvalue()) if explicit else out.getvalue()
@@ -253,8 +290,8 @@ def add_explicit(jpeg: bytes) -> bytes:
     return out.getvalue()
 
 
-def add_text(jpeg: bytes, title: str, subtitle: str, narrow: bool = False) -> bytes:
+def add_text(jpeg: bytes, title: str, subtitle: str, narrow: bool = False, font: str = "clasica") -> bytes:
     im = Image.open(io.BytesIO(jpeg)).convert("RGB")
     out = io.BytesIO()
-    _text(im, title.strip()[:60], subtitle.strip()[:50], narrow).save(out, "JPEG", quality=90, optimize=True)
+    _text(im, title.strip()[:60], subtitle.strip()[:50], narrow, font).save(out, "JPEG", quality=90, optimize=True)
     return out.getvalue()
