@@ -59,6 +59,7 @@ const ICONS = {
   target: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/>',
   shield: '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/>',
   user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c.8-4.5 4-6.5 8-6.5s7.2 2 8 6.5"/>',
+  flame: '<path d="M12 3c.8 3.2 5 5.2 5 9.8a5 5 0 0 1-10 0c0-2 .9-3.4 2.2-4.6 0 1.8.8 2.8 1.8 2.8C11 7.8 10.6 5.8 12 3z"/>',
   spark: '<path d="M12 3l2 6 6 2-6 2-2 6-2-6-6-2 6-2z"/>',
   left: '<path d="M15 5l-7 7 7 7"/>',
   right: '<path d="M9 5l7 7-7 7"/>',
@@ -160,6 +161,20 @@ async function chunkUpload(file, onProgress) {
   return { upload_id: uid, filename: file.name, parts };
 }
 // Sube un tema (uno o varios archivos si son pistas). Devuelve cuando el servidor ya lo recibio.
+const fmtMB = (b) => { const m = b / 1048576; return (m >= 100 ? m.toFixed(0) : m.toFixed(1)).replace(".", ",") + " MB"; };
+function uplHtml(id, extra = "") {
+  return `<div class="upl hidden" id="${id}" ${extra} role="progressbar" aria-label="Progreso de la subida" aria-valuemin="0" aria-valuemax="100">
+    <div class="upl-top"><span class="glow-ico">${ic("flame")}</span><span class="upl-t">Preparando…</span><span class="upl-pct">0%</span></div>
+    <div class="progress"><i></i></div></div>`;
+}
+// label: texto corto (ej. "maldita_2"); loaded/total en bytes
+function setUpl(box, label, loaded, total) {
+  const pct = total ? Math.min(100, Math.round((loaded / total) * 100)) : 0;
+  $("i", box).style.width = pct + "%";
+  $(".upl-pct", box).textContent = pct + "%";
+  $(".upl-t", box).textContent = `${label ? label + " · " : ""}${fmtMB(loaded)} de ${fmtMB(total)}${pct >= 100 ? " · terminando…" : ""}`;
+  box.setAttribute("aria-valuenow", String(pct));
+}
 async function sendTrack(bandId, { title, mode, section, session, files }, onProgress) {
   const base = { title, mode, section, session: session || "" };
   if (files.every((f) => f.size <= BIG_FILE)) {
@@ -740,7 +755,7 @@ function trackCard(t, ctx) {
 function versionRow(t, v) {
   const title = `${t.title} — ${v.label}`;
   let info;
-  if (v.status === "processing") info = `<span class="status processing"><span class="spinner"></span>Procesando…</span>`;
+  if (v.status === "processing") info = `<span class="status processing"><span class="glow-ico sm">${ic("flame")}</span>Procesando… <span class="proc-bar" aria-hidden="true"><i></i></span></span>`;
   else if (v.status === "error") info = `<span class="status error">Falló: ${esc(v.error || "error desconocido")}</span>`;
   else info = `<span class="muted small">${fmtDur(v.duration)} · ${fmtSize(v.size_bytes)}</span>`;
   const expires = v.expires_at ? `<div class="small muted">Se borra solo el ${fmtDay(v.expires_at)}</div>` : "";
@@ -1055,7 +1070,7 @@ async function viewRecordSection(band, nav, cfg) {
         </div>
         <div id="picked" class="small muted"></div>
         <div id="names" class="stack" hidden></div>
-        <div class="progress hidden" id="prog" role="progressbar" aria-label="Progreso de la subida"><i></i></div>
+        ${uplHtml("prog")}
         <button class="btn primary" id="send" disabled>Subir</button>
       </form></details>
     <h2 style="margin-top:1.8rem">Historial</h2>
@@ -1102,7 +1117,10 @@ async function viewRecordSection(band, nav, cfg) {
     let done = 0;
     try {
       for (const job of jobs) {
-        await sendTrack(band.id, { ...job, section: cfg.section, session }, (p) => { bar.style.width = Math.round(((done + p) / jobs.length) * 100) + "%"; });
+        const jb = job.files.reduce((n, f) => n + f.size, 0);
+        const lab = jobs.length > 1 ? `${done + 1} de ${jobs.length} · ${job.title}` : job.title;
+        setUpl(prog, lab, 0, jb);
+        await sendTrack(band.id, { ...job, section: cfg.section, session }, (p) => setUpl(prog, lab, p * jb, jb));
         done += 1;
         if (jobs.length > 1) send.textContent = `Subiendo ${done} de ${jobs.length}…`;
       }
@@ -1305,7 +1323,7 @@ async function viewMaster(band, nav) {
         <div class="step"><h3>Masterizá y bajalo</h3>
           <label class="check"><input type="checkbox" id="auto" checked> Masterizar apenas termine de subir</label>
           <p class="small muted" id="autonote" hidden style="margin:.3rem 0 0">Con pistas separadas se sube primero y después masterizás desde el tema con el botón.</p>
-          <div class="progress hidden" id="prog" role="progressbar" aria-label="Progreso de la subida" style="margin:.8rem 0"><i></i></div>
+          ${uplHtml("prog", 'style="margin:.8rem 0"')}
           <button class="btn primary big" id="send" style="margin-top:.8rem" disabled>Subir y masterizar</button>
         </div>
       </form></section>
@@ -1365,7 +1383,9 @@ async function viewMaster(band, nav) {
     const prog = $("#prog"), bar = $("i", prog);
     send.disabled = true; prog.classList.remove("hidden");
     try {
-      await uploadWithProgress(`/bands/${band.id}/tracks`, fd, (p) => { bar.style.width = Math.round(p * 100) + "%"; });
+      const tb = files.reduce((n, f) => n + f.size, 0);
+      setUpl(prog, "", 0, tb);
+      await uploadWithProgress(`/bands/${band.id}/tracks`, fd, (p) => setUpl(prog, "", p * tb, tb));
       toast(mode() === "mix" && $("#auto").checked ? "Subido. Se está masterizando, aparece abajo." : "Subido. Aparece abajo.", "ok");
       files = []; $("#file").value = ""; $("#title").value = ""; picked.textContent = ""; sync();
       await run();
@@ -1454,14 +1474,15 @@ async function viewAlbums(band, nav) {
       <form id="cf" class="stack"><h2>Crear la tapa de "${esc(a.title)}"</h2>
         ${opts.ai_available ? `<div class="seg" role="radiogroup" aria-label="Cómo crearla">
           <label><input type="radio" name="cmode" value="style" checked>Con mi foto<span class="hint">Gratis, al instante</span></label>
-          <label><input type="radio" name="cmode" value="ai">Con IA<span class="hint">Describís la imagen (hasta ${esc(opts.ai_daily_limit)} por día)</span></label></div>` : ""}
+          <label><input type="radio" name="cmode" value="ai">Con IA<span class="hint">Describís la imagen, la IA la ilustra (hasta ${esc(opts.ai_daily_limit)} por día)</span></label></div>` : ""}
         <div class="field" style="margin:0"><label for="cfile">Foto o imagen <span id="cfopt" class="muted"></span></label><input id="cfile" type="file" accept="image/*"></div>
         <div id="cstyle"><div class="seg" role="radiogroup" aria-label="Estilo">${opts.styles.map((s, i) =>
           `<label><input type="radio" name="cst" value="${s.id}" ${i === 0 ? "checked" : ""}>${esc(s.name)}<span class="hint">${esc(s.hint)}</span></label>`).join("")}</div></div>
         <div id="cai" hidden><div class="field" style="margin:0"><label for="cprompt">Qué imagen querés</label>
-          <textarea id="cprompt" maxlength="600" placeholder="Ej: una guitarra eléctrica envuelta en humo naranja, en un galpón oscuro"></textarea></div>
+          <textarea id="cprompt" maxlength="600" placeholder="Ej: una maceta con una planta en el patio de una casa de adobe en Mendoza, estilo collage de revista vieja"></textarea></div>
           <p class="small muted" style="margin:.3rem 0 0">Si subís una foto, la IA la usa de base. Cada imagen generada tiene un costo para la app.</p></div>
         <label class="check"><input type="checkbox" id="ctxt" checked> Escribir el nombre del álbum sobre la tapa</label>
+        <label class="check"><input type="checkbox" id="cexp"> Agregar el aviso de contenido explícito (siempre abajo a la derecha)</label>
         <div class="field-row"><div><label for="ctit">Título</label><input id="ctit" type="text" maxlength="60" value="${esc(a.title)}"></div>
           <div><label for="csub">Debajo (opcional)</label><input id="csub" type="text" maxlength="50" value="${esc(sub0)}"></div></div>
         <div id="cprev" class="cover" style="width:min(100%,300px);height:auto;aspect-ratio:1;margin:0 auto" hidden></div>
@@ -1486,6 +1507,7 @@ async function viewAlbums(band, nav) {
         fd.append("title", $("#ctit", m).value);
         fd.append("subtitle", $("#csub", m).value);
         fd.append("show_text", $("#ctxt", m).checked ? "true" : "false");
+        fd.append("explicit", $("#cexp", m).checked ? "true" : "false");
         fd.append("prompt", $("#cprompt", m).value);
         if (file) fd.append("file", file);
         if (mode === "style" && !file && fd.get("style") !== "oscuro") { toast("Subí una foto o elegí el estilo Oscuro.", "err"); return; }
@@ -1493,7 +1515,8 @@ async function viewAlbums(band, nav) {
         await withBusy($("#cview", m), async () => {
           try {
             const res = await fetch(`/albums/${a.id}/cover-preview`, { method: "POST", headers: { Authorization: "Bearer " + session.token }, body: fd });
-            if (!res.ok) { let d = null; try { d = await res.json(); } catch { /* sin cuerpo */ } throw new Error(errText(d, "No se pudo armar la tapa")); }
+            if (!res.ok) { let d = null; try { d = await res.json(); } catch { /* sin cuerpo */ } throw new Error(errText(d, `No se pudo armar la tapa (el servidor respondió ${res.status}${res.status === 524 || res.status === 504 ? ": tardó demasiado, probá de nuevo" : ""})`)); }
+            const note = res.headers.get("X-Cover-Notice"); if (note) toast(note, "ok");
             blob = await res.blob();
             const box = $("#cprev", m);
             box.hidden = false;
@@ -1872,7 +1895,7 @@ async function viewReaper(nav) {
             <li><em>Qué subir:</em> escribí <code>cancion</code> para subir la mezcla final, tal como suena todo junto. O escribí <code>pistas</code> para subir cada instrumento por separado (bajo, batería, guitarras…), por si alguien más quiere mezclar.</li>
             <li><em>Dónde:</em> escribí <code>ensayo</code> para guardar cómo sonó el ensayo (se borra solo a los 30 días), <code>produccion</code> para una mezcla en la que seguís trabajando, o <code>master</code> si ya está lista para masterizar.</li>
           </ul>
-          <p class="muted small" style="margin:.4rem 0 0">El cuarto casillero (<em>Cambiar conexión</em>) dejalo en <code>no</code>. Tocá <em>OK</em>.</p></li>
+          <p class="muted small" style="margin:.4rem 0 0">El cuarto casillero (<em>Cambiar</em>) dejalo en <code>no</code>. Tocá <em>OK</em>.</p></li>
         <li><strong>Esperá sin cerrar Reaper.</strong> Reaper tarda un rato en preparar el audio y subirlo: más si el ensayo es largo. Si es muy grande, lo sube de a partes y en la ventana de mensajes ves el avance. Cuando termina, aparece un cartel que dice <em>Listo</em>.</li>
       </ol>
       <h3>Dos ejemplos para copiar</h3>
@@ -1892,7 +1915,8 @@ async function viewReaper(nav) {
     <section class="card"><h2>Si algo sale mal</h2>
       <ul class="plain">
         <li><strong>"Primero guardá el proyecto":</strong> apretá ${save}, poné un nombre y volvé a ejecutar el script.</li>
-        <li><strong>"No pude conectar":</strong> revisá que la dirección sea exactamente <code>${esc(site)}</code> y que la clave esté completa, sin espacios de más. Para cambiarlas, ejecutá el script y en el cuarto casillero (<em>Cambiar conexión</em>) escribí <code>si</code>.</li>
+        <li><strong>Tengo dos bandas:</strong> cada proyecto de Reaper se acuerda de su banda. La primera vez que lo corrés en un proyecto, el script te pregunta a cuál pertenece (escribís el número) y queda guardado cuando guardás el proyecto. Para cambiarla después, en el cuarto casillero (<em>Cambiar</em>) escribí <code>banda</code>.</li>
+        <li><strong>"No pude conectar":</strong> revisá que la dirección sea exactamente <code>${esc(site)}</code> y que la clave esté completa, sin espacios de más. Para cambiarlas, ejecutá el script y en el cuarto casillero (<em>Cambiar</em>) escribí <code>conexion</code>.</li>
         <li><strong>"Todavía no estás en ninguna banda":</strong> pedile a quien administra la banda que te invite.</li>
         <li><strong>La mezcla suena distinta a la tuya:</strong> el script sube lo que sale por el canal Master de Reaper. Si querés subirla sin masterizar, sacá del Master los limitadores y maximizadores antes de ejecutar.</li>
         <li><strong>Subir solo un pedazo:</strong> marcá con el mouse un tramo del proyecto (selección de tiempo) y el script sube solo eso.</li>

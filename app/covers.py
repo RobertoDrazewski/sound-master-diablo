@@ -2,6 +2,7 @@
 import base64
 import io
 import json
+import time
 import urllib.error
 import urllib.request
 import uuid
@@ -9,7 +10,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
 
-from .config import COVER_AI_MODEL, OPENAI_API_KEY
+from .config import COVER_AI_MODEL, COVER_AI_QUALITY, OPENAI_API_KEY
 
 FONT = Path(__file__).parent / "assets" / "cover-font.ttf"
 SIZE = 1000
@@ -74,25 +75,30 @@ def _fit_font(draw, text: str, max_w: int, start: int) -> ImageFont.FreeTypeFont
 
 
 def _wrap(draw, text: str, font_start: int, max_w: int):
-    words, lines, cur = text.split(), [], ""
-    f = ImageFont.truetype(str(FONT), font_start)
-    for w in words:
-        t = (cur + " " + w).strip()
-        if draw.textlength(t, font=f) <= max_w or not cur:
-            cur = t
-        else:
-            lines.append(cur); cur = w
-    if cur:
-        lines.append(cur)
-    return "\n".join(lines[:3])
+    """Parte el titulo en hasta 3 renglones; si no entra, achica la letra hasta que entre completo."""
+    for size in range(font_start, 70, -10):
+        f = ImageFont.truetype(str(FONT), size)
+        words, lines, cur = text.split(), [], ""
+        for w in words:
+            t = (cur + " " + w).strip()
+            if draw.textlength(t, font=f) <= max_w or not cur:
+                cur = t
+            else:
+                lines.append(cur); cur = w
+        if cur:
+            lines.append(cur)
+        if len(lines) <= 3:
+            return "\n".join(lines), size
+    return "\n".join(lines[:3]), 70
 
 
-def _text(im: Image.Image, title: str, subtitle: str) -> Image.Image:
+def _text(im: Image.Image, title: str, subtitle: str, narrow: bool = False) -> Image.Image:
     im = _bottom_shade(im)
     d = ImageDraw.Draw(im)
     pad = int(SIZE * .07)
-    wrapped = _wrap(d, title.upper(), 190, SIZE - 2 * pad)
-    f = _fit_font(d, wrapped, SIZE - 2 * pad, 190)
+    max_w = SIZE - 2 * pad - (250 if narrow else 0)   # deja lugar al sello de contenido explicito
+    wrapped, start = _wrap(d, title.upper(), 190, max_w)
+    f = _fit_font(d, wrapped, max_w, start)
     sub_f = ImageFont.truetype(str(FONT), 46)
     lines = wrapped.split("\n")
     line_h = f.size * .92
@@ -105,7 +111,7 @@ def _text(im: Image.Image, title: str, subtitle: str) -> Image.Image:
     return im
 
 
-def render(src: bytes | None, style: str, title: str, subtitle: str, show_text: bool) -> bytes:
+def render(src: bytes | None, style: str, title: str, subtitle: str, show_text: bool, explicit: bool = False) -> bytes:
     if style == "oscuro" or src is None:
         im = _smoke_background()
     else:
@@ -123,52 +129,127 @@ def render(src: bytes | None, style: str, title: str, subtitle: str, show_text: 
         else:
             im = _vignette(im, .6)
     if show_text and title.strip():
-        im = _text(im, title.strip()[:60], subtitle.strip()[:50])
+        im = _text(im, title.strip()[:60], subtitle.strip()[:50], explicit)
+    out = io.BytesIO()
+    im.save(out, "JPEG", quality=90, optimize=True)
+    return add_explicit(out.getvalue()) if explicit else out.getvalue()
+
+
+class CoverError(RuntimeError):
+    """Error de la IA de imagenes con un mensaje para mostrarle al usuario."""
+
+
+ARTIST_BRIEF = (
+    "Album cover artwork for an independent rock/metal/punk band. Make it bold, expressive and truly artistic, "
+    "with a strong personal point of view: unexpected composition, rich texture and atmosphere, as an illustrator "
+    "or analog photographer would make it. Full creative freedom of style (painting, collage, screen print, "
+    "film photography, comic ink, surreal). Square composition, striking at thumbnail size. "
+    "No text, no letters, no words, no logos, no watermarks. Subject: "
+)
+
+
+def _openai_error(e: urllib.error.HTTPError) -> tuple[str, str]:
+    try:
+        err = json.loads(e.read()).get("error", {})
+    except Exception:  # noqa: BLE001
+        err = {}
+    return str(err.get("code") or ""), str(err.get("message") or "")
+
+
+def _call_image_model(model: str, prompt: str, src: bytes | None, deadline: float) -> bytes:
+    left = max(10, int(deadline - time.monotonic()))
+    if src is None:
+        payload = {"model": model, "prompt": prompt, "size": "1024x1024", "n": 1}
+        if model.startswith("dall-e"):
+            payload.update(quality="hd" if model == "dall-e-3" else "standard", response_format="b64_json")
+        else:
+            payload["quality"] = COVER_AI_QUALITY
+        req = urllib.request.Request("https://api.openai.com/v1/images/generations", data=json.dumps(payload).encode(),
+                                     method="POST", headers={"Authorization": f"Bearer {OPENAI_API_KEY}",
+                                                             "Content-Type": "application/json"})
+    else:
+        png = io.BytesIO()
+        ImageOps.fit(ImageOps.exif_transpose(Image.open(io.BytesIO(src))).convert("RGB"),
+                     (1024, 1024), Image.LANCZOS).save(png, "PNG")
+        boundary = uuid.uuid4().hex
+        parts = []
+        for k, v in (("model", model), ("prompt", prompt), ("size", "1024x1024"), ("quality", COVER_AI_QUALITY)):
+            parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode())
+        parts.append((f'--{boundary}\r\nContent-Disposition: form-data; name="image[]"; filename="base.png"\r\n'
+                      "Content-Type: image/png\r\n\r\n").encode() + png.getvalue() + b"\r\n")
+        parts.append(f"--{boundary}--\r\n".encode())
+        req = urllib.request.Request("https://api.openai.com/v1/images/edits", data=b"".join(parts), method="POST",
+                                     headers={"Authorization": f"Bearer {OPENAI_API_KEY}",
+                                              "Content-Type": f"multipart/form-data; boundary={boundary}"})
+    with urllib.request.urlopen(req, timeout=left) as r:
+        data = json.loads(r.read())
+    item = data["data"][0]
+    if item.get("b64_json"):
+        return base64.b64decode(item["b64_json"])
+    with urllib.request.urlopen(item["url"], timeout=30) as r2:  # algunos modelos devuelven un enlace
+        return r2.read()
+
+
+def generate_ai(prompt: str, src: bytes | None) -> tuple[bytes, str]:
+    """Imagen con IA (de pago). Prueba el modelo configurado y, si la cuenta no lo tiene habilitado, uno de respaldo.
+    Devuelve (jpeg, aviso). Cloudflare corta a los ~100 s, por eso el limite total."""
+    full = ARTIST_BRIEF + prompt.strip()
+    models = [COVER_AI_MODEL] + [m for m in ("dall-e-3",) if m != COVER_AI_MODEL]
+    deadline = time.monotonic() + 80
+    notice, last = "", ""
+    for i, model in enumerate(models):
+        use_src = src if not model.startswith("dall-e") else None   # dall-e-3 no edita: sin foto de base
+        try:
+            raw = _call_image_model(model, full, use_src, deadline)
+            if src is not None and use_src is None:
+                notice = "La IA usó solo tu descripción: el modelo de respaldo no puede partir de una foto."
+            break
+        except urllib.error.HTTPError as e:
+            code, msg = _openai_error(e)
+            print(f"[covers] {model} -> HTTP {e.code} {code}: {msg}", flush=True)
+            if code in ("moderation_blocked", "content_policy_violation") or "safety" in msg.lower():
+                raise CoverError("OpenAI no aceptó ese pedido por sus reglas de contenido. "
+                                 "Probá describirlo de otra forma (más como una escena o un estilo de arte).") from None
+            if e.code == 401:
+                raise CoverError("OpenAI rechazó la clave (OPENAI_API_KEY). Revisala en Coolify.") from None
+            if code in ("billing_hard_limit_reached", "insufficient_quota"):
+                raise CoverError("La cuenta de OpenAI no tiene crédito disponible para imágenes.") from None
+            if e.code == 429:
+                raise CoverError("OpenAI está limitando los pedidos en este momento. Esperá un minuto y probá de nuevo.") from None
+            last = f"{model}: {msg[:160] or e.code}"
+            continue   # modelo no habilitado para la cuenta (403/404/400): probar el siguiente
+        except Exception as e:  # noqa: BLE001
+            print(f"[covers] {model} -> {e!r}", flush=True)
+            last = f"{model}: {e}"
+            continue
+    else:
+        raise CoverError(f"No se pudo generar la imagen ({last}).")
+    img = ImageOps.fit(Image.open(io.BytesIO(raw)).convert("RGB"), (SIZE, SIZE), Image.LANCZOS)
+    out = io.BytesIO()
+    img.save(out, "JPEG", quality=90, optimize=True)
+    return out.getvalue(), notice
+
+
+def add_explicit(jpeg: bytes) -> bytes:
+    """Sello de contenido explicito, siempre en la esquina inferior derecha. Diseno propio de la app."""
+    im = Image.open(io.BytesIO(jpeg)).convert("RGB")
+    d = ImageDraw.Draw(im)
+    w, h, m = 232, 148, 36
+    x1, y1 = SIZE - m, SIZE - m
+    x0, y0 = x1 - w, y1 - h
+    d.rectangle((x0, y0, x1, y1), fill=(8, 8, 8))
+    d.rectangle((x0 + 7, y0 + 7, x1 - 7, y1 - 7), outline=(245, 245, 245), width=4)
+    f1, f2 = ImageFont.truetype(str(FONT), 62), ImageFont.truetype(str(FONT), 62)
+    for text, f, yy in (("EXPLICIT", f1, y0 + 17), ("CONTENT", f2, y0 + 76)):
+        tw = d.textlength(text, font=f)
+        d.text((x0 + (w - tw) / 2, yy), text, font=f, fill=(245, 245, 245))
     out = io.BytesIO()
     im.save(out, "JPEG", quality=90, optimize=True)
     return out.getvalue()
 
 
-def generate_ai(prompt: str, src: bytes | None) -> bytes:
-    """Imagen con IA (de pago). Con foto de base usa la edicion; sin foto, la generacion."""
-    full = (f"{prompt.strip()}. Tapa de disco de rock, composicion cuadrada, estetica oscura y granulada, "
-            "sin texto ni letras ni logos.")
-    try:
-        if src is None:
-            body = json.dumps({"model": COVER_AI_MODEL, "prompt": full, "size": "1024x1024",
-                               "quality": "low", "n": 1}).encode()
-            req = urllib.request.Request("https://api.openai.com/v1/images/generations", data=body, method="POST",
-                                         headers={"Authorization": f"Bearer {OPENAI_API_KEY}",
-                                                  "Content-Type": "application/json"})
-        else:
-            png = io.BytesIO()
-            ImageOps.fit(ImageOps.exif_transpose(Image.open(io.BytesIO(src))).convert("RGB"),
-                         (1024, 1024), Image.LANCZOS).save(png, "PNG")
-            boundary = uuid.uuid4().hex
-            parts = []
-            for k, v in (("model", COVER_AI_MODEL), ("prompt", full), ("size", "1024x1024"), ("quality", "low")):
-                parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode())
-            parts.append((f'--{boundary}\r\nContent-Disposition: form-data; name="image[]"; filename="base.png"\r\n'
-                          "Content-Type: image/png\r\n\r\n").encode() + png.getvalue() + b"\r\n")
-            parts.append(f"--{boundary}--\r\n".encode())
-            req = urllib.request.Request("https://api.openai.com/v1/images/edits", data=b"".join(parts), method="POST",
-                                         headers={"Authorization": f"Bearer {OPENAI_API_KEY}",
-                                                  "Content-Type": f"multipart/form-data; boundary={boundary}"})
-        with urllib.request.urlopen(req, timeout=120) as r:
-            data = json.loads(r.read())
-        img = Image.open(io.BytesIO(base64.b64decode(data["data"][0]["b64_json"]))).convert("RGB")
-    except urllib.error.HTTPError as e:
-        raise RuntimeError(f"OpenAI respondió {e.code}") from None
-    except Exception as e:  # noqa: BLE001
-        raise RuntimeError(f"No se pudo generar la imagen: {e}") from None
-    img = ImageOps.fit(img, (SIZE, SIZE), Image.LANCZOS)
-    out = io.BytesIO()
-    img.save(out, "JPEG", quality=90, optimize=True)
-    return out.getvalue()
-
-
-def add_text(jpeg: bytes, title: str, subtitle: str) -> bytes:
+def add_text(jpeg: bytes, title: str, subtitle: str, narrow: bool = False) -> bytes:
     im = Image.open(io.BytesIO(jpeg)).convert("RGB")
     out = io.BytesIO()
-    _text(im, title.strip()[:60], subtitle.strip()[:50]).save(out, "JPEG", quality=90, optimize=True)
+    _text(im, title.strip()[:60], subtitle.strip()[:50], narrow).save(out, "JPEG", quality=90, optimize=True)
     return out.getvalue()

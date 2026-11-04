@@ -89,6 +89,9 @@ local function choose_band()
     if not chosen then msg("Numero invalido.") return false end
   end
   set("band", chosen.id) set("band_name", chosen.name)
+  -- cada proyecto de Reaper recuerda su banda (se guarda con el proyecto)
+  reaper.SetProjExtState(0, SEC, "band", tostring(chosen.id))
+  reaper.SetProjExtState(0, SEC, "band_name", chosen.name)
   return true
 end
 
@@ -97,11 +100,16 @@ local function main()
   if get("url") == "" or get("token") == "" then
     if not configure() then return end
   end
-  if get("band") == "" then
+  local proj = 0
+  local _, pband = reaper.GetProjExtState(proj, SEC, "band")
+  local _, pband_name = reaper.GetProjExtState(proj, SEC, "band_name")
+  if pband ~= "" then
+    set("band", pband) set("band_name", pband_name)
+  else
+    set("band", "")          -- proyecto nuevo: preguntar a que banda pertenece
     if not choose_band() then return end
   end
 
-  local proj = 0
   local r1, r2 = reaper.GetProjectName(proj, "")
   local pname = (type(r2) == "string" and r2) or (type(r1) == "string" and r1) or ""
   pname = pname:gsub("%.[Rr][Pp][Pp]$", "")
@@ -111,7 +119,7 @@ local function main()
   end
 
   local ok, vals = reaper.GetUserInputs("Diablo Master - subir a " .. get("band_name"), 4,
-    "Nombre del tema o ensayo,Que subir (cancion / pistas),Donde (ensayo / produccion / master),Cambiar conexion (si / no),extrawidth=220",
+    "Nombre del tema o ensayo,Que subir (cancion / pistas),Donde (ensayo / produccion / master),Cambiar (no / banda / conexion),extrawidth=220",
     pname .. ",cancion," .. (get("section") ~= "" and get("section") or "ensayo") .. ",no")
   if not ok then return end
   local title, what, where, reconf = vals:match("^(.-),(.-),(.-),(.*)$")
@@ -120,8 +128,13 @@ local function main()
   where = clean(where):lower()
   local section = (where:find("^mas") and "master") or (where:find("^prod") and "produccion") or "ensayo"
   set("section", section)
-  if clean(reconf):lower() == "si" then
+  local rc = clean(reconf):lower()
+  if rc == "conexion" or rc == "si" then
     if configure() and choose_band() then msg("Conexion actualizada. Volve a ejecutar el script.") end
+    return
+  elseif rc:find("^ban") then
+    if not choose_band() then return end
+    msg("Listo: este proyecto ahora sube a " .. get("band_name") .. ".\nVolve a ejecutar el script.")
     return
   end
   if title == "" then title = pname end
@@ -222,7 +235,7 @@ local function main()
         local okp = false
         for try = 1, 3 do
           local c, b2 = with_auth(get("url") .. "/uploads/" .. uid .. "/" .. idx, get("token"),
-            "-m 1800 -X PUT -H 'Content-Type: application/octet-stream' --data-binary @" .. q(part) .. " -w " .. q("\nHTTP:%{http_code}"))
+            "-m 1800 -H 'Expect:' -H 'Content-Type: application/octet-stream' -T " .. q(part) .. " -w " .. q("\nHTTP:%{http_code}"))
           if c == 0 and tostring(b2):match("HTTP:(%d+)") == "200" then okp = true break end
           failed = tostring(b2):sub(1, 300)
         end

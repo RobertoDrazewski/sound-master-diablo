@@ -1519,7 +1519,7 @@ _cover_ai_usage: dict[tuple[int, str], int] = {}
 @app.post("/albums/{album_id}/cover-preview")
 def cover_preview(album_id: int, mode: str = Form("style"), style: str = Form("ember"),
                   title: str = Form(""), subtitle: str = Form(""), show_text: bool = Form(True),
-                  prompt: str = Form(""), file: UploadFile | None = File(None),
+                  prompt: str = Form(""), explicit: bool = Form(False), file: UploadFile | None = File(None),
                   user: User = Depends(current_user), db: Session = Depends(get_db)):
     """Arma una tapa y la devuelve sin guardarla; el cliente la sube como tapa si le gusta."""
     a = _album_for(db, user, album_id)
@@ -1538,21 +1538,28 @@ def cover_preview(album_id: int, mode: str = Form("style"), style: str = Form("e
             key = (a.band_id, now().strftime("%Y-%m-%d"))
             if _cover_ai_usage.get(key, 0) >= COVER_AI_DAILY_LIMIT:
                 raise HTTPException(429, "Se alcanzó el límite de imágenes con IA de hoy para esta banda. Mañana vuelve.")
-            jpeg = covers.generate_ai(prompt.strip()[:600], src)
+            jpeg, notice = covers.generate_ai(prompt.strip()[:600], src)
             _cover_ai_usage[key] = _cover_ai_usage.get(key, 0) + 1
             if show_text:
-                jpeg = covers.add_text(jpeg, title, subtitle)
+                jpeg = covers.add_text(jpeg, title, subtitle, explicit)
+            if explicit:
+                jpeg = covers.add_explicit(jpeg)
         else:
             if style not in {s["id"] for s in covers.STYLES}:
                 raise HTTPException(422, "Estilo desconocido")
             if src is None and style != "oscuro":
                 raise HTTPException(422, "Subí una foto o elegí el estilo Oscuro")
-            jpeg = covers.render(src, style, title, subtitle, show_text)
+            notice = ""
+            jpeg = covers.render(src, style, title, subtitle, show_text, explicit)
     except ValueError as e:
         raise HTTPException(422, str(e)) from None
     except RuntimeError as e:
-        raise HTTPException(502, str(e)) from None
-    return Response(jpeg, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+        # 424 y no 502: Cloudflare cambia el cuerpo de los 5xx y se pierde el mensaje
+        raise HTTPException(424, str(e)) from None
+    headers = {"Cache-Control": "no-store"}
+    if notice:
+        headers["X-Cover-Notice"] = notice.encode("ascii", "ignore").decode()
+    return Response(jpeg, media_type="image/jpeg", headers=headers)
 
 
 @app.delete("/albums/{album_id}/photo")
