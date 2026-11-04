@@ -161,7 +161,7 @@ def _call_image_model(model: str, prompt: str, src: bytes | None, deadline: floa
     if src is None:
         payload = {"model": model, "prompt": prompt, "size": "1024x1024", "n": 1}
         if model.startswith("dall-e"):
-            payload.update(quality="hd" if model == "dall-e-3" else "standard", response_format="b64_json")
+            payload["quality"] = "hd" if model == "dall-e-3" else "standard"   # devuelve un enlace: se descarga abajo
         else:
             payload["quality"] = COVER_AI_QUALITY
         req = urllib.request.Request("https://api.openai.com/v1/images/generations", data=json.dumps(payload).encode(),
@@ -196,7 +196,7 @@ def generate_ai(prompt: str, src: bytes | None) -> tuple[bytes, str]:
     full = ARTIST_BRIEF + prompt.strip()
     models = [COVER_AI_MODEL] + [m for m in ("dall-e-3",) if m != COVER_AI_MODEL]
     deadline = time.monotonic() + 80
-    notice, last = "", ""
+    notice, errors = "", []
     for i, model in enumerate(models):
         use_src = src if not model.startswith("dall-e") else None   # dall-e-3 no edita: sin foto de base
         try:
@@ -216,14 +216,14 @@ def generate_ai(prompt: str, src: bytes | None) -> tuple[bytes, str]:
                 raise CoverError("La cuenta de OpenAI no tiene crédito disponible para imágenes.") from None
             if e.code == 429:
                 raise CoverError("OpenAI está limitando los pedidos en este momento. Esperá un minuto y probá de nuevo.") from None
-            last = f"{model}: {msg[:160] or e.code}"
+            errors.append(f"{model}: {msg[:170] or e.code}")
             continue   # modelo no habilitado para la cuenta (403/404/400): probar el siguiente
         except Exception as e:  # noqa: BLE001
             print(f"[covers] {model} -> {e!r}", flush=True)
-            last = f"{model}: {e}"
+            errors.append(f"{model}: {e}")
             continue
     else:
-        raise CoverError(f"No se pudo generar la imagen ({last}).")
+        raise CoverError("No se pudo generar la imagen. " + " | ".join(errors))
     img = ImageOps.fit(Image.open(io.BytesIO(raw)).convert("RGB"), (SIZE, SIZE), Image.LANCZOS)
     out = io.BytesIO()
     img.save(out, "JPEG", quality=90, optimize=True)
