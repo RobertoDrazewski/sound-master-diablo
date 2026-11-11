@@ -45,6 +45,36 @@ class User(Base):
     is_super: Mapped[bool] = mapped_column(Boolean, default=False)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+    # perfil de musico (banco de musicos): solo se muestra si available=True (opt-in)
+    available: Mapped[bool] = mapped_column(Boolean, default=False)
+    bio: Mapped[str] = mapped_column(Text, default="")
+    styles: Mapped[str] = mapped_column(String(300), default="")        # separados por coma
+    instruments: Mapped[str] = mapped_column(String(300), default="")   # separados por coma
+    sings: Mapped[bool] = mapped_column(Boolean, default=False)
+    equipment: Mapped[str] = mapped_column(Text, default="")
+    has_transport: Mapped[bool] = mapped_column(Boolean, default=False)
+    has_rehearsal_space: Mapped[bool] = mapped_column(Boolean, default=False)
+    city: Mapped[str] = mapped_column(String(80), default="")
+    country: Mapped[str] = mapped_column(String(60), default="")
+    contact_kind: Mapped[str] = mapped_column(String(10), default="")   # whatsapp | email
+    contact_value: Mapped[str] = mapped_column(String(160), default="")
+
+
+class MusicianRequest(Base):
+    """Aviso de una banda que busca musico. Lo ven los admins de otras bandas."""
+    __tablename__ = "musician_requests"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    band_id: Mapped[int] = mapped_column(ForeignKey("bands.id", ondelete="CASCADE"), index=True)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    instrument: Mapped[str] = mapped_column(String(80), default="")
+    styles: Mapped[str] = mapped_column(String(300), default="")
+    city: Mapped[str] = mapped_column(String(80), default="")
+    country: Mapped[str] = mapped_column(String(60), default="")
+    description: Mapped[str] = mapped_column(Text, default="")
+    contact_kind: Mapped[str] = mapped_column(String(10), default="")
+    contact_value: Mapped[str] = mapped_column(String(160), default="")
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
 
 class Band(Base):
@@ -317,6 +347,13 @@ def _migrate_sqlite():
         return False
 
     with engine.begin() as conn:
+        for col, ddl in (("available", "BOOLEAN NOT NULL DEFAULT 0"), ("bio", "TEXT NOT NULL DEFAULT ''"),
+                         ("styles", "VARCHAR(300) NOT NULL DEFAULT ''"), ("instruments", "VARCHAR(300) NOT NULL DEFAULT ''"),
+                         ("sings", "BOOLEAN NOT NULL DEFAULT 0"), ("equipment", "TEXT NOT NULL DEFAULT ''"),
+                         ("has_transport", "BOOLEAN NOT NULL DEFAULT 0"), ("has_rehearsal_space", "BOOLEAN NOT NULL DEFAULT 0"),
+                         ("city", "VARCHAR(80) NOT NULL DEFAULT ''"), ("country", "VARCHAR(60) NOT NULL DEFAULT ''"),
+                         ("contact_kind", "VARCHAR(10) NOT NULL DEFAULT ''"), ("contact_value", "VARCHAR(160) NOT NULL DEFAULT ''")):
+            add(conn, "users", col, ddl)
         if add(conn, "tracks", "section", "VARCHAR(10) NOT NULL DEFAULT 'master'"):
             conn.execute(text("UPDATE tracks SET section='ensayo' WHERE id IN "
                               "(SELECT track_id FROM versions WHERE kind='raw')"))

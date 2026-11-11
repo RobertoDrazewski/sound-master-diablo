@@ -24,6 +24,9 @@ const LAND_BLOCKS = [
       "Para vinilo y CD, con la guía de qué pedirle a la planta", "Guía paso a paso de cómo se publica en cada una"] },
   { k: "calendario", icon: "calendar", t: "Calendario", img: "/img/herramienta-calendario.jpg", lead: "Ensayos y shows con aviso a toda la banda.",
     items: ["Agendá ensayos, shows y grabaciones", "Aviso automático a todos los integrantes", "Los próximos eventos aparecen en el inicio"] },
+  { k: "musicos", icon: "users", t: "Banco de músicos", img: "/img/hero-escenario.jpg", pos: "70% 40%", lead: "¿Te falta un bajista o un tecladista? Encontralo sin salir de la app.",
+    items: ["Músicos disponibles para tocar en otros proyectos, por instrumento, estilo y zona", "Perfil con foto, bio, equipamiento, movilidad y sala de ensayo propia",
+      "Contacto directo por WhatsApp o mail, con el mensaje ya escrito", "Publicá qué músico buscás y que lo vean los demás admins", "Solo lo ve el admin de cada banda; el músico decide si aparece"] },
 ];
 const LAND_FLOW = [
   { icon: "mic", t: "Grabá", d: "El ensayo, desde el celular" },
@@ -212,7 +215,7 @@ async function loadPublicConfig() {
 function planFeatures(p) {
   return [
     `<b>${p.masters_month}</b> masters por mes`, `<b>${p.quota_gb}</b> GB de espacio`, `Hasta <b>${p.max_members}</b> integrantes`,
-    `<b>${p.ai_covers_month}</b> tapas con IA por mes`, "Estudio de master completo", "Informe y comparación A/B",
+    `<b>${p.ai_covers_month}</b> tapas con IA por mes`, "Estudio de master completo", "Informe y comparación A/B", "Banco de músicos: encontrá integrantes y publicá búsquedas",
   ];
 }
 

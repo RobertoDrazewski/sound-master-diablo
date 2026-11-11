@@ -412,3 +412,15 @@ html:has(.l2-page) { scroll-behavior: smooth; }
 .card > .cx-warn { margin-top: 1rem; }
 #bl-hist .table td, #bl-hist .table th { padding-inline: .4rem; }
 @media (max-width: 520px) { #bl-hist .hide-sm { display: none; } }
+
+/* banco de músicos */
+.mp-list { list-style: none; margin: 0; padding: 0; }
+.mp-li { display: flex; flex-wrap: wrap; align-items: flex-start; gap: .55rem .8rem; padding: .85rem 0; border-top: 1px solid var(--line-2); }
+.mp-li:first-child { border-top: 0; }
+.mp-li > svg { flex: none; margin-top: .2rem; }
+.mp-li .grow { flex: 1 1 220px; min-width: 0; }
+.mp-li > .btn { margin-left: auto; }
+.mp-li .badge { margin: 0 .2rem .2rem 0; }
+@media (max-width: 600px) { .mp-li > .btn { flex: 1 1 100%; justify-content: center; margin-left: 0; } }
+#mf .field { flex: 1 1 130px; }
+#mf input { width: 100%; }

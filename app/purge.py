@@ -11,8 +11,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .config import DATA_DIR
-from .db import (Album, Band, Event, Invite, Job, Membership, Notification, Reference, Track, UsageEvent, User,
-                 Version)
+from .db import (Album, Band, Event, Invite, Job, Membership, MusicianRequest, Notification, Reference, Track,
+                 UsageEvent, User, Version)
 
 log = logging.getLogger("uvicorn.error")
 
@@ -49,6 +49,7 @@ def delete_band(db: Session, band: Band, delete_orphan_users: bool = False) -> i
     db.query(Membership).filter_by(band_id=band_id).delete(synchronize_session=False)
     db.query(Reference).filter_by(band_id=band_id).delete(synchronize_session=False)
     db.query(Invite).filter_by(band_id=band_id).delete(synchronize_session=False)
+    db.query(MusicianRequest).filter_by(band_id=band_id).delete(synchronize_session=False)
     db.query(UsageEvent).filter_by(band_id=band_id).delete(synchronize_session=False)
     db.delete(band)
     db.commit()

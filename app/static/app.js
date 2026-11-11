@@ -57,6 +57,8 @@ const ICONS = {
   trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
   edit: '<path d="M4 20h4L19 9l-4-4L4 16zM13 7l4 4"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
+  chat: '<path d="M4 5h16v11H9l-5 4z"/>',
+  search: '<circle cx="11" cy="11" r="6"/><path d="M16 16l4 4"/>',
   camera: '<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>',
   home: '<path d="M4 11l8-7 8 7v9h-5v-6H9v6H4z"/>',
   target: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/>',
@@ -323,7 +325,7 @@ function renderShell(active) {
     for (const b of me.bands) {
       const cur = String(active.bandId) === String(b.id);
       h += `<a class="nav-link band-link ${cur ? "active-band" : ""}" href="#/band/${b.id}/ensayos">${avatar(b.photo, b.name)}<span>${esc(b.name)}</span></a>`;
-      if (cur) h += `<div class="side-tools">${TOOLS.map(([k, l, i]) => link(`#/band/${b.id}/${k}`, l, i, active.tool === k)).join("")}${b.role === "admin" ? link(`#/band/${b.id}/plan`, "Plan", "card", active.tool === "plan") : ""}</div>`;
+      if (cur) h += `<div class="side-tools">${TOOLS.map(([k, l, i]) => link(`#/band/${b.id}/${k}`, l, i, active.tool === k)).join("")}${b.role === "admin" ? link(`#/band/${b.id}/musicos`, "Banco de músicos", "search", active.tool === "musicos") + link(`#/band/${b.id}/plan`, "Plan", "card", active.tool === "plan") : ""}</div>`;
     }
     h += `</div><div class="side-sep"></div>`;
     h += link("#/reaper", "Conectar Reaper", "headphones", active.key === "reaper");
@@ -627,6 +629,7 @@ async function bandTool(band, tool, query, nav) {
     case "lanzamiento": return await viewRelease(band, nav);
     case "calendario": return await viewCalendar(band, nav);
     case "integrantes": return await viewMembers(band, nav);
+    case "musicos": return await viewMusicians(band, nav);
     default: return notFound();
   }
 }
@@ -1867,7 +1870,7 @@ async function viewReaper(nav) {
 /* ===================== referencias ===================== */
 /* ===================== cuenta ===================== */
 async function viewAccount(nav) {
-  const tokens = await api("/me/api-tokens");
+  const [tokens, mp] = await Promise.all([api("/me/api-tokens"), api("/me/music-profile")]);
   if (nav !== state.nav) return;
   const me = state.me;
   setApp(`
@@ -1881,6 +1884,7 @@ async function viewAccount(nav) {
         <div class="row"><button class="btn primary">Guardar nombre</button><button type="button" class="btn" id="out">Cerrar sesión</button></div>
       </form></div>
     </section>
+    ${musicProfileCard(mp)}
     <section class="card"><h2>Cambiar mi contraseña</h2>
       <form id="pf" class="stack">
         <div class="field" style="margin:0"><label for="pc">Contraseña actual</label><input id="pc" type="password" autocomplete="current-password" required></div>
@@ -1900,6 +1904,7 @@ async function viewAccount(nav) {
     </section>`);
 
   $("#out").addEventListener("click", () => logout(false));
+  wireMusicProfile(mp);
   wireInstall();
   $("#pf").addEventListener("submit", async (ev) => {
     ev.preventDefault();
@@ -1945,3 +1950,140 @@ $("#scrim").addEventListener("click", closeDrawer);
 $("#modal").addEventListener("click", (e) => { if (e.target === $("#modal")) closeModal(); });
 $("#modal").addEventListener("close", () => { $("#modal").innerHTML = ""; });
 router();
+
+
+/* ===================== banco de músicos ===================== */
+const MP_STYLES = ["Rock", "Hard rock", "Heavy metal", "Punk", "Pop", "Funk", "Jazz", "Blues", "Reggae", "Cumbia", "Folklore", "Hip hop", "Electrónica", "Indie"];
+const mpTags = (a) => (a || []).map((x) => `<span class="badge">${esc(x)}</span>`).join(" ");
+const mpPlace = (o) => [o.city, o.country].filter(Boolean).join(", ");
+
+function musicProfileCard(p) {
+  return `<section class="card" id="mpcard"><h2>Mi perfil de músico</h2>
+    <p class="muted">Si te tildás como disponible, los admins de otras bandas pueden ver este perfil y tu contacto en el Banco de músicos para invitarte a tocar. Lo desactivás cuando quieras.</p>
+    <form id="mpf" class="stack">
+      <label class="check"><input type="checkbox" id="mp-av" ${p.available ? "checked" : ""}> Estoy disponible para tocar en otros proyectos</label>
+      <div class="field" style="margin:0"><label for="mp-bio">Sobre mí</label><textarea id="mp-bio" maxlength="800" placeholder="Contá tu recorrido y qué buscás">${esc(p.bio)}</textarea></div>
+      <div class="field" style="margin:0"><label for="mp-ins">Instrumentos (separados por coma)</label>
+        <input id="mp-ins" type="text" maxlength="300" list="mp-inslist" value="${esc(p.instruments.join(", "))}" placeholder="Ej: Bajo, Guitarra">
+        <datalist id="mp-inslist">${INSTRUMENTS.map((i) => `<option value="${esc(i)}">`).join("")}</datalist></div>
+      <label class="check"><input type="checkbox" id="mp-sings" ${p.sings ? "checked" : ""}> También canto</label>
+      <div class="field" style="margin:0"><label for="mp-sty">Estilos que toco (separados por coma)</label>
+        <input id="mp-sty" type="text" maxlength="400" list="mp-stylist" value="${esc(p.styles.join(", "))}" placeholder="Ej: Rock, Funk, Jazz">
+        <datalist id="mp-stylist">${MP_STYLES.map((i) => `<option value="${esc(i)}">`).join("")}</datalist></div>
+      <div class="field" style="margin:0"><label for="mp-eq">Equipamiento</label><textarea id="mp-eq" maxlength="600" placeholder="Instrumentos, amplificación, pedales, interfaz...">${esc(p.equipment)}</textarea></div>
+      <label class="check"><input type="checkbox" id="mp-tr" ${p.has_transport ? "checked" : ""}> Tengo movilidad propia</label>
+      <label class="check"><input type="checkbox" id="mp-sp" ${p.has_rehearsal_space ? "checked" : ""}> Tengo espacio propio de ensayo</label>
+      <div class="row" style="gap:.75rem">
+        <div class="field grow" style="margin:0;min-width:150px"><label for="mp-city">Ciudad donde vivo</label><input id="mp-city" type="text" maxlength="80" value="${esc(p.city)}"></div>
+        <div class="field grow" style="margin:0;min-width:150px"><label for="mp-country">País</label><input id="mp-country" type="text" maxlength="60" value="${esc(p.country)}"></div>
+      </div>
+      <div class="row" style="gap:.75rem">
+        <div class="field" style="margin:0"><label for="mp-ck">Cómo prefiero que me contacten</label>
+          <select id="mp-ck"><option value="">Elegí una opción</option><option value="whatsapp" ${p.contact_kind === "whatsapp" ? "selected" : ""}>WhatsApp</option><option value="email" ${p.contact_kind === "email" ? "selected" : ""}>Mail</option></select></div>
+        <div class="field grow" style="margin:0;min-width:200px"><label for="mp-cv" id="mp-cvl">Número o mail</label><input id="mp-cv" type="text" maxlength="160" value="${esc(p.contact_value)}"></div>
+      </div>
+      <p class="muted small" id="mp-hint" style="margin:0"></p>
+      <div><button class="btn primary">Guardar perfil</button></div>
+    </form></section>`;
+}
+function wireMusicProfile() {
+  const sync = () => {
+    const k = $("#mp-ck").value;
+    $("#mp-cv").type = k === "email" ? "email" : "text";
+    $("#mp-hint").textContent = k === "whatsapp" ? "Escribilo con código de país y sin signos, por ejemplo 5492615551234 (Argentina, Mendoza)." : "";
+  };
+  $("#mp-ck").addEventListener("change", sync);
+  sync();
+  $("#mpf").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const btn = ev.target.querySelector("button.primary");
+    await withBusy(btn, async () => {
+      try {
+        await api("/me/music-profile", { method: "PUT", json: {
+          available: $("#mp-av").checked, bio: $("#mp-bio").value, instruments: $("#mp-ins").value, sings: $("#mp-sings").checked,
+          styles: $("#mp-sty").value, equipment: $("#mp-eq").value, has_transport: $("#mp-tr").checked,
+          has_rehearsal_space: $("#mp-sp").checked, city: $("#mp-city").value, country: $("#mp-country").value,
+          contact_kind: $("#mp-ck").value, contact_value: $("#mp-cv").value } });
+        toast("Perfil guardado", "ok");
+      } catch (e) { toast(e.message, "err"); }
+    });
+  });
+}
+
+function mpContactLink(kind, value, name, band, req) {
+  const msg = req
+    ? `Hola! Vimos en diablomastermix.com.ar que ${req.band_name} busca ${req.instrument}. Somos ${band.name} y nos gustaría coordinar un ensayo. ¿Hablamos?`
+    : `Hola${name ? " " + name : ""}! Te vimos en diablomastermix.com.ar y nos gustaría coordinar un ensayo. ¿Te copa? Somos ${band.name}.`;
+  if (kind === "whatsapp") return `https://wa.me/${encodeURIComponent(value)}?text=${encodeURIComponent(msg)}`;
+  return `mailto:${encodeURIComponent(value)}?subject=${encodeURIComponent("Te vimos en Diablo Master Mix")}&body=${encodeURIComponent(msg)}`;
+}
+const mpContactBtn = (href, kind) => `<a class="btn small primary" href="${esc(href)}" target="_blank" rel="noopener">${ic("chat")}${kind === "whatsapp" ? "Escribir por WhatsApp" : "Escribir por mail"}</a>`;
+
+async function viewMusicians(band, nav) {
+  if (band.role !== "admin" && !state.me.is_super) { setApp(`<section class="card"><p>El Banco de músicos es solo para el admin de la banda.</p></section>`); return; }
+  const f = state.mpFilter || (state.mpFilter = { instrument: "", country: "", city: "", style: "" });
+  const qs = () => new URLSearchParams(Object.fromEntries(Object.entries(f).filter(([, v]) => v.trim()))).toString();
+  const [reqs, mus] = await Promise.all([api("/musician-requests"), api("/musicians?" + qs())]);
+  if (nav !== state.nav) return;
+  const groups = {};
+  for (const m of mus) (groups[m.instruments[0] || "Otros"] ||= []).push(m);
+  const mine = reqs.filter((r) => r.band_id === band.id);
+  setApp(`
+    ${bandHead(band, "Banco de músicos", "Encontrá músicos disponibles para tocar o publicá qué músico buscás. Lo ven solo los admins de las bandas.")}
+    <section class="card"><h2>Búsquedas de bandas</h2>
+      ${reqs.length ? `<ul class="mp-list">${reqs.map((r) => `<li class="mp-li">${ic("search")}<div class="grow"><strong>Busca ${esc(r.instrument)}</strong> <span class="muted small">· ${esc(r.band_name)}${mpPlace(r) ? " · " + esc(mpPlace(r)) : ""}</span>
+          ${r.styles.length ? `<div style="margin:.25rem 0">${mpTags(r.styles)}</div>` : ""}${r.description ? `<div class="muted small">${esc(r.description)}</div>` : ""}</div>
+          ${r.mine ? `<button class="btn small danger" data-delreq="${r.band_id}:${r.id}">Sacar</button>` : mpContactBtn(mpContactLink(r.contact_kind, r.contact_value, "", band, r), r.contact_kind)}</li>`).join("")}</ul>`
+        : `<p class="muted">Todavía no hay búsquedas publicadas.</p>`}
+      <details style="margin-top:.75rem"><summary class="btn small">${ic("plus")}Publicar que buscamos músico</summary>
+        <form id="rqf" class="stack" style="margin-top:.75rem">
+          <div class="field" style="margin:0"><label for="rq-ins">Qué instrumento buscan</label><input id="rq-ins" type="text" list="mp-inslist2" maxlength="80" required placeholder="Ej: Bajista">
+            <datalist id="mp-inslist2">${INSTRUMENTS.map((i) => `<option value="${esc(i)}">`).join("")}</datalist></div>
+          <div class="field" style="margin:0"><label for="rq-sty">Estilos (separados por coma)</label><input id="rq-sty" type="text" maxlength="400" placeholder="Ej: Hard rock, Funk"></div>
+          <div class="row" style="gap:.75rem"><div class="field grow" style="margin:0;min-width:150px"><label for="rq-city">Ciudad</label><input id="rq-city" type="text" maxlength="80"></div>
+            <div class="field grow" style="margin:0;min-width:150px"><label for="rq-country">País</label><input id="rq-country" type="text" maxlength="60"></div></div>
+          <div class="field" style="margin:0"><label for="rq-d">Contá qué buscan</label><textarea id="rq-d" maxlength="600" placeholder="Nivel, disponibilidad, si hay shows, dónde ensayan..."></textarea></div>
+          <div class="row" style="gap:.75rem"><div class="field" style="margin:0"><label for="rq-ck">Contacto</label><select id="rq-ck"><option value="whatsapp">WhatsApp</option><option value="email">Mail</option></select></div>
+            <div class="field grow" style="margin:0;min-width:200px"><label for="rq-cv">Número (con código de país) o mail</label><input id="rq-cv" type="text" maxlength="160" required></div></div>
+          <div><button class="btn primary">Publicar búsqueda</button></div>
+        </form></details>
+      ${mine.length ? `<p class="muted small" style="margin:.5rem 0 0">Las búsquedas se muestran 60 días. Podés tener hasta 3 activas por banda.</p>` : ""}
+    </section>
+    <section class="card"><h2>Músicos disponibles</h2>
+      <form id="mf" class="row" style="gap:.5rem;align-items:flex-end">
+        <div class="field" style="margin:0"><label for="f-ins">Instrumento</label><input id="f-ins" type="text" value="${esc(f.instrument)}" list="mp-inslist2"></div>
+        <div class="field" style="margin:0"><label for="f-sty">Estilo</label><input id="f-sty" type="text" value="${esc(f.style)}"></div>
+        <div class="field" style="margin:0"><label for="f-country">País</label><input id="f-country" type="text" value="${esc(f.country)}"></div>
+        <div class="field" style="margin:0"><label for="f-city">Ciudad</label><input id="f-city" type="text" value="${esc(f.city)}"></div>
+        <button class="btn">${ic("search")}Buscar</button></form>
+      ${mus.length ? Object.keys(groups).map((g) => `<h3 style="margin:1.1rem 0 .4rem">${esc(g)}</h3><ul class="mp-list">${groups[g].map((m) => `
+        <li class="mp-li">${avatar(m.photo, m.name, "")}<div class="grow"><strong>${esc(m.name)}</strong>
+          <div class="muted small">${esc(m.instruments.join(", "))}${mpPlace(m) ? " · " + esc(mpPlace(m)) : ""}</div>
+          ${m.styles.length ? `<div style="margin:.25rem 0">${mpTags(m.styles)}</div>` : ""}
+          ${m.bio ? `<div class="small" style="margin:.25rem 0">${esc(m.bio)}</div>` : ""}
+          ${m.equipment ? `<div class="muted small">Equipamiento: ${esc(m.equipment)}</div>` : ""}
+          <div style="margin-top:.25rem">${m.has_transport ? `<span class="badge">Movilidad propia</span> ` : ""}${m.has_rehearsal_space ? `<span class="badge">Espacio de ensayo propio</span>` : ""}</div></div>
+        ${mpContactBtn(mpContactLink(m.contact_kind, m.contact_value, m.name.split(" ")[0], band), m.contact_kind)}</li>`).join("")}</ul>`).join("")
+        : `<p class="muted" style="margin-top:.75rem">No hay músicos disponibles con esos filtros. Cada músico decide si aparece desde Tu cuenta.</p>`}
+    </section>`);
+  $("#mf").addEventListener("submit", (ev) => {
+    ev.preventDefault();
+    Object.assign(f, { instrument: $("#f-ins").value, style: $("#f-sty").value, country: $("#f-country").value, city: $("#f-city").value });
+    router();
+  });
+  $$("[data-delreq]").forEach((b) => b.addEventListener("click", () => withBusy(b, async () => {
+    const [bid, id] = b.dataset.delreq.split(":");
+    try { await api(`/bands/${bid}/musician-requests/${id}`, { method: "DELETE" }); toast("Búsqueda sacada", "ok"); router(); } catch (e) { toast(e.message, "err"); }
+  })));
+  $("#rqf").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    await withBusy(ev.target.querySelector("button.primary"), async () => {
+      try {
+        await api(`/bands/${band.id}/musician-requests`, { method: "POST", json: { instrument: $("#rq-ins").value, styles: $("#rq-sty").value,
+          city: $("#rq-city").value, country: $("#rq-country").value, description: $("#rq-d").value, contact_kind: $("#rq-ck").value, contact_value: $("#rq-cv").value } });
+        toast("Búsqueda publicada", "ok");
+        router();
+      } catch (e) { toast(e.message, "err"); }
+    });
+  });
+}

@@ -19,8 +19,8 @@ from .config import (ASSISTANT_DAILY_LIMIT, COVER_AI_DAILY_LIMIT, PUBLIC_URL, BA
                      INVITE_TTL_DAYS, MAX_UPLOAD_MB, RAW_RETENTION_DAYS,
                      REFERENCE_SECONDS, SUPERADMIN_EMAIL, SUPERADMIN_PASSWORD, CHAT_ENABLED, TRIAL_DAYS,
                      TURNSTILE_SITE_KEY, PURGE_HOURS)
-from .db import (Album, ApiToken, Band, Cancellation, ContactMessage, Event, Genre, Invite, Job, Membership, Notification,
-                 Payment, Plan, Reference, SessionLocal, Signup, Track, User, Version, init_db, now)
+from .db import (Album, ApiToken, Band, Cancellation, ContactMessage, Event, Genre, Invite, Job, Membership, MusicianRequest,
+                 Notification, Payment, Plan, Reference, SessionLocal, Signup, Track, User, Version, init_db, now)
 from .notify import notify_band
 from .security import (create_media_token, create_session_jwt,
                        decode_media_token, decode_session_jwt, hash_password,
@@ -472,6 +472,182 @@ def update_me(body: ProfileIn, user: User = Depends(current_user), db: Session =
     user.name = body.name.strip()
     db.commit()
     return {"ok": True, "name": user.name}
+
+
+# ------------------------------------------------------------ banco de musicos
+
+def _csv(v: str, max_items: int = 12, max_len: int = 40) -> str:
+    """Normaliza una lista separada por comas: sin vacios ni repetidos."""
+    out, seen = [], set()
+    for x in (v or "").split(","):
+        x = re.sub(r"\s+", " ", x).strip()[:max_len]
+        if x and x.lower() not in seen:
+            seen.add(x.lower())
+            out.append(x)
+    return ",".join(out[:max_items])
+
+
+def _clean_contact(kind: str, value: str) -> tuple[str, str]:
+    kind, value = (kind or "").strip().lower(), (value or "").strip()
+    if not kind and not value:
+        return "", ""
+    if kind == "whatsapp":
+        digits = re.sub(r"\D", "", value)
+        if not 8 <= len(digits) <= 15:
+            raise HTTPException(422, "El WhatsApp tiene que incluir el código de país, por ejemplo 5492615551234")
+        return kind, digits
+    if kind == "email":
+        if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", value) or len(value) > 160:
+            raise HTTPException(422, "El mail no parece válido")
+        return kind, value
+    raise HTTPException(422, "Elegí WhatsApp o mail como forma de contacto")
+
+
+def _music_profile(u: User) -> dict:
+    return {"available": u.available, "bio": u.bio, "styles": [x for x in u.styles.split(",") if x],
+            "instruments": [x for x in u.instruments.split(",") if x], "sings": u.sings, "equipment": u.equipment,
+            "has_transport": u.has_transport, "has_rehearsal_space": u.has_rehearsal_space,
+            "city": u.city, "country": u.country, "contact_kind": u.contact_kind, "contact_value": u.contact_value}
+
+
+class MusicProfileIn(BaseModel):
+    available: bool = False
+    bio: str = Field(default="", max_length=800)
+    styles: str = Field(default="", max_length=400)
+    instruments: str = Field(default="", max_length=400)
+    sings: bool = False
+    equipment: str = Field(default="", max_length=600)
+    has_transport: bool = False
+    has_rehearsal_space: bool = False
+    city: str = Field(default="", max_length=80)
+    country: str = Field(default="", max_length=60)
+    contact_kind: str = Field(default="", max_length=10)
+    contact_value: str = Field(default="", max_length=160)
+
+
+@app.get("/me/music-profile")
+def get_music_profile(user: User = Depends(current_user)):
+    return _music_profile(user)
+
+
+@app.put("/me/music-profile")
+def put_music_profile(body: MusicProfileIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    kind, value = _clean_contact(body.contact_kind, body.contact_value)
+    instruments, city, country = _csv(body.instruments, 6, 60), body.city.strip(), body.country.strip()
+    if body.available and not (kind and value):
+        raise HTTPException(422, "Para aparecer en el banco de músicos cargá cómo te contactan")
+    if body.available and not (instruments or body.sings):
+        raise HTTPException(422, "Para aparecer en el banco de músicos indicá qué instrumento tocás o si cantás")
+    if body.available and not (city and country):
+        raise HTTPException(422, "Para aparecer en el banco de músicos cargá tu ciudad y tu país")
+    user.available, user.bio, user.styles = body.available, body.bio.strip(), _csv(body.styles)
+    user.instruments, user.sings, user.equipment = instruments, body.sings, body.equipment.strip()
+    user.has_transport, user.has_rehearsal_space = body.has_transport, body.has_rehearsal_space
+    user.city, user.country, user.contact_kind, user.contact_value = city, country, kind, value
+    db.commit()
+    return _music_profile(user)
+
+
+def _is_any_band_admin(db: Session, user: User) -> bool:
+    return user.is_super or db.query(Membership).filter_by(user_id=user.id, role="admin").count() > 0
+
+
+def need_any_band_admin(db: Session, user: User) -> None:
+    if not _is_any_band_admin(db, user):
+        raise HTTPException(403, "El banco de músicos es para admins de banda")
+
+
+@app.get("/musicians")
+def list_musicians(instrument: str = "", country: str = "", city: str = "", style: str = "",
+                   user: User = Depends(current_user), db: Session = Depends(get_db)):
+    need_any_band_admin(db, user)
+    rows = db.query(User).filter(User.available.is_(True), User.active.is_(True), User.is_super.is_(False),
+                                 User.id != user.id, User.contact_value != "").all()
+    f = lambda v: (v or "").strip().lower()
+    out = []
+    for u in rows:
+        ins = [x for x in u.instruments.split(",") if x] + (["Voz"] if u.sings and not any(f(x) == "voz" for x in u.instruments.split(",")) else [])
+        sty = [x for x in u.styles.split(",") if x]
+        if f(instrument) and not any(f(instrument) in f(x) for x in ins):
+            continue
+        if f(country) and f(country) not in f(u.country):
+            continue
+        if f(city) and f(city) not in f(u.city):
+            continue
+        if f(style) and not any(f(style) in f(x) for x in sty):
+            continue
+        out.append({"id": u.id, "name": u.name or u.email.split("@")[0], "photo": img_url("users", u.id, u.photo),
+                    "instruments": ins, "sings": u.sings, "styles": sty, "bio": u.bio, "equipment": u.equipment,
+                    "has_transport": u.has_transport, "has_rehearsal_space": u.has_rehearsal_space,
+                    "city": u.city, "country": u.country, "contact_kind": u.contact_kind, "contact_value": u.contact_value})
+    out.sort(key=lambda m: ((m["instruments"][0] if m["instruments"] else "~").lower(), m["country"].lower(),
+                            m["city"].lower(), m["name"].lower()))
+    return out
+
+
+class MusicianRequestIn(BaseModel):
+    instrument: str = Field(min_length=1, max_length=80)
+    styles: str = Field(default="", max_length=400)
+    city: str = Field(default="", max_length=80)
+    country: str = Field(default="", max_length=60)
+    description: str = Field(default="", max_length=600)
+    contact_kind: str = Field(max_length=10)
+    contact_value: str = Field(max_length=160)
+
+
+MUSICIAN_REQUEST_DAYS = 60
+MUSICIAN_REQUESTS_PER_BAND = 3
+
+
+def _request_out(r: MusicianRequest, band_name: str, mine: bool) -> dict:
+    return {"id": r.id, "band_id": r.band_id, "band_name": band_name, "instrument": r.instrument,
+            "styles": [x for x in r.styles.split(",") if x], "city": r.city, "country": r.country,
+            "description": r.description, "contact_kind": r.contact_kind, "contact_value": r.contact_value,
+            "created_at": r.created_at.isoformat(), "mine": mine}
+
+
+@app.get("/musician-requests")
+def list_musician_requests(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    need_any_band_admin(db, user)
+    since = now() - timedelta(days=MUSICIAN_REQUEST_DAYS)
+    my_bands = {m.band_id for m in db.query(Membership).filter_by(user_id=user.id, role="admin").all()}
+    rows = (db.query(MusicianRequest, Band.name).join(Band, Band.id == MusicianRequest.band_id)
+            .filter(MusicianRequest.active.is_(True), MusicianRequest.created_at >= since)
+            .order_by(MusicianRequest.created_at.desc()).limit(200).all())
+    return [_request_out(r, n, user.is_super or r.band_id in my_bands) for r, n in rows]
+
+
+@app.post("/bands/{band_id}/musician-requests")
+def create_musician_request(band_id: int, body: MusicianRequestIn, user: User = Depends(current_user),
+                            db: Session = Depends(get_db)):
+    need_band_admin(db, user, band_id, "Solo el admin de la banda publica búsquedas")
+    band = db.get(Band, band_id)
+    if not billing.status(db, band)["can_write"]:
+        raise HTTPException(402, "La suscripción de la banda no está al día")
+    since = now() - timedelta(days=MUSICIAN_REQUEST_DAYS)
+    if db.query(MusicianRequest).filter(MusicianRequest.band_id == band_id, MusicianRequest.active.is_(True),
+                                        MusicianRequest.created_at >= since).count() >= MUSICIAN_REQUESTS_PER_BAND:
+        raise HTTPException(409, f"Ya tenés {MUSICIAN_REQUESTS_PER_BAND} búsquedas activas. Sacá una para publicar otra")
+    kind, value = _clean_contact(body.contact_kind, body.contact_value)
+    if not kind:
+        raise HTTPException(422, "Cargá cómo te contactan")
+    r = MusicianRequest(band_id=band_id, created_by=user.id, instrument=body.instrument.strip(),
+                        styles=_csv(body.styles), city=body.city.strip(), country=body.country.strip(),
+                        description=body.description.strip(), contact_kind=kind, contact_value=value)
+    db.add(r)
+    db.commit()
+    return _request_out(r, band.name, True)
+
+
+@app.delete("/bands/{band_id}/musician-requests/{req_id}")
+def delete_musician_request(band_id: int, req_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    need_band_admin(db, user, band_id, "Solo el admin de la banda saca búsquedas")
+    r = db.get(MusicianRequest, req_id)
+    if not r or r.band_id != band_id:
+        raise HTTPException(404, "No encontrado")
+    db.delete(r)
+    db.commit()
+    return {"ok": True}
 
 
 class PasswordIn(BaseModel):
