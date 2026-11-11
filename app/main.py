@@ -440,11 +440,14 @@ def get_image(kind: str, name: str):
 
 
 @app.get("/me")
-def me(user: User = Depends(current_user), db: Session = Depends(get_db)):
+def me(request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)):
     ids = user_band_ids(db, user)
     bands = db.query(Band).filter(Band.id.in_(ids)).order_by(Band.name).all() if ids else []
-    if user.is_super:
-        bands = []  # el panel de super admin no mezcla bandas: se administran desde Admin
+    # el panel web del super admin no mezcla bandas (se administran desde Admin), pero Reaper
+    # (token pck_) necesita ver las bandas de las que el super es integrante para poder subir
+    es_reaper = request.headers.get("authorization", "")[7:].strip().startswith("pck_")
+    if user.is_super and not es_reaper:
+        bands = []
     return {
         "id": user.id, "email": user.email, "name": user.name, "is_super": user.is_super,
         "photo": img_url("users", user.id, user.photo),
