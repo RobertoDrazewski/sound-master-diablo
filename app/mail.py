@@ -30,9 +30,8 @@ def mail_enabled() -> bool:
     return bool(config.RESEND_API_KEY or (config.SMTP_USER and config.SMTP_PASSWORD))
 
 
-def send_mail(subject: str, body: str, reply_to: str = "") -> bool:
-    """True si salio el mail. Nunca levanta: el mensaje igual queda guardado en el panel."""
-    to = config.CONTACT_TO
+def send_to(to: str, subject: str, body: str, reply_to: str = "") -> bool:
+    """True si salio el mail. Nunca levanta: lo importante ya quedo guardado en la base."""
     if not to or not mail_enabled():
         return False
     sender = config.MAIL_FROM or config.SMTP_USER or "onboarding@resend.dev"
@@ -56,3 +55,13 @@ def send_mail(subject: str, body: str, reply_to: str = "") -> bool:
         return True
     except Exception:  # noqa: BLE001
         return False
+
+
+def send_mail(subject: str, body: str, reply_to: str = "") -> bool:
+    """Mensaje interno: va a CONTACT_TO (el correo del dueño, que nunca se muestra en la web)."""
+    return send_to(config.CONTACT_TO, subject, body, reply_to)
+
+
+def send_customer(to: str, subject: str, body: str) -> bool:
+    """Mail a un cliente. Las respuestas van a SUPPORT_EMAIL si esta definido."""
+    return send_to(to, subject, body, config.SUPPORT_EMAIL)

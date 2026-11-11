@@ -93,3 +93,10 @@ class LoginThrottle:
 
 
 throttle = LoginThrottle()
+
+
+def gen_password(n: int = 12) -> str:
+    """Clave inicial legible (sin 0/O/1/l/I) que la persona cambia despues de entrar."""
+    import secrets
+    alphabet = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    return "".join(secrets.choice(alphabet) for _ in range(n))

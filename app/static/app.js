@@ -408,6 +408,7 @@ async function router() {
   const { name, arg, sub } = parseRoute();
   try {
     if (name === "invite") { setPublic(true); return viewInvite(arg); }
+    if (name === "gracias" && arg) { setPublic(true); return viewThanks(arg); }
     if (!session.token) {
       setPublic(true);
       if (name === "login") return viewLogin();

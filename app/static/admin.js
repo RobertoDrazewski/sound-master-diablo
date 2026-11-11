@@ -165,10 +165,13 @@ async function adBandas(body, nav) {
 
 /* ---------- cobros ---------- */
 async function adCobros(body, nav) {
-  const [pays, bands] = await Promise.all([api("/admin/payments"), api("/admin/bands")]);
+  const [pays, bands, sum] = await Promise.all([api("/admin/payments"), api("/admin/bands"), api("/admin/billing/summary")]);
   if (nav !== state.nav) return;
+  const pend = sum.pending_signups || [];
   const problem = bands.filter((b) => ["past_due", "suspended"].includes(b.billing.state) && !b.exempt);
   body.innerHTML = `
+    ${pend.length ? `<section class="card"><h2>Altas sin terminar</h2><p class="small muted">Eligieron un plan pero todavía no completaron el pago en Mercado Pago. Si lo completan, la banda se crea sola y se te avisa.</p>
+      <ul class="upcoming">${pend.map((s) => `<li><div class="grow"><strong>${esc(s.band)}</strong> <span class="chip-st">${esc(s.plan)}</span><div class="small muted">${esc(s.name)} · ${esc(s.email)} · ${adDay(s.created_at)}</div></div></li>`).join("")}</ul></section>` : ""}
     ${problem.length ? `<section class="card"><h2>Para mirar</h2><ul class="upcoming">${problem.map((b) => `<li><div class="grow"><strong>${esc(b.name)}</strong> ${adChip(b.billing.state)}
       <div class="small muted">${b.billing.state === "past_due" ? `El pago venció el ${adDay(b.billing.paid_until)}. Si no paga, se corta solo a los pocos días.` : "Sin servicio: solo puede ver y bajar su material."}</div></div></li>`).join("")}</ul></section>` : ""}
     <section class="card"><h2>Pagos</h2>

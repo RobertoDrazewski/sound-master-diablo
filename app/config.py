@@ -70,6 +70,7 @@ BILLING_CURRENCY = os.getenv("BILLING_CURRENCY", "ARS")
 TURNSTILE_SITE_KEY = os.getenv("TURNSTILE_SITE_KEY", "")
 TURNSTILE_SECRET = os.getenv("TURNSTILE_SECRET", "")
 CONTACT_TO = os.getenv("CONTACT_TO", "") or SUPERADMIN_EMAIL  # donde llegan los mensajes del formulario
+SUPPORT_EMAIL = os.getenv("SUPPORT_EMAIL", "")                 # a donde responden los clientes (opcional; no se muestra en la web)
 MAIL_FROM = os.getenv("MAIL_FROM", "")                       # si no se define, se usa SMTP_USER
 SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))

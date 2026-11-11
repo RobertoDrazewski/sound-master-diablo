@@ -96,6 +96,24 @@ class Payment(Base):
     paid_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
 
+class Signup(Base):
+    """Alta de una banda que compra sola desde la portada. La cuenta se crea recien cuando Mercado Pago autoriza el pago."""
+    __tablename__ = "signups"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    token: Mapped[str] = mapped_column(String(48), unique=True, index=True)
+    band_name: Mapped[str] = mapped_column(String(120))
+    admin_name: Mapped[str] = mapped_column(String(120), default="")
+    email: Mapped[str] = mapped_column(String(255), index=True)
+    payer_email: Mapped[str] = mapped_column(String(255), default="")
+    plan_id: Mapped[int] = mapped_column(Integer)
+    base_url: Mapped[str] = mapped_column(String(200), default="")
+    mp_preapproval_id: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
+    status: Mapped[str] = mapped_column(String(12), default="pending", index=True)   # pending | done | expired
+    band_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
 class UsageEvent(Base):
     """Consumos con costo (tapas con IA, notas del asistente) para aplicar los limites del plan."""
     __tablename__ = "usage_events"

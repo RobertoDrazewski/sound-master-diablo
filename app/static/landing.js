@@ -44,9 +44,13 @@ function landLogoBar() {
     </nav></header>`;
 }
 
+/* regla de diseño: el ícono va siempre a la izquierda y el texto a la derecha; nada de números en los bloques */
+function landHead(b) {
+  return `<div class="l2-hd"><span class="l2-ibox">${ic(b.icon)}</span><div class="l2-ht"><h3>${b.t}</h3><p class="l2-lead">${b.lead}</p></div></div>`;
+}
 function landList(b) { return `<ul class="l2-list">${b.items.map((x) => `<li>${x}</li>`).join("")}</ul>`; }
 function landPic(b, cls = "") {
-  return `<div class="l2-pic ${cls}" style="background-image:url(${b.img});--pos:${b.pos || "50% 50%"}" role="img" aria-label="${b.t}"><span class="l2-badge">${ic(b.icon)}</span></div>`;
+  return `<div class="l2-pic ${cls}" style="background-image:url(${b.img});--pos:${b.pos || "50% 50%"}" role="img" aria-label="${b.t}"></div>`;
 }
 
 function landGo(id) {
@@ -88,9 +92,9 @@ function viewLanding() {
 
         <section class="l2-sec l2-flow" id="l2-flow">
           <h2 class="l2-h">Todo el camino de tu banda, en un solo lugar</h2>
-          <ol class="l2-steps">
-            ${LAND_FLOW.map((s, i) => `<li><span class="l2-step-n">${i + 1}</span><span class="l2-step-i">${ic(s.icon)}</span><b>${s.t}</b><small>${s.d}</small></li>`).join("")}
-          </ol>
+          <ul class="l2-steps">
+            ${LAND_FLOW.map((s) => `<li><span class="l2-ibox">${ic(s.icon)}</span><span class="l2-st"><b>${s.t}</b><small>${s.d}</small></span></li>`).join("")}
+          </ul>
         </section>
 
         <section class="l2-sec" id="l2-master" aria-label="Master">
@@ -98,8 +102,7 @@ function viewLanding() {
             ${landPic(master, "tall")}
             <div class="l2-body">
               <span class="l2-star">La herramienta principal</span>
-              <h3>${master.t}</h3>
-              <p class="l2-lead">${master.lead}</p>
+              ${landHead(master)}
               ${landList(master)}
               <div class="l2-cta left"><a class="btn primary" href="#/login">Entrar</a><button type="button" class="btn" data-go="l2-planes">Ver planes</button></div>
             </div>
@@ -113,7 +116,7 @@ function viewLanding() {
           <div class="l2-grid">
             ${rest.map((b) => `<article class="l2-card" data-glow id="f-${b.k}">
               ${landPic(b)}
-              <div class="l2-body"><h3>${b.t}</h3><p class="l2-lead">${b.lead}</p>${landList(b)}</div></article>`).join("")}
+              <div class="l2-body">${landHead(b)}${landList(b)}</div></article>`).join("")}
           </div>
         </section>
 
@@ -173,13 +176,9 @@ async function landPlans() {
       <p class="plan-tag-line">${esc(p.tagline)}</p>
       <p class="plan-price"><b>${fmtARS(p.price_ars)}</b><span>por mes</span></p>
       <ul>${planFeatures(p).map((f) => `<li>${f}</li>`).join("")}</ul>
-      <button type="button" class="btn ${p.highlight ? "primary" : ""}" data-plan="${esc(p.name)}">Quiero probar ${esc(p.name)}</button>
-    </article>`).join("") + `<p class="small muted l2-plans-note">Hoy se entra por invitación: elegí un plan y te armamos la banda enseguida. Los precios están en pesos argentinos e incluyen todo, sin cargos por canción.</p>`;
-  $$("[data-plan]", box).forEach((b) => b.addEventListener("click", () => {
-    const m = document.getElementById("cf-msg");
-    if (m) m.value = `Hola! Quiero probar Diablo Master Mix con el plan ${b.dataset.plan} para mi banda.`;
-    landGo("l2-contacto");
-  }));
+      <button type="button" class="btn ${p.highlight ? "primary" : ""}" data-plan="${p.id}">Elegir ${esc(p.name)}</button>
+    </article>`).join("") + `<p class="small muted l2-plans-note">Pagás con Mercado Pago y apenas se confirma te mandamos por mail el acceso a tu banda. Los precios están en pesos argentinos e incluyen todo, sin cargos por canción. ¿Dudas? Escribinos en Contacto.</p>`;
+  $$("[data-plan]", box).forEach((b) => b.addEventListener("click", () => openSignup(cfg.plans.find((p) => String(p.id) === b.dataset.plan))));
 }
 
 /* ---------------------------------------------------------------- planes */
@@ -212,14 +211,14 @@ async function openPlans() {
             <p class="plan-tag-line">${esc(p.tagline)}</p>
             <p class="plan-price"><b>${fmtARS(p.price_ars)}</b><span>por mes</span></p>
             <ul>${planFeatures(p).map((f) => `<li>${f}</li>`).join("")}</ul>
-            <button type="button" class="btn ${p.highlight ? "primary" : ""}" data-plan="${esc(p.name)}">Quiero probar ${esc(p.name)}</button>
+            <button type="button" class="btn ${p.highlight ? "primary" : ""}" data-plan="${p.id}">Elegir ${esc(p.name)}</button>
           </article>`).join("")}
       </div>
-      <p class="small muted" style="margin:1rem 0 0">Hoy se entra por invitación: elegí un plan y te armamos la banda enseguida. Los precios están en pesos argentinos e incluyen todo, sin cargos por canción.</p>
+      <p class="small muted" style="margin:1rem 0 0">Pagás con Mercado Pago y apenas se confirma te mandamos por mail el acceso a tu banda. Los precios están en pesos argentinos e incluyen todo, sin cargos por canción.</p>
     </div>`, (m) => {
     m.classList.add("wide");
     $("#pl-x", m).addEventListener("click", closeModal);
-    $$("[data-plan]", m).forEach((b) => b.addEventListener("click", () => openContact(`Hola! Quiero probar Diablo Master Mix con el plan ${b.dataset.plan} para mi banda.`)));
+    $$("[data-plan]", m).forEach((b) => b.addEventListener("click", () => openSignup(cfg.plans.find((p) => String(p.id) === b.dataset.plan))));
   });
   $("#modal").addEventListener("close", () => $("#modal").classList.remove("wide"), { once: true });
 }
@@ -318,4 +317,105 @@ async function openContact(prefill = "") {
         (m2) => $("#cf-ok", m2).addEventListener("click", closeModal));
     });
   });
+}
+
+
+/* ---------------------------------------------------------------- compra: la banda se registra y paga sola */
+async function openSignup(plan) {
+  if (!plan) return;
+  const cfg = await loadPublicConfig();
+  const trial = cfg.trial_days || 0;
+  openModal(`
+    <form id="sg" class="stack signup" novalidate>
+      <div class="st-modal-head"><h2>Plan ${esc(plan.name)}</h2><button type="button" class="icon-btn" id="sg-x" aria-label="Cerrar">✕</button></div>
+      <div class="sg-plan">
+        <span class="l2-ibox">${ic("card")}</span>
+        <div class="sg-pt"><b>${fmtARS(plan.price_ars)} <small>por mes</small></b>
+          <span>${trial ? `${trial} días gratis y después se cobra todos los meses.` : "Se cobra todos los meses."} Cancelás cuando quieras.</span></div>
+      </div>
+      <ul class="sg-feat">${planFeatures(plan).map((f) => `<li><span class="sg-ck" aria-hidden="true">✓</span><span>${f}</span></li>`).join("")}</ul>
+      <div class="field"><label for="sg-band">Nombre de la banda</label><input id="sg-band" type="text" maxlength="120" autocomplete="organization" required></div>
+      <div class="field"><label for="sg-name">Tu nombre</label><input id="sg-name" type="text" maxlength="120" autocomplete="name" required></div>
+      <div class="field"><label for="sg-email">Tu email</label><input id="sg-email" type="email" maxlength="255" autocomplete="email" inputmode="email" required>
+        <small class="muted">Ahí te mandamos la confirmación y tu clave de acceso.</small></div>
+      <details class="sg-other"><summary>Mi cuenta de Mercado Pago usa otro email</summary>
+        <div class="field"><label for="sg-payer">Email de tu cuenta de Mercado Pago</label><input id="sg-payer" type="email" maxlength="255" inputmode="email"></div></details>
+      <div class="hp" aria-hidden="true"><label>No completar<input id="sg-web" type="text" tabindex="-1" autocomplete="off"></label></div>
+      ${cfg.turnstile_site_key ? `<div id="sg-ts" class="ts-box"></div>` : ""}
+      <p class="status error hidden" id="sg-err" role="alert"></p>
+      <div class="row sg-actions"><button type="button" class="btn" id="sg-cancel">Cancelar</button><button class="btn primary" id="sg-go">Suscribirme y pagar</button></div>
+      <p class="small muted" style="margin:0">Pagás en Mercado Pago, de forma segura. Cuando se confirma, tu banda queda creada y recibís el acceso por mail.</p>
+    </form>`, (m) => {
+    m.classList.add("wide");
+    let token = "", widget = null;
+    $("#sg-x", m).addEventListener("click", closeModal);
+    $("#sg-cancel", m).addEventListener("click", closeModal);
+    if (cfg.turnstile_site_key) {
+      loadTurnstile().then(() => {
+        widget = window.turnstile.render("#sg-ts", { sitekey: cfg.turnstile_site_key, theme: "dark", language: "es",
+          callback: (t) => { token = t; }, "expired-callback": () => { token = ""; }, "error-callback": () => { token = ""; } });
+      }).catch(() => { const e = $("#sg-err", m); e.textContent = "No se pudo cargar la verificación anti-robots. Revisá tu conexión."; e.classList.remove("hidden"); });
+    }
+    $("#sg", m).addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      const err = $("#sg-err", m); err.classList.add("hidden");
+      const body = { plan_id: plan.id, band_name: $("#sg-band", m).value.trim(), name: $("#sg-name", m).value.trim(), email: $("#sg-email", m).value.trim(),
+        payer_email: $("#sg-payer", m).value.trim(), website: $("#sg-web", m).value, turnstile_token: token };
+      const bad = (t) => { err.textContent = t; err.classList.remove("hidden"); };
+      if (body.band_name.length < 2) return bad("Poné el nombre de tu banda.");
+      if (body.name.length < 2) return bad("Poné tu nombre.");
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(body.email) || (body.payer_email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(body.payer_email))) return bad("Revisá el email.");
+      if (cfg.turnstile_site_key && !token) return bad("Marcá la casilla “No soy un robot”.");
+      await withBusy($("#sg-go", m), async () => {
+        try {
+          const r = await api("/public/signup", { method: "POST", json: body });
+          if (!r.init_point) return bad("No pudimos iniciar el pago. Probá de nuevo.");
+          $("#sg-go", m).textContent = "Abriendo Mercado Pago…";
+          location.href = r.init_point;
+          await new Promise(() => {});   // la pagina se va a Mercado Pago
+        } catch (e) {
+          bad(e.message);
+          if (widget !== null && window.turnstile) { window.turnstile.reset(widget); token = ""; }
+        }
+      });
+    });
+  });
+  $("#modal").addEventListener("close", () => $("#modal").classList.remove("wide"), { once: true });
+}
+
+/* Pagina a la que vuelve Mercado Pago: confirma el alta y avisa que ya llego el mail con el acceso. */
+function viewThanks(token) {
+  setApp(`
+    <div class="l2-page">
+      ${landLogoBar()}
+      <section class="land2 l2-thanks" aria-label="Confirmación">
+        <div class="l2-bg" aria-hidden="true"><div class="l2-glow"></div></div>
+        <div class="l2-hero">
+          <div class="l2-logo small"><img src="/logo-hero.png" alt="" width="540" height="540"></div>
+          <h1 class="l2-h" id="th-h">Estamos confirmando tu pago</h1>
+          <p class="l2-pro" id="th-p">Esto tarda unos segundos. Apenas se confirma te mandamos por mail la confirmación y tu clave de acceso.</p>
+          <div class="l2-cta"><a class="btn primary big hidden" id="th-go" href="#/login">Entrar</a><a class="btn big" href="#/">Volver al inicio</a></div>
+        </div>
+      </section>
+    </div>`);
+  $$(".l2-top [data-go]").forEach((b) => b.addEventListener("click", () => { location.hash = "#/"; }));
+  let tries = 0;
+  const poll = async () => {
+    if (!document.getElementById("th-h")) return;   // la persona se fue de la pagina
+    try {
+      const r = await api("/public/signup-sync", { method: "POST", json: { token } });
+      if (r.status === "done") {
+        $("#th-h").textContent = "¡Listo! Tu banda está activa";
+        $("#th-p").textContent = "Te enviamos por mail la confirmación del pago y tus datos de acceso. Si no lo ves, revisá la carpeta de spam. Podés cambiar la clave cuando quieras desde tu perfil.";
+        $("#th-go").classList.remove("hidden");
+        return;
+      }
+      if (r.status === "expired") { $("#th-h").textContent = "No pudimos confirmar el pago"; $("#th-p").textContent = "Si ya pagaste, escribinos desde Contacto y lo resolvemos enseguida."; return; }
+    } catch (e) {
+      if (/no encontramos/i.test(e.message || "")) { $("#th-h").textContent = "No encontramos tu pedido"; $("#th-p").textContent = "Si ya pagaste, escribinos desde Contacto y lo resolvemos enseguida."; return; }
+    }
+    if (++tries < 20) setTimeout(poll, 4000);
+    else { $("#th-h").textContent = "Todavía no vemos el pago"; $("#th-p").textContent = "Mercado Pago puede demorar unos minutos. Cuando se confirme te llega el mail con tu acceso. Si pasa mucho tiempo, escribinos desde Contacto."; }
+  };
+  poll();
 }

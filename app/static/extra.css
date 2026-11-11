@@ -282,11 +282,10 @@ html:has(.l2-page) { scroll-behavior: smooth; }
 
 /* recorrido en cuatro pasos */
 .l2-steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .7rem; }
-.l2-steps li { position: relative; display: grid; gap: .15rem; justify-items: start; padding: 1rem .9rem; border-radius: 16px; border: 1px solid var(--line-2); background: rgba(21, 18, 16, .72); backdrop-filter: blur(6px); overflow: hidden; }
+.l2-steps li { position: relative; display: flex; align-items: center; gap: .85rem; padding: .95rem .9rem; border-radius: 16px; border: 1px solid var(--line-2); background: rgba(21, 18, 16, .72); backdrop-filter: blur(6px); overflow: hidden; }
 .l2-steps li::after { content: ""; position: absolute; right: -30px; top: -30px; width: 90px; height: 90px; border-radius: 50%; background: radial-gradient(circle, rgba(255, 90, 31, .28), transparent 70%); }
-.l2-step-n { position: absolute; right: .8rem; top: .55rem; font: 800 1.5rem var(--display); color: rgba(255, 179, 71, .55); }
-.l2-step-i { width: 34px; height: 34px; color: var(--amber); margin-bottom: .3rem; filter: drop-shadow(0 0 8px rgba(255, 110, 30, .7)); } .l2-step-i .i { width: 100%; height: 100%; }
-.l2-steps b { font: 800 1.45rem var(--display); letter-spacing: .02em; } .l2-steps small { color: var(--muted); font-size: .84rem; line-height: 1.3; }
+.l2-st { display: grid; gap: .1rem; min-width: 0; }
+.l2-steps b { font: 800 1.45rem/1 var(--display); letter-spacing: .02em; } .l2-steps small { color: var(--muted); font-size: .84rem; line-height: 1.3; }
 
 /* tarjetas de funciones: todo a la vista, sin abrir nada */
 .l2-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; }
@@ -297,11 +296,11 @@ html:has(.l2-page) { scroll-behavior: smooth; }
 .l2-card.in { border-color: rgba(255, 90, 31, .55); box-shadow: 0 0 36px -12px rgba(255, 90, 31, .65), inset 0 0 0 1px rgba(255, 179, 71, .08); }
 .l2-pic { position: relative; aspect-ratio: 16 / 9; background: #120d0a var(--pos, 50% 50%) / cover no-repeat; }
 .l2-pic::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(10, 9, 8, .05) 30%, rgba(21, 18, 16, .96)); }
-.l2-badge { position: absolute; left: 1rem; bottom: -1.2rem; z-index: 2; width: 52px; height: 52px; border-radius: 15px; display: grid; place-items: center; color: var(--amber);
-  background: #1b130e; border: 1px solid rgba(255, 90, 31, .6); box-shadow: 0 0 26px -2px rgba(255, 90, 31, .75); } .l2-badge .i { width: 28px; height: 28px; }
-.l2-body { position: relative; z-index: 2; padding: 1.9rem 1.1rem 1.2rem; display: flex; flex-direction: column; flex: 1; }
+.l2-body { position: relative; z-index: 2; padding: 1.1rem 1.1rem 1.2rem; display: flex; flex-direction: column; flex: 1; }
+.l2-hd { display: flex; align-items: flex-start; gap: .9rem; margin-bottom: .95rem; }
+.l2-ht { min-width: 0; }
 .l2-body h3 { margin: 0; font: 800 2.2rem/1 var(--display); letter-spacing: .01em; }
-.l2-lead { margin: .35rem 0 .9rem; font-size: 1.02rem; line-height: 1.4; }
+.l2-lead { margin: .3rem 0 0; font-size: 1.02rem; line-height: 1.4; }
 .l2-list { margin: 0; padding: 0; list-style: none; display: grid; gap: .5rem; }
 .l2-list li { position: relative; padding-left: 1.4rem; color: #d9cfc4; font-size: .94rem; line-height: 1.4; }
 .l2-list li::before { content: ""; position: absolute; left: .15rem; top: .5rem; width: 7px; height: 7px; border-radius: 50%; background: var(--ember); box-shadow: 0 0 8px var(--ember); }
@@ -342,9 +341,33 @@ body.public .chat-fab { bottom: calc(3.4rem + env(safe-area-inset-bottom)); }
   .land2 { padding-top: 5rem; }
   .l2-spot { flex-direction: row; } .l2-spot .l2-pic { flex: 1 1 46%; aspect-ratio: auto; min-height: 380px; }
   .l2-spot .l2-pic::after { background: linear-gradient(90deg, rgba(10, 9, 8, .05) 30%, rgba(21, 18, 16, .97)); }
-  .l2-spot .l2-badge { left: auto; right: -1.2rem; bottom: auto; top: 1.4rem; }
   .l2-spot .l2-body { flex: 1 1 54%; padding: 2rem 2rem 1.8rem; justify-content: center; }
   .l2-spot h3 { font-size: 3.2rem; } .l2-spot .l2-lead { font-size: 1.12rem; }
   .l2-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .l2-ekg { height: 80px; }
 }
+
+
+/* ícono a la izquierda, texto a la derecha (regla de diseño); el ícono brilla como el logo */
+.l2-ibox { flex: none; width: 52px; height: 52px; border-radius: 15px; display: grid; place-items: center; color: var(--amber);
+  background: #1b130e; border: 1px solid rgba(255, 90, 31, .6); box-shadow: 0 0 24px -3px rgba(255, 90, 31, .7); }
+.l2-ibox .i { width: 28px; height: 28px; filter: drop-shadow(0 0 6px rgba(255, 110, 30, .7)); }
+.l2-steps .l2-ibox { width: 46px; height: 46px; border-radius: 13px; } .l2-steps .l2-ibox .i { width: 25px; height: 25px; }
+
+/* ventana de alta (compra del plan) */
+.modal.wide .signup { gap: .8rem; }
+.sg-plan { display: flex; align-items: center; gap: .9rem; padding: .8rem .9rem; border-radius: 14px; border: 1px solid rgba(255, 90, 31, .45); background: rgba(255, 90, 31, .08); }
+.sg-pt { display: grid; gap: .15rem; min-width: 0; } .sg-pt b { font: 800 1.9rem/1 var(--display); } .sg-pt b small { font: 500 .85rem var(--font); color: var(--muted); }
+.sg-pt span { font-size: .88rem; color: #d9cfc4; line-height: 1.35; }
+.sg-feat { list-style: none; margin: .2rem 0 .3rem; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: .4rem .9rem; }
+.sg-feat li { display: flex; align-items: center; gap: .55rem; font-size: .9rem; } .sg-ck { flex: none; width: 20px; text-align: center; color: var(--ok); font-weight: 800; }
+.sg-other { font-size: .9rem; } .sg-other summary { cursor: pointer; color: var(--amber); padding: .2rem 0; } .sg-other .field { margin-top: .5rem; }
+.signup .field small { display: block; margin-top: .3rem; }
+.sg-actions { justify-content: flex-end; }
+@media (max-width: 480px) { .sg-actions { flex-direction: column-reverse; } .sg-actions .btn { width: 100%; } }
+
+/* página a la que vuelve Mercado Pago */
+.l2-thanks .l2-hero { padding-inline: 1.2rem; }
+.l2-thanks .l2-logo.small { height: clamp(110px, 22vh, 220px); }
+.l2-thanks .l2-h { margin: .5rem 0 0; text-shadow: 0 0 22px rgba(255, 90, 31, .55); }
+.l2-thanks .l2-pro { max-width: 46ch; margin: .7rem 0 1.2rem; font-weight: 500; color: #d9cfc4; }

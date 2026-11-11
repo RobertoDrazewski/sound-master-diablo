@@ -20,7 +20,7 @@ from .config import (ASSISTANT_DAILY_LIMIT, COVER_AI_DAILY_LIMIT, PUBLIC_URL, BA
                      REFERENCE_SECONDS, SUPERADMIN_EMAIL, SUPERADMIN_PASSWORD, CHAT_ENABLED, TRIAL_DAYS,
                      TURNSTILE_SITE_KEY)
 from .db import (Album, ApiToken, Band, ContactMessage, Event, Genre, Invite, Job, Membership, Notification,
-                 Payment, Plan, Reference, SessionLocal, Track, User, Version, init_db, now)
+                 Payment, Plan, Reference, SessionLocal, Signup, Track, User, Version, init_db, now)
 from .notify import notify_band
 from .security import (create_media_token, create_session_jwt,
                        decode_media_token, decode_session_jwt, hash_password,
@@ -1827,8 +1827,13 @@ async def billing_webhook(request: Request, db: Session = Depends(get_db)):
 
 @app.get("/admin/billing/summary")
 def admin_billing_summary(_: User = Depends(require_super), db: Session = Depends(get_db)):
+    pend = (db.query(Signup).filter(Signup.status == "pending", Signup.created_at >= now() - timedelta(days=3))
+            .order_by(Signup.created_at.desc()).limit(30).all())
+    plans = {p.id: p.name for p in db.query(Plan).all()}
     return {**billing.overview(db), "mp_enabled": billing.mp_enabled(), "mail_enabled": mail.mail_enabled(),
-            "turnstile": mail.turnstile_enabled(), "unread_messages": db.query(ContactMessage).filter_by(handled=False).count()}
+            "turnstile": mail.turnstile_enabled(), "unread_messages": db.query(ContactMessage).filter_by(handled=False).count(),
+            "pending_signups": [{"id": s.id, "band": s.band_name, "name": s.admin_name, "email": s.email,
+                                 "plan": plans.get(s.plan_id, "-"), "created_at": s.created_at} for s in pend]}
 
 
 class BandBillingIn(BaseModel):
@@ -1992,6 +1997,87 @@ def contact(body: ContactIn, request: Request, db: Session = Depends(get_db)):
         f"Nombre: {m.name}\nEmail: {m.email}\nBanda: {m.band or '-'}\n\n{m.message}", reply_to=m.email)
     db.commit()
     return {"ok": True}
+
+
+# ------------------------------------------------------------- alta automatica (compra desde la portada)
+_signup_hits: dict[str, list[float]] = {}
+_sync_hits: dict[str, list[float]] = {}
+
+
+class SignupIn(BaseModel):
+    plan_id: int
+    band_name: str = Field(min_length=2, max_length=120)
+    name: str = Field(min_length=2, max_length=120)
+    email: str = Field(max_length=255)
+    payer_email: str = Field("", max_length=255)      # solo si la cuenta de Mercado Pago usa otro mail
+    website: str = ""                                  # trampa para robots
+    turnstile_token: str = ""
+
+
+def _rate(store: dict, ip: str, limit: int, window: int = 3600) -> bool:
+    import time
+    t = time.time()
+    hits = [h for h in store.get(ip, []) if t - h < window]
+    if len(hits) >= limit:
+        store[ip] = hits
+        return False
+    hits.append(t)
+    store[ip] = hits
+    return True
+
+
+@app.post("/public/signup")
+def public_signup(body: SignupIn, request: Request, db: Session = Depends(get_db)):
+    """Una banda nueva elige un plan: se crea la suscripcion en Mercado Pago y se devuelve el link de pago.
+    La cuenta se crea recien cuando Mercado Pago autoriza el pago (ver billing.complete_signup)."""
+    ip = _client_ip(request)
+    if body.website.strip():
+        raise HTTPException(400, "No pudimos procesar la solicitud")
+    if not _rate(_signup_hits, ip, 6):
+        raise HTTPException(429, "Hiciste varios intentos seguidos. Probá de nuevo en un rato.")
+    if not mail.verify_turnstile(body.turnstile_token, ip):
+        raise HTTPException(400, "No pudimos verificar que no sos un robot. Marcá la casilla e intentá de nuevo.")
+    email = body.email.strip().lower()
+    payer = body.payer_email.strip().lower()
+    mailre = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
+    if not re.match(mailre, email) or (payer and not re.match(mailre, payer)):
+        raise HTTPException(422, "Revisá el email")
+    plan = db.get(Plan, body.plan_id)
+    if not plan or not plan.active:
+        raise HTTPException(404, "Ese plan no está disponible")
+    if not billing.mp_enabled():
+        raise HTTPException(503, "El cobro online todavía no está activado. Escribinos desde Contacto y te ayudamos.")
+    band_name = " ".join(body.band_name.split())
+    if db.query(User).filter(func.lower(User.email) == email).first():
+        raise HTTPException(409, "Ese email ya tiene una cuenta. Entrá y activá el plan desde la sección Plan de tu banda.")
+    if db.query(Band).filter(func.lower(Band.name) == band_name.lower()).first():
+        raise HTTPException(409, "Ya existe una banda con ese nombre. Probá con otro.")
+    base = PUBLIC_URL or str(request.base_url).rstrip("/")
+    try:
+        link = billing.start_signup(db, plan, band_name, " ".join(body.name.split()), email, payer, base)
+    except billing.MPError:
+        raise HTTPException(424, "No pudimos iniciar el pago con Mercado Pago. Probá de nuevo en unos minutos.") from None
+    return {"init_point": link}
+
+
+class SignupSyncIn(BaseModel):
+    token: str = Field(min_length=10, max_length=64)
+
+
+@app.post("/public/signup-sync")
+def public_signup_sync(body: SignupSyncIn, request: Request, db: Session = Depends(get_db)):
+    """Al volver de Mercado Pago: confirma el alta sin esperar al aviso. Solo devuelve el estado."""
+    if not _rate(_sync_hits, _client_ip(request), 90):
+        raise HTTPException(429, "Demasiadas consultas")
+    su = db.query(Signup).filter_by(token=body.token).first()
+    if not su:
+        raise HTTPException(404, "No encontramos ese pedido")
+    if su.status == "pending":
+        try:
+            billing.sync_signup(db, su)
+        except billing.MPError:
+            pass
+    return {"status": su.status}
 
 
 class ChatIn(BaseModel):
