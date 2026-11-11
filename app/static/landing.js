@@ -38,9 +38,10 @@ function landLogoBar() {
   return `<header class="l2-top">
     <a class="brand" href="#/"><img src="/logo-login.png" alt=""><span class="brand-name">diablomastermix.com.ar</span></a>
     <nav class="l2-nav" aria-label="Secciones">
-      <button type="button" class="l2-link" data-go="l2-planes">Planes</button>
-      <button type="button" class="l2-link" data-go="l2-contacto">Contacto</button>
+      <button type="button" class="l2-link l2-opt" data-go="l2-planes">Planes</button>
+      <button type="button" class="l2-link l2-opt" data-go="l2-contacto">Contacto</button>
       <a class="btn" href="#/login">Entrar</a>
+      <button type="button" class="btn primary l2-reg" data-reg>Registrá tu banda</button>
     </nav></header>`;
 }
 
@@ -134,11 +135,15 @@ function viewLanding() {
         </section>
       </div>
 
-      <footer class="l2-foot"><span class="mark"><img src="/logo-mark.png" alt="">© ${new Date().getFullYear()} Diablo Master Mix<span class="hide-sm"> · Propiedad de Puma Code</span></span>
-        <a href="https://www.puma-code.com" target="_blank" rel="noopener">www.puma-code.com</a></footer>
+      <footer class="l2-foot">
+        <span class="l2-fl">© ${new Date().getFullYear()} Diablo Master Mix<small>Propiedad de Puma Code</small></span>
+        <a class="l2-fmid" href="https://www.puma-code.com" target="_blank" rel="noopener" aria-label="Puma Code, www.puma-code.com"><img src="/img/puma-code.webp" alt="Puma Code" width="56" height="56"></a>
+        <a class="l2-fr" href="https://www.puma-code.com" target="_blank" rel="noopener">www.puma-code.com</a>
+      </footer>
     </div>`);
   const root = $(".l2-page");
   $$("[data-go]", root).forEach((b) => b.addEventListener("click", () => landGo(b.dataset.go)));
+  $$("[data-reg]", root).forEach((b) => b.addEventListener("click", () => openPlans()));
 
   // la barra superior se vuelve sólida al bajar
   if (!window._l2scroll) {
@@ -163,6 +168,11 @@ function viewLanding() {
   if (typeof chatMount === "function") chatMount();
 }
 
+/* sello de cobro: ícono a la izquierda, texto a la derecha. Si existe /img/mercadopago.svg (logo oficial) se muestra en lugar del escudo */
+function mpBadge() {
+  return `<div class="plan-mp"><span class="plan-mp-ic">${ic("shield")}<img src="/img/mercadopago.svg" alt="" onload="this.parentNode.classList.add('has-logo')" onerror="this.remove()"></span><p><b>Suscripción de Mercado Pago</b><small>Cobro mensual automático. Cancelás cuando quieras.</small></p></div>`;
+}
+
 async function landPlans() {
   const box = document.getElementById("l2-plans-box");
   if (!box) return;
@@ -176,6 +186,7 @@ async function landPlans() {
       <p class="plan-tag-line">${esc(p.tagline)}</p>
       <p class="plan-price"><b>${fmtARS(p.price_ars)}</b><span>por mes</span></p>
       <ul>${planFeatures(p).map((f) => `<li>${f}</li>`).join("")}</ul>
+      ${mpBadge()}
       <button type="button" class="btn ${p.highlight ? "primary" : ""}" data-plan="${p.id}">Elegir ${esc(p.name)}</button>
     </article>`).join("") + `<p class="small muted l2-plans-note">Pagás con Mercado Pago y apenas se confirma te mandamos por mail el acceso a tu banda. Los precios están en pesos argentinos e incluyen todo, sin cargos por canción. ¿Dudas? Escribinos en Contacto.</p>`;
   $$("[data-plan]", box).forEach((b) => b.addEventListener("click", () => openSignup(cfg.plans.find((p) => String(p.id) === b.dataset.plan))));
@@ -211,6 +222,7 @@ async function openPlans() {
             <p class="plan-tag-line">${esc(p.tagline)}</p>
             <p class="plan-price"><b>${fmtARS(p.price_ars)}</b><span>por mes</span></p>
             <ul>${planFeatures(p).map((f) => `<li>${f}</li>`).join("")}</ul>
+            ${mpBadge()}
             <button type="button" class="btn ${p.highlight ? "primary" : ""}" data-plan="${p.id}">Elegir ${esc(p.name)}</button>
           </article>`).join("")}
       </div>
@@ -398,7 +410,7 @@ function viewThanks(token) {
         </div>
       </section>
     </div>`);
-  $$(".l2-top [data-go]").forEach((b) => b.addEventListener("click", () => { location.hash = "#/"; }));
+  $$(".l2-top [data-go], .l2-top [data-reg]").forEach((b) => b.addEventListener("click", () => { location.hash = "#/"; }));
   let tries = 0;
   const poll = async () => {
     if (!document.getElementById("th-h")) return;   // la persona se fue de la pagina

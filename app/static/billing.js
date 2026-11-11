@@ -51,6 +51,7 @@ async function viewPlan(band, nav, query = "") {
         <h3>${esc(p.name)}</h3><p class="plan-tag-line">${esc(p.tagline)}</p>
         <p class="plan-price"><b>${fmtARS(p.price_ars)}</b><span>por mes</span></p>
         <ul>${planFeatures(p).map((f) => `<li>${f}</li>`).join("")}</ul>
+        ${mpBadge()}
         ${d.is_admin ? `<button class="btn ${p.highlight ? "primary" : ""}" data-pick="${p.id}" ${cur === p.slug && st.mp_status === "authorized" ? "disabled" : ""}>${cur === p.slug && st.mp_status === "authorized" ? "Tu plan actual" : d.has_subscription && st.mp_status === "authorized" ? "Cambiar a este plan" : st.state === "trial" ? "Elegir y pagar al terminar la prueba" : "Suscribirme"}</button>` : ""}
       </article>`).join("")}</div>
     <p class="small muted">El cobro es mensual y automático con Mercado Pago. Cancelás cuando quieras desde acá y seguís con el servicio hasta que termine el mes pagado. Si un mes no se puede cobrar, tenés unos días de gracia antes de que se corte: tu material nunca se borra.</p>`}
