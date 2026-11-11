@@ -1618,8 +1618,8 @@ function readProfile(root, p = "") {
 }
 
 async function viewMembers(band, nav) {
-  const isAdmin = true; // todos los integrantes tienen los mismos derechos en su banda
   const bandAdmin = band.role === "admin" || state.me.is_super;
+  const isAdmin = bandAdmin;   // sumar, editar a otros y sacar integrantes: solo el admin de la banda (cada uno edita su propio lugar)
   const [members, pending] = await Promise.all([
     api(`/bands/${band.id}/members`), bandAdmin ? api(`/bands/${band.id}/invites`) : Promise.resolve([])]);
   if (nav !== state.nav) return;

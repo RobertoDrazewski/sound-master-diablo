@@ -736,7 +736,11 @@ def band_cancel_invite(band_id: int, invite_id: int, user: User = Depends(curren
 @app.put("/bands/{band_id}/members/{user_id}")
 def set_member_profile(band_id: int, user_id: int, body: MemberProfileIn, user: User = Depends(current_user),
                        db: Session = Depends(get_db)):
-    need_member(db, user, band_id)
+    """Cada integrante edita su propio lugar; el de los demás lo edita solo el admin de la banda (o el super admin)."""
+    if user_id == user.id:
+        need_member(db, user, band_id)
+    else:
+        need_band_admin(db, user, band_id, "Solo el admin de la banda puede editar el lugar de otros integrantes")
     m = db.query(Membership).filter_by(band_id=band_id, user_id=user_id).first()
     if not m:
         raise HTTPException(404, "No es integrante de esa banda")
@@ -748,7 +752,7 @@ def set_member_profile(band_id: int, user_id: int, body: MemberProfileIn, user: 
 @app.delete("/bands/{band_id}/members/{user_id}")
 def band_remove_member(band_id: int, user_id: int, user: User = Depends(current_user),
                        db: Session = Depends(get_db)):
-    need_member(db, user, band_id, admin=True)
+    need_band_admin(db, user, band_id, "Solo el admin de la banda puede sacar integrantes")
     m = db.query(Membership).filter_by(band_id=band_id, user_id=user_id).first()
     if not m:
         raise HTTPException(404, "No es integrante de esa banda")
