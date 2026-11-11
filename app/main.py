@@ -446,8 +446,9 @@ def me(request: Request, user: User = Depends(current_user), db: Session = Depen
     # el panel web del super admin no mezcla bandas (se administran desde Admin), pero Reaper
     # (token pck_) necesita ver las bandas de las que el super es integrante para poder subir
     es_reaper = request.headers.get("authorization", "")[7:].strip().startswith("pck_")
-    if user.is_super and not es_reaper:
-        bands = []
+    if user.is_super:
+        # el super admin cuenta como admin en todas las bandas: Reaper se las muestra todas
+        bands = db.query(Band).order_by(Band.name).all() if es_reaper else []
     return {
         "id": user.id, "email": user.email, "name": user.name, "is_super": user.is_super,
         "photo": img_url("users", user.id, user.photo),
