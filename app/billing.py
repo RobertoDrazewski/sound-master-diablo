@@ -110,7 +110,9 @@ def record_usage(db: Session, band_id: int, kind: str):
 # --------------------------------------------------------------------------- Mercado Pago
 
 class MPError(Exception):
-    pass
+    def __init__(self, msg: str = "", status: int | None = None):
+        super().__init__(msg)
+        self.status = status
 
 
 def mp_enabled() -> bool:
@@ -124,7 +126,7 @@ def _mp(method: str, path: str, body: dict | None = None) -> dict:
         return http_json(method, MP_API + path, body=body,
                          headers={"Authorization": f"Bearer {config.MP_ACCESS_TOKEN}"})
     except HTTPFail as e:
-        raise MPError(f"Mercado Pago respondió {e.status}: {e.message}") from e
+        raise MPError(f"Mercado Pago respondió {e.status}: {e.message}", e.status) from e
 
 
 def create_preapproval(band: Band, plan: Plan, payer_email: str, back_url: str, start_in_days: int = 0) -> dict:
@@ -161,8 +163,9 @@ def get_authorized_payment(pid: str) -> dict:
     return _mp("GET", f"/authorized_payments/{pid}")
 
 
-def verify_signature(headers, data_id: str) -> bool:
-    """Valida el x-signature de las notificaciones. Si no hay secreto configurado, se confia en el re-fetch a la API."""
+def verify_signature(headers, data_id: str = "") -> bool:
+    """Valida el x-signature de las notificaciones. Si no hay secreto configurado, se confia en el re-fetch a la API.
+    Segun la doc de Mercado Pago, el manifiesto usa el data.id de la URL (no el del cuerpo) y omite lo que no llega."""
     if not config.MP_WEBHOOK_SECRET:
         return True
     sig = headers.get("x-signature", "")
@@ -171,7 +174,12 @@ def verify_signature(headers, data_id: str) -> bool:
     ts, v1 = parts.get("ts"), parts.get("v1")
     if not ts or not v1:
         return False
-    manifest = f"id:{str(data_id).lower()};request-id:{req_id};ts:{ts};"
+    manifest = ""
+    if data_id:
+        manifest += f"id:{str(data_id).lower()};"
+    if req_id:
+        manifest += f"request-id:{req_id};"
+    manifest += f"ts:{ts};"
     mine = hmac.new(config.MP_WEBHOOK_SECRET.encode(), manifest.encode(), hashlib.sha256).hexdigest()
     return hmac.compare_digest(mine, v1)
 

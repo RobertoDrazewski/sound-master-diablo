@@ -1811,12 +1811,14 @@ async def billing_webhook(request: Request, db: Session = Depends(get_db)):
         body = {}
     topic = q.get("type") or q.get("topic") or body.get("type") or body.get("topic") or ""
     rid = q.get("data.id") or q.get("id") or (body.get("data") or {}).get("id") or ""
-    if not billing.verify_signature(request.headers, str(rid)):
+    if not billing.verify_signature(request.headers, q.get("data.id") or ""):
         raise HTTPException(401, "firma invalida")
     if rid and topic in ("subscription_preapproval", "preapproval", "subscription_authorized_payment", "authorized_payment"):
         try:
             billing.handle_notification(db, topic, str(rid))
-        except billing.MPError:
+        except billing.MPError as e:
+            if e.status in (400, 404):  # recurso que no existe (p. ej. la notificacion de prueba): no hay nada que reintentar
+                return {"ok": True, "ignored": True}
             raise HTTPException(502, "reintentar") from None  # MP reintenta solo
     return {"ok": True}
 
