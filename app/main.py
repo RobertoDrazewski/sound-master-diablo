@@ -118,6 +118,12 @@ def need_member(db: Session, user: User, band_id: int, admin: bool = False) -> s
     return role
 
 
+def need_band_admin(db: Session, user: User, band_id: int, msg: str) -> None:
+    """Solo el admin de la banda (o el super admin). A diferencia de need_member(admin=True), esto si se hace cumplir."""
+    if need_member(db, user, band_id) != "admin":
+        raise HTTPException(403, msg)
+
+
 def user_band_ids(db: Session, user: User) -> list[int]:
     # el super admin no tiene "sus bandas": solo las suyas propias si es integrante (hoy ninguna)
     return [m.band_id for m in db.query(Membership).filter_by(user_id=user.id).all()]
@@ -701,16 +707,14 @@ def create_invite(body: InviteIn, request: Request, user: User = Depends(require
 @app.post("/bands/{band_id}/invites")
 def band_invite(band_id: int, body: BandInviteIn, request: Request, user: User = Depends(current_user),
                 db: Session = Depends(get_db)):
-    """Cualquier integrante suma a sus compañeros. Solo el admin de la banda puede sumar managers."""
-    role = need_member(db, user, band_id)
-    if role != "admin" and body.kind != "musico":
-        raise HTTPException(403, "Los integrantes solo pueden invitar músicos")
+    """Solo el admin de la banda (o el super admin) suma integrantes."""
+    need_band_admin(db, user, band_id, "Solo el admin de la banda puede sumar integrantes")
     return make_invite(db, request, user, band_id, body.email, "member", body.kind, body.instrument, body.sings)
 
 
 @app.get("/bands/{band_id}/invites")
 def band_pending_invites(band_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
-    need_member(db, user, band_id, admin=True)
+    need_band_admin(db, user, band_id, "Solo el admin de la banda ve las invitaciones")
     rows = (db.query(Invite).filter(Invite.band_id == band_id, Invite.used_at == None,  # noqa: E711
                                     Invite.expires_at > now()).order_by(Invite.id.desc()).all())
     return [{"id": i.id, "email": i.email, "kind": i.kind, "instrument": i.instrument, "sings": i.sings,
@@ -720,7 +724,7 @@ def band_pending_invites(band_id: int, user: User = Depends(current_user), db: S
 @app.delete("/bands/{band_id}/invites/{invite_id}")
 def band_cancel_invite(band_id: int, invite_id: int, user: User = Depends(current_user),
                        db: Session = Depends(get_db)):
-    need_member(db, user, band_id, admin=True)
+    need_band_admin(db, user, band_id, "Solo el admin de la banda cancela invitaciones")
     inv = db.query(Invite).filter_by(id=invite_id, band_id=band_id).first()
     if not inv:
         raise HTTPException(404, "No encontrada")

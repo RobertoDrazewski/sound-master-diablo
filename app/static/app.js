@@ -1621,11 +1621,11 @@ async function viewMembers(band, nav) {
   const isAdmin = true; // todos los integrantes tienen los mismos derechos en su banda
   const bandAdmin = band.role === "admin" || state.me.is_super;
   const [members, pending] = await Promise.all([
-    api(`/bands/${band.id}/members`), isAdmin ? api(`/bands/${band.id}/invites`) : Promise.resolve([])]);
+    api(`/bands/${band.id}/members`), bandAdmin ? api(`/bands/${band.id}/invites`) : Promise.resolve([])]);
   if (nav !== state.nav) return;
   const myId = state.me.id;
   setApp(`
-    ${bandHead(band, "Integrantes", "Sumá a tus compañeros: les llega un link para crear su cuenta y entrar a la banda.")}
+    ${bandHead(band, "Integrantes", bandAdmin ? "Sumá a tus compañeros: les llega un link para crear su cuenta y entrar a la banda." : "Quiénes están en la banda. Solo el admin de la banda puede sumar integrantes.")}
     <section class="card"><ul class="upcoming">${members.map((m) => `
       <li>${avatar(m.photo, m.name, "")}<div class="grow"><strong>${esc(m.name)}</strong>${m.user_id === myId ? ` <span class="muted small">(vos)</span>` : ""}
           <div class="muted small">${esc(profileLabel(m))}${m.email ? " · " + esc(m.email) : ""}</div></div>
@@ -1633,7 +1633,7 @@ async function viewMembers(band, nav) {
         ${m.user_id === myId || isAdmin ? `<button class="icon-btn" data-edit="${m.user_id}" aria-label="Editar el lugar de ${esc(m.name)} en la banda" title="Editar">${ic("edit")}</button>` : ""}
         ${isAdmin && m.user_id !== myId && (m.role !== "admin" || state.me.is_super) ? `<button class="icon-btn" data-rm="${m.user_id}" aria-label="Sacar a ${esc(m.name)} de la banda" title="Sacar de la banda">${ic("x")}</button>` : ""}
       </li>`).join("")}</ul></section>
-    ${isAdmin ? `
+    ${bandAdmin ? `
     <section class="card"><h2>Sumar a un compañero</h2>
       <form id="inv" class="stack">
         <div class="field" style="margin:0"><label for="ie">Email</label><input id="ie" type="email" required autocomplete="off"></div>
@@ -1649,8 +1649,8 @@ async function viewMembers(band, nav) {
   const reload = () => viewMembers(band, nav);
 
   if (isAdmin) {
-    wireProfileFields($("#inv"), "i");
-    $("#inv").addEventListener("submit", async (ev) => {
+    if ($("#inv")) wireProfileFields($("#inv"), "i");
+    $("#inv")?.addEventListener("submit", async (ev) => {
       ev.preventDefault();
       const email = $("#ie").value.trim();
       await withBusy($("#inv button.primary"), async () => {
