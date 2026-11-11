@@ -2019,11 +2019,21 @@ function mpContactLink(kind, value, name, band, req) {
 }
 const mpContactBtn = (href, kind) => `<a class="btn small primary" href="${esc(href)}" target="_blank" rel="noopener">${ic("chat")}${kind === "whatsapp" ? "Escribir por WhatsApp" : "Escribir por mail"}</a>`;
 
+function mpLi(m, action) {
+  return `<li class="mp-li">${avatar(m.photo, m.name, "")}<div class="grow"><strong>${esc(m.name)}</strong>
+    <div class="muted small">${esc(m.instruments.join(", "))}${mpPlace(m) ? " · " + esc(mpPlace(m)) : ""}</div>
+    ${m.styles.length ? `<div style="margin:.25rem 0">${mpTags(m.styles)}</div>` : ""}
+    ${m.bio ? `<div class="small mp-bio" style="margin:.25rem 0">${esc(m.bio)}</div>` : ""}
+    ${m.equipment ? `<div class="muted small mp-bio">Equipamiento: ${esc(m.equipment)}</div>` : ""}
+    <div style="margin-top:.25rem">${m.has_transport ? `<span class="badge">Movilidad propia</span> ` : ""}${m.has_rehearsal_space ? `<span class="badge">Espacio de ensayo propio</span>` : ""}</div></div>
+    ${action || ""}</li>`;
+}
+
 async function viewMusicians(band, nav) {
   if (band.role !== "admin" && !state.me.is_super) { setApp(`<section class="card"><p>El Banco de músicos es solo para el admin de la banda.</p></section>`); return; }
   const f = state.mpFilter || (state.mpFilter = { instrument: "", country: "", city: "", style: "" });
   const qs = () => new URLSearchParams(Object.fromEntries(Object.entries(f).filter(([, v]) => v.trim()))).toString();
-  const [reqs, mus] = await Promise.all([api("/musician-requests"), api("/musicians?" + qs())]);
+  const [reqs, mus, mp] = await Promise.all([api("/musician-requests"), api("/musicians?" + qs()), api("/me/music-profile")]);
   if (nav !== state.nav) return;
   const groups = {};
   for (const m of mus) (groups[m.instruments[0] || "Otros"] ||= []).push(m);
@@ -2049,6 +2059,11 @@ async function viewMusicians(band, nav) {
         </form></details>
       ${mine.length ? `<p class="muted small" style="margin:.5rem 0 0">Las búsquedas se muestran 60 días. Podés tener hasta 3 activas por banda.</p>` : ""}
     </section>
+    <section class="card"><h2>Tu tarjeta</h2>
+      ${mp.available ? `<p class="muted small" style="margin:0 0 .5rem">Así te ven los admins de otras bandas. Vos no aparecés en la lista de abajo.</p>
+        <ul class="mp-list">${mpLi({ name: state.me.name || state.me.email, photo: state.me.photo, instruments: mp.instruments.concat(mp.sings && !mp.instruments.some((x) => x.toLowerCase() === "voz") ? ["Voz"] : []), styles: mp.styles, bio: mp.bio, equipment: mp.equipment, has_transport: mp.has_transport, has_rehearsal_space: mp.has_rehearsal_space, city: mp.city, country: mp.country }, `<a class="btn small" href="#/account">Editar perfil</a>`)}</ul>`
+        : `<p class="muted">Tu perfil está oculto, así que ningún admin te ve. Podés activarlo desde <a href="#/account">Tu cuenta</a>.</p>`}
+    </section>
     <section class="card"><h2>Músicos disponibles</h2>
       <form id="mf" class="row" style="gap:.5rem;align-items:flex-end">
         <div class="field" style="margin:0"><label for="f-ins">Instrumento</label><input id="f-ins" type="text" value="${esc(f.instrument)}" list="mp-inslist2"></div>
@@ -2056,14 +2071,7 @@ async function viewMusicians(band, nav) {
         <div class="field" style="margin:0"><label for="f-country">País</label><input id="f-country" type="text" value="${esc(f.country)}"></div>
         <div class="field" style="margin:0"><label for="f-city">Ciudad</label><input id="f-city" type="text" value="${esc(f.city)}"></div>
         <button class="btn">${ic("search")}Buscar</button></form>
-      ${mus.length ? Object.keys(groups).map((g) => `<h3 style="margin:1.1rem 0 .4rem">${esc(g)}</h3><ul class="mp-list">${groups[g].map((m) => `
-        <li class="mp-li">${avatar(m.photo, m.name, "")}<div class="grow"><strong>${esc(m.name)}</strong>
-          <div class="muted small">${esc(m.instruments.join(", "))}${mpPlace(m) ? " · " + esc(mpPlace(m)) : ""}</div>
-          ${m.styles.length ? `<div style="margin:.25rem 0">${mpTags(m.styles)}</div>` : ""}
-          ${m.bio ? `<div class="small" style="margin:.25rem 0">${esc(m.bio)}</div>` : ""}
-          ${m.equipment ? `<div class="muted small">Equipamiento: ${esc(m.equipment)}</div>` : ""}
-          <div style="margin-top:.25rem">${m.has_transport ? `<span class="badge">Movilidad propia</span> ` : ""}${m.has_rehearsal_space ? `<span class="badge">Espacio de ensayo propio</span>` : ""}</div></div>
-        ${mpContactBtn(mpContactLink(m.contact_kind, m.contact_value, m.name.split(" ")[0], band), m.contact_kind)}</li>`).join("")}</ul>`).join("")
+      ${mus.length ? Object.keys(groups).map((g) => `<h3 style="margin:1.1rem 0 .4rem">${esc(g)}</h3><ul class="mp-list">${groups[g].map((m) => mpLi(m, mpContactBtn(mpContactLink(m.contact_kind, m.contact_value, m.name.split(" ")[0], band), m.contact_kind))).join("")}</ul>`).join("")
         : `<p class="muted" style="margin-top:.75rem">No hay músicos disponibles con esos filtros. Cada músico decide si aparece desde Tu cuenta.</p>`}
     </section>`);
   $("#mf").addEventListener("submit", (ev) => {
