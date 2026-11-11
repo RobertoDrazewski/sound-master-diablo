@@ -424,3 +424,10 @@ html:has(.l2-page) { scroll-behavior: smooth; }
 @media (max-width: 600px) { .mp-li > .btn { flex: 1 1 100%; justify-content: center; margin-left: 0; } }
 #mf .field { flex: 1 1 130px; }
 #mf input { width: 100%; }
+
+/* tarjeta de cierre de la landing: ocupa el hueco que deja la grilla de herramientas */
+.l2-promo { background: linear-gradient(135deg, rgba(255, 90, 31, .18), rgba(21, 18, 16, .5)); border-color: rgba(255, 179, 71, .5); justify-content: center; backdrop-filter: blur(3px); }
+.l2-promo .l2-body { padding-top: 1.5rem; }
+@media (min-width: 960px) { .l2-promo { grid-column: span 2; } .l2-promo .l2-body { padding: 2rem; } .l2-promo h3 { font-size: 2.4rem; } }
+.l2-promo .l2-body { flex: 0 0 auto; }
+@media (min-width: 960px) { .l2-promo .l2-list li { font-size: 1.05rem; } .l2-promo .l2-list { gap: .8rem; margin: .4rem 0 1.4rem; } .l2-promo .l2-lead { font-size: 1.15rem; } }
