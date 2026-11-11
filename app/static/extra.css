@@ -444,3 +444,13 @@ html:has(.l2-page) { scroll-behavior: smooth; }
   .l2-plans .plan ul { font-size: .98rem; gap: .5rem; }
 }
 @media (min-width: 860px) { .l2-plans .plan-tag-line { min-height: 2.9em; } }
+
+/* la foto de escenario cubre toda la landing: portada incluida, sin corte entre la portada y el resto */
+.l2-photo { position: absolute; inset: 0;
+  background: radial-gradient(90% 60% at 80% 12%, rgba(255, 90, 31, .22), transparent 70%), linear-gradient(180deg, rgba(10, 9, 8, .74), rgba(10, 9, 8, .9)), url(/img/hero-escenario.jpg) 62% 50% / cover no-repeat; }
+.l2-rest::before { content: none; }
+
+/* una sola foto fija detrás de toda la landing (portada y secciones): sin cortes al scrollear */
+.l2-page { position: relative; isolation: isolate; }
+.l2-photo { position: fixed; z-index: -1; pointer-events: none; }
+.l2-page .land2 { background: none; }

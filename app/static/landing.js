@@ -73,6 +73,7 @@ function viewLanding() {
   const rest = LAND_BLOCKS.filter((b) => !b.star);
   setApp(`
     <div class="l2-page">
+      <div class="l2-photo" aria-hidden="true"></div>
       ${landLogoBar()}
       <section class="land2" aria-label="Diablo Master Mix">
         <div class="l2-bg" aria-hidden="true">
@@ -95,7 +96,6 @@ function viewLanding() {
       </section>
 
       <div class="l2-rest">
-        <div class="l2-stage" aria-hidden="true"></div>
 
         <section class="l2-sec l2-flow" id="l2-flow">
           <h2 class="l2-h">Todo el camino de tu banda, en un solo lugar</h2>
