@@ -24,7 +24,7 @@ from .db import (Album, ApiToken, Band, Cancellation, ContactMessage, Event, Gen
 from .notify import notify_band
 from .security import (create_media_token, create_session_jwt,
                        decode_media_token, decode_session_jwt, hash_password,
-                       new_secret, sha256, throttle, verify_password)
+                       new_secret, sha256, throttle, throttle_ip, verify_password)
 from .worker import remove_version_files, worker
 
 
@@ -62,7 +62,8 @@ async def lifespan(_: FastAPI):
     worker.stop()
 
 
-app = FastAPI(title="Diablo Master", lifespan=lifespan)
+# Sin documentacion publica de la API (/docs, /redoc, /openapi.json): no le regalamos el mapa de rutas a nadie.
+app = FastAPI(title="Diablo Master", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
 if CORS_ORIGINS:
     app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_methods=["*"],
                        allow_headers=["*"])
@@ -315,15 +316,22 @@ def health():
     return {"ok": True}
 
 
+_DUMMY_HASH = hash_password("clave-que-nadie-usa")
+
+
 @app.post("/auth/login")
 def login(body: LoginIn, request: Request, db: Session = Depends(get_db)):
     email = body.email.strip().lower()
-    key = f"{email}|{request.client.host if request.client else '?'}"
-    if throttle.blocked(key):
+    ip = _client_ip(request)   # cf-connecting-ip: lo pone Cloudflare y no se puede falsificar desde afuera
+    key, ip_key = f"{email}|{ip}", f"ip|{ip}"
+    if throttle.blocked(key) or throttle_ip.blocked(ip_key):
         raise HTTPException(429, "Demasiados intentos. Espera unos minutos.")
     user = db.query(User).filter(User.email == email).first()
-    if not user or not user.active or not verify_password(body.password, user.password_hash):
+    # se verifica siempre una clave (aunque el email no exista) para que el tiempo de respuesta no delate que cuentas existen
+    ok = verify_password(body.password, user.password_hash if user else _DUMMY_HASH)
+    if not user or not user.active or not ok:
         throttle.fail(key)
+        throttle_ip.fail(ip_key)
         raise HTTPException(401, "Email o contrasena incorrectos")
     throttle.ok(key)
     return {"token": create_session_jwt(user.id)}
@@ -2295,6 +2303,48 @@ def chat_endpoint(body: ChatIn, request: Request, db: Session = Depends(get_db))
 # ---------------------------------------------------------------- front (al final)
 # Se monta al final para que las rutas de la API tengan prioridad sobre los archivos estaticos.
 from fastapi.staticfiles import StaticFiles  # noqa: E402
+
+
+CSP = "; ".join([
+    "default-src 'self'",
+    "script-src 'self' https://challenges.cloudflare.com https://static.cloudflareinsights.com",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob:",
+    "media-src 'self' blob:",
+    "font-src 'self'",
+    "connect-src 'self' https://challenges.cloudflare.com https://cloudflareinsights.com",
+    "frame-src https://challenges.cloudflare.com",
+    "worker-src 'self'",
+    "manifest-src 'self'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+    "upgrade-insecure-requests",
+])
+SECURITY_HEADERS = {
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+    "Content-Security-Policy": CSP,
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    # el microfono se usa para grabar ensayos; el resto de sensores y pagos del navegador, apagados
+    "Permissions-Policy": "microphone=(self), camera=(), geolocation=(), payment=(), usb=(), "
+                          "serial=(), midi=(), accelerometer=(), gyroscope=(), magnetometer=()",
+    "Cross-Origin-Opener-Policy": "same-origin",
+    "Cross-Origin-Resource-Policy": "same-origin",
+}
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    resp = await call_next(request)
+    for k, v in SECURITY_HEADERS.items():
+        resp.headers.setdefault(k, v)
+    # las respuestas de la API (con datos de personas, tokens, pagos) nunca se guardan en caches intermedias
+    if resp.headers.get("content-type", "").startswith("application/json"):
+        resp.headers["Cache-Control"] = "no-store"
+    return resp
 
 
 @app.middleware("http")

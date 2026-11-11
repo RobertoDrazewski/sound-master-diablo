@@ -93,6 +93,7 @@ class LoginThrottle:
 
 
 throttle = LoginThrottle()
+throttle_ip = LoginThrottle(max_fails=25, window=600)   # por IP, sin importar el email: frena probar muchas cuentas
 
 
 def gen_password(n: int = 12) -> str:
