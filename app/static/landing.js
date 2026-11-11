@@ -137,7 +137,7 @@ function viewLanding() {
 
       <footer class="l2-foot">
         <span class="l2-fl">© ${new Date().getFullYear()} Diablo Master Mix<small>Propiedad de Puma Code</small></span>
-        <a class="l2-fmid" href="https://www.puma-code.com" target="_blank" rel="noopener" aria-label="Puma Code, www.puma-code.com"><img src="/img/puma-code.webp" alt="Puma Code" width="56" height="56"></a>
+        <a class="l2-fmid" href="https://www.puma-code.com" target="_blank" rel="noopener" aria-label="Puma Code, www.puma-code.com"><img src="/img/puma-code.png" alt="Puma Code" width="56" height="56"></a>
         <a class="l2-fr" href="https://www.puma-code.com" target="_blank" rel="noopener">www.puma-code.com</a>
       </footer>
     </div>`);

@@ -334,8 +334,8 @@ html:has(.l2-page) { scroll-behavior: smooth; }
 .l2-fr { justify-self: end; text-align: right; }
 .l2-foot a { color: var(--muted); white-space: nowrap; } .l2-foot a:hover { color: var(--amber); }
 .l2-fmid { display: grid; place-items: center; border-radius: 14px; transition: transform .25s, filter .25s; }
-.l2-fmid img { display: block; width: 56px; height: 56px; object-fit: contain; mix-blend-mode: lighten; }
-.l2-fmid:hover { transform: scale(1.08); filter: drop-shadow(0 0 14px rgba(255, 150, 40, .55)); }
+.l2-fmid img { display: block; width: 56px; height: 56px; object-fit: contain; }
+.l2-fmid:hover { transform: scale(1.06); }
 .l2-fmid:focus-visible, .l2-reg:focus-visible { outline: 2px solid var(--amber); outline-offset: 3px; }
 /* botón del navbar: en el celular se queda lo esencial */
 .l2-reg { white-space: nowrap; padding: .45rem .9rem; min-height: 40px; }
