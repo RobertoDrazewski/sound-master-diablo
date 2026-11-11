@@ -136,9 +136,18 @@ function viewLanding() {
       </div>
 
       <footer class="l2-foot">
-        <span class="l2-fl">© ${new Date().getFullYear()} Diablo Master Mix<small>Propiedad de Puma Code</small></span>
-        <a class="l2-fmid" href="https://www.puma-code.com" target="_blank" rel="noopener" aria-label="Puma Code, www.puma-code.com"><img src="/img/puma-code.png" alt="Puma Code" width="56" height="56"></a>
-        <a class="l2-fr" href="https://www.puma-code.com" target="_blank" rel="noopener">www.puma-code.com</a>
+        <div class="l2-fl">
+          <span class="l2-fbrand"><img src="/logo-mark.png" alt="" width="28" height="28"><b>Diablo Master Mix</b></span>
+          <p>Del ensayo al master, sin productora.</p>
+          <nav class="l2-flinks" aria-label="Accesos"><button type="button" data-go="l2-planes">Planes</button><button type="button" data-go="l2-contacto">Contacto</button><a href="#/login">Entrar</a></nav>
+          <small>© ${new Date().getFullYear()} Diablo Master Mix. Todos los derechos reservados.</small>
+        </div>
+        <a class="l2-fmid" href="https://www.puma-code.com" target="_blank" rel="noopener" aria-label="Puma Code"><img src="/img/puma-code.png" alt="Puma Code" width="72" height="72"></a>
+        <div class="l2-fr">
+          <b>Puma Code</b>
+          <p>Software a medida y ciberseguridad.</p>
+          <small>© ${new Date().getFullYear()} Puma Code. Todos los derechos reservados.</small>
+        </div>
       </footer>
     </div>`);
   const root = $(".l2-page");

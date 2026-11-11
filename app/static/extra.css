@@ -275,7 +275,7 @@ html:has(.l2-page) { scroll-behavior: smooth; }
 @media (max-height: 640px) { .l2-pro { font-size: .9rem; margin-top: .4rem; } .l2-cue { display: none; } }
 
 /* resto de la portada: la foto del escenario queda fija detrás mientras se baja */
-.l2-rest { position: relative; isolation: isolate; padding-bottom: 7rem; }
+.l2-rest { position: relative; isolation: isolate; padding-bottom: 3.5rem; }
 .l2-stage { position: sticky; top: 0; height: 100svh; margin-bottom: -100svh; z-index: -1; pointer-events: none;
   background: radial-gradient(90% 60% at 80% 12%, rgba(255, 90, 31, .22), transparent 70%), linear-gradient(180deg, rgba(10, 9, 8, .74), rgba(10, 9, 8, .9)), url(/img/hero-escenario.jpg) 62% 50% / cover no-repeat; }
 .l2-rest::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 160px; z-index: -1; background: linear-gradient(180deg, var(--bg), transparent); pointer-events: none; }
@@ -324,30 +324,32 @@ html:has(.l2-page) { scroll-behavior: smooth; }
 .l2-contact { max-width: 680px; } .l2-form { padding: 1.2rem 1.1rem; }
 .l2-form .field input, .l2-form .field textarea { background: rgba(10, 9, 8, .6); }
 
-/* pie fijo */
-.l2-foot { position: fixed; left: 0; right: 0; bottom: 0; z-index: 49; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: .8rem;
-  padding: .55rem 1rem calc(.55rem + env(safe-area-inset-bottom)); background: rgba(10, 9, 8, .94); backdrop-filter: blur(10px); border-top: 1px solid var(--line-2);
-  box-shadow: 0 -10px 34px -14px rgba(255, 90, 31, .35); font-size: .74rem; color: var(--muted); }
-.l2-fl { display: grid; gap: .1rem; min-width: 0; line-height: 1.25; } .l2-fl small { font-size: .7rem; opacity: .75; }
-.l2-fr { justify-self: end; text-align: right; }
-.l2-foot a { color: var(--muted); white-space: nowrap; } .l2-foot a:hover { color: var(--amber); }
-.l2-fmid { display: grid; place-items: center; border-radius: 14px; transition: transform .25s, filter .25s; }
-.l2-fmid img { display: block; width: 56px; height: 56px; object-fit: contain; }
+/* pie al final de la página: logo de Puma Code en el centro, Diablo Master Mix a la izquierda y Puma Code a la derecha */
+.l2-foot { position: relative; z-index: 1; display: grid; grid-template-columns: minmax(0, 1fr); justify-items: center; gap: 1.4rem; padding: 2.2rem 1.25rem calc(5.4rem + env(safe-area-inset-bottom));
+  background: #0a0908; border-top: 1px solid var(--line-2); box-shadow: 0 -14px 40px -22px rgba(255, 90, 31, .45); color: var(--muted); font-size: .88rem; line-height: 1.5; }
+.l2-fl, .l2-fr { display: grid; gap: .4rem; min-width: 0; text-align: center; justify-items: center; } .l2-fl p, .l2-fr p { margin: 0; }
+.l2-fbrand { display: inline-flex; align-items: center; gap: .6rem; color: var(--text); font: 800 1.25rem var(--display); letter-spacing: .02em; } .l2-fbrand img { border-radius: 7px; }
+.l2-fr b { color: var(--text); font: 800 1.25rem var(--display); letter-spacing: .02em; }
+.l2-foot small { color: #8d8277; font-size: .78rem; }
+.l2-flinks { display: flex; gap: 1.1rem; flex-wrap: wrap; justify-content: center; margin: .2rem 0; }
+.l2-flinks button, .l2-flinks a { background: none; border: 0; padding: .35rem 0; cursor: pointer; color: var(--amber); font: 600 .9rem var(--font); text-decoration: none; } .l2-flinks button:hover, .l2-flinks a:hover { color: var(--text); }
+.l2-fmid { display: grid; place-items: center; border-radius: 14px; transition: transform .25s; order: -1; }
+.l2-fmid img { display: block; width: 72px; height: 72px; object-fit: contain; }
 .l2-fmid:hover { transform: scale(1.06); }
-.l2-fmid:focus-visible, .l2-reg:focus-visible { outline: 2px solid var(--amber); outline-offset: 3px; }
+.l2-fmid:focus-visible, .l2-reg:focus-visible, .l2-flinks :focus-visible { outline: 2px solid var(--amber); outline-offset: 3px; }
+@media (min-width: 860px) {
+  .l2-foot { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 2rem; padding: 2.4rem clamp(2rem, 6vw, 5rem) 5rem; }
+  .l2-fl { text-align: left; justify-items: start; } .l2-fr { text-align: right; justify-items: end; }
+  .l2-fmid { order: 0; } .l2-fmid img { width: 92px; height: 92px; }
+}
 /* botón del navbar: en el celular se queda lo esencial */
 .l2-reg { white-space: nowrap; padding: .45rem .9rem; min-height: 40px; }
 @media (max-width: 640px) { .l2-opt { display: none; } .l2-nav { gap: .5rem; } .l2-reg { font-size: .85rem; padding: .45rem .75rem; } }
-/* el chat se apoya sobre el pie */
-body.public .chat-fab { bottom: calc(5.2rem + env(safe-area-inset-bottom)); }
 
 @media (min-width: 640px) {
   .l2-sec { padding: 4rem 1.5rem 0; }
   .l2-steps { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .l2-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.2rem; }
-  .l2-foot { font-size: .85rem; padding: .7rem clamp(2rem, 6vw, 5rem) calc(.7rem + env(safe-area-inset-bottom)); }
-  .l2-fl small { font-size: .78rem; }
-  .l2-fmid img { width: 68px; height: 68px; }
 }
 @media (min-width: 960px) {
   .l2-top { padding-inline: 2rem; }
