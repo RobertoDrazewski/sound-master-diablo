@@ -171,8 +171,9 @@ def verify_signature(headers, data_ids=("",)) -> bool:
     """Valida el x-signature de las notificaciones. Si no hay secreto configurado, se confia en el re-fetch a la API.
     El manifiesto usa el data.id de la URL y omite lo que no llega; como la simulacion del panel y los avisos reales
     pueden diferir, se prueban las variantes (id de la URL, id del cuerpo, sin id). Todas pasan por el HMAC."""
-    secret = config.MP_WEBHOOK_SECRET
-    if not secret:
+    # puede haber mas de una clave separada por comas (produccion y prueba): cada pestaña del panel de MP tiene la suya
+    secrets = [s.strip() for s in (config.MP_WEBHOOK_SECRET or "").split(",") if s.strip()]
+    if not secrets:
         return True
     sig = headers.get("x-signature", "")
     req_id = headers.get("x-request-id", "")
@@ -184,12 +185,13 @@ def verify_signature(headers, data_ids=("",)) -> bool:
     tried = []
     for did in dict.fromkeys([*(str(i) for i in data_ids if i), ""]):
         manifest = (f"id:{did.lower()};" if did else "") + (f"request-id:{req_id};" if req_id else "") + f"ts:{ts};"
-        mine = hmac.new(secret.encode(), manifest.encode(), hashlib.sha256).hexdigest()
-        if hmac.compare_digest(mine, v1):
-            return True
+        for secret in secrets:
+            mine = hmac.new(secret.encode(), manifest.encode(), hashlib.sha256).hexdigest()
+            if hmac.compare_digest(mine, v1):
+                return True
         tried.append(manifest)
-    log.warning("webhook MP rechazado: firma no coincide. secret_len=%d secret_sha4=%s v1_len=%d got4=%s manifiestos=%s",
-                len(secret), hashlib.sha256(secret.encode()).hexdigest()[:4], len(v1), v1[:4], tried)
+    log.warning("webhook MP rechazado: firma no coincide. claves=%s v1_len=%d got4=%s manifiestos=%s",
+                [(len(s), hashlib.sha256(s.encode()).hexdigest()[:4]) for s in secrets], len(v1), v1[:4], tried)
     return False
 
 
