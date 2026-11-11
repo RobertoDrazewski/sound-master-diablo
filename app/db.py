@@ -63,6 +63,7 @@ class Band(Base):
     mp_preapproval_id: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
     mp_status: Mapped[str | None] = mapped_column(String(20), nullable=True)               # pending | authorized | paused | cancelled
     mp_payer_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    purge_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)              # baja pedida: se borra todo en esta fecha
 
 
 class Plan(Base):
@@ -94,6 +95,22 @@ class Payment(Base):
     status: Mapped[str] = mapped_column(String(20), default="approved")
     kind: Mapped[str] = mapped_column(String(12), default="mp")           # mp | manual
     paid_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
+class Cancellation(Base):
+    """Baja de una banda: motivos del cuestionario. No guarda datos de la banda (solo nombre, plan y fechas)."""
+    __tablename__ = "cancellations"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    band_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    band_name: Mapped[str] = mapped_column(String(120), default="")
+    plan_name: Mapped[str] = mapped_column(String(60), default="")
+    reasons: Mapped[str] = mapped_column(String(300), default="")      # claves separadas por coma
+    comment: Mapped[str] = mapped_column(Text, default="")
+    months: Mapped[int] = mapped_column(Integer, default=0)            # meses de antiguedad
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+    purge_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    purged_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    stopped: Mapped[bool] = mapped_column(Boolean, default=False)      # el super admin freno la baja
 
 
 class Signup(Base):
@@ -326,3 +343,4 @@ def _migrate_sqlite():
         add(conn, "bands", "mp_preapproval_id", "VARCHAR(80)")
         add(conn, "bands", "mp_status", "VARCHAR(20)")
         add(conn, "bands", "mp_payer_email", "VARCHAR(255)")
+        add(conn, "bands", "purge_at", "DATETIME")

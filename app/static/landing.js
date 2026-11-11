@@ -168,9 +168,9 @@ function viewLanding() {
   if (typeof chatMount === "function") chatMount();
 }
 
-/* sello de cobro: ícono a la izquierda, texto a la derecha. Si existe /img/mercadopago.svg (logo oficial) se muestra en lugar del escudo */
+/* sello de cobro: logo de Mercado Pago a la izquierda y el texto a la derecha */
 function mpBadge() {
-  return `<div class="plan-mp"><span class="plan-mp-ic">${ic("shield")}<img src="/img/mercadopago.svg" alt="" onload="this.parentNode.classList.add('has-logo')" onerror="this.remove()"></span><p><b>Suscripción de Mercado Pago</b><small>Cobro mensual automático. Cancelás cuando quieras.</small></p></div>`;
+  return `<div class="plan-mp"><img class="plan-mp-logo" src="/img/mercadopago.png" alt="Mercado Pago" width="52" height="52"><p><b>Suscripción de Mercado Pago</b><small>Cobro mensual automático. Cancelás cuando quieras.</small></p></div>`;
 }
 
 async function landPlans() {
@@ -188,7 +188,7 @@ async function landPlans() {
       <ul>${planFeatures(p).map((f) => `<li>${f}</li>`).join("")}</ul>
       ${mpBadge()}
       <button type="button" class="btn ${p.highlight ? "primary" : ""}" data-plan="${p.id}">Elegir ${esc(p.name)}</button>
-    </article>`).join("") + `<p class="small muted l2-plans-note">Pagás con Mercado Pago y apenas se confirma te mandamos por mail el acceso a tu banda. Los precios están en pesos argentinos e incluyen todo, sin cargos por canción. ¿Dudas? Escribinos en Contacto.</p>`;
+    </article>`).join("") + `<p class="small muted l2-plans-note">Pagás con Mercado Pago y apenas se confirma te mandamos por mail el acceso a tu banda. Los precios están en pesos argentinos e incluyen todo, sin cargos por canción. Si te das de baja, se eliminan todos los datos de la banda a las 48 horas. ¿Dudas? Escribinos en Contacto.</p>`;
   $$("[data-plan]", box).forEach((b) => b.addEventListener("click", () => openSignup(cfg.plans.find((p) => String(p.id) === b.dataset.plan))));
 }
 
@@ -226,7 +226,7 @@ async function openPlans() {
             <button type="button" class="btn ${p.highlight ? "primary" : ""}" data-plan="${p.id}">Elegir ${esc(p.name)}</button>
           </article>`).join("")}
       </div>
-      <p class="small muted" style="margin:1rem 0 0">Pagás con Mercado Pago y apenas se confirma te mandamos por mail el acceso a tu banda. Los precios están en pesos argentinos e incluyen todo, sin cargos por canción.</p>
+      <p class="small muted" style="margin:1rem 0 0">Pagás con Mercado Pago y apenas se confirma te mandamos por mail el acceso a tu banda. Los precios están en pesos argentinos e incluyen todo, sin cargos por canción. Si te das de baja, se eliminan todos los datos de la banda a las 48 horas.</p>
     </div>`, (m) => {
     m.classList.add("wide");
     $("#pl-x", m).addEventListener("click", closeModal);
@@ -343,7 +343,7 @@ async function openSignup(plan) {
       <div class="sg-plan">
         <span class="l2-ibox">${ic("card")}</span>
         <div class="sg-pt"><b>${fmtARS(plan.price_ars)} <small>por mes</small></b>
-          <span>${trial ? `${trial} días gratis y después se cobra todos los meses.` : "Se cobra todos los meses."} Cancelás cuando quieras.</span></div>
+          <span>${trial ? `${trial} días gratis y después se cobra todos los meses.` : "Se cobra todos los meses."} Cancelás cuando quieras; al darte de baja se eliminan los datos de la banda a las 48 horas.</span></div>
       </div>
       <ul class="sg-feat">${planFeatures(plan).map((f) => `<li><span class="sg-ck" aria-hidden="true">✓</span><span>${f}</span></li>`).join("")}</ul>
       <div class="field"><label for="sg-band">Nombre de la banda</label><input id="sg-band" type="text" maxlength="120" autocomplete="organization" required></div>

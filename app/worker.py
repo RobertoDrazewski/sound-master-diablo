@@ -235,6 +235,8 @@ class Worker(threading.Thread):
                     from . import billing
                     with SessionLocal() as bdb:
                         billing.reconcile_all(bdb)
+                    with SessionLocal() as bdb:
+                        billing.purge_due(bdb)
                 except Exception:  # noqa: BLE001
                     log.exception("reconciliacion de cobros fallo")
                 last_cleanup = time.time()

@@ -145,7 +145,7 @@ LA PLATAFORMA (usá solo esto):
 - Master (la herramienta principal): se elige el estilo entre más de 70 géneros (rock, hard rock, heavy metal, stoner, punk, pop, funk, jazz, reggae, cumbia, hip hop, electrónica y más) o se sube una referencia propia y el master copia su balance tonal, volumen y ancho. Se controla volumen objetivo, potencia, tono (graves, cuerpo, presencia, aire), balance de batería/bajo/voces (baja la batería si tapa al resto), ancho estéreo, y después muestra qué hizo con antes/después y una comparación A/B a igual volumen. También hay un master en un clic. El procesamiento es DSP profesional, no "magia de IA".
 - Álbumes y Lanzamiento: portadas (también con IA), metadatos y descarga del álbum listo para Spotify, Bandcamp, Apple Music/YouTube Music, vinilo y CD, con la guía de cómo subirlo a cada uno.
 - Calendario de la banda e integrantes.
-- Se cobra por banda (no por músico) y lo paga el admin de la banda con Mercado Pago, mensual, cancelable cuando quiera. Hay prueba gratis de {config.TRIAL_DAYS} días.
+- Se cobra por banda (no por músico) y lo paga el admin de la banda con Mercado Pago, mensual, cancelable cuando quiera (al darse de baja se eliminan todos los datos de la banda a las 48 horas, y para volver hay que darse de alta de nuevo). Hay prueba gratis de {config.TRIAL_DAYS} días.
 Planes actuales:
 {_plans_text(plans)}
 

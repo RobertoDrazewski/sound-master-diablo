@@ -14,12 +14,12 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from . import analysis, assistant, audio, billing, chat, covers, genres, mail, masterjob, release
+from . import analysis, assistant, audio, billing, chat, covers, genres, mail, masterjob, purge, release
 from .config import (ASSISTANT_DAILY_LIMIT, COVER_AI_DAILY_LIMIT, PUBLIC_URL, BAND_QUOTA_GB, CORS_ORIGINS, DATA_DIR,
                      INVITE_TTL_DAYS, MAX_UPLOAD_MB, RAW_RETENTION_DAYS,
                      REFERENCE_SECONDS, SUPERADMIN_EMAIL, SUPERADMIN_PASSWORD, CHAT_ENABLED, TRIAL_DAYS,
-                     TURNSTILE_SITE_KEY)
-from .db import (Album, ApiToken, Band, ContactMessage, Event, Genre, Invite, Job, Membership, Notification,
+                     TURNSTILE_SITE_KEY, PURGE_HOURS)
+from .db import (Album, ApiToken, Band, Cancellation, ContactMessage, Event, Genre, Invite, Job, Membership, Notification,
                  Payment, Plan, Reference, SessionLocal, Signup, Track, User, Version, init_db, now)
 from .notify import notify_band
 from .security import (create_media_token, create_session_jwt,
@@ -436,7 +436,7 @@ def me(user: User = Depends(current_user), db: Session = Depends(get_db)):
         "photo": img_url("users", user.id, user.photo),
         "bands": [{"id": b.id, "name": b.name, "role": band_role(db, user, b.id),
                    "photo": img_url("bands", b.id, b.photo),
-                   "billing": {k: v for k, v in billing.status(db, b).items() if k in ("state", "label", "can_write", "days_left")}}
+                   "billing": {k: v for k, v in billing.status(db, b).items() if k in ("state", "label", "can_write", "days_left", "hours_left", "purge_at")}}
                   for b in bands],
     }
 
@@ -631,27 +631,7 @@ def admin_delete_band(band_id: int, confirm_name: str = "", _: User = Depends(re
         raise HTTPException(404, "Banda inexistente")
     if confirm_name.strip() != b.name:
         raise HTTPException(422, "Escribí el nombre exacto de la banda para confirmar")
-    for t in db.query(Track).filter_by(band_id=band_id).all():
-        for v in t.versions:
-            remove_version_files(v)
-    for r in db.query(Reference).filter_by(band_id=band_id).all():
-        Path(r.path).unlink(missing_ok=True)
-    for a in db.query(Album).filter_by(band_id=band_id).all():
-        drop_photo_file("albums", a)
-    drop_photo_file("bands", b)
-    shutil.rmtree(DATA_DIR / "bands" / str(band_id), ignore_errors=True)
-    db.query(Job).filter(Job.version_id.in_(
-        db.query(Version.id).join(Track, Track.id == Version.track_id).filter(Track.band_id == band_id))).delete(
-        synchronize_session=False)
-    db.query(Track).filter_by(band_id=band_id).delete(synchronize_session=False)
-    db.query(Album).filter_by(band_id=band_id).delete(synchronize_session=False)
-    db.query(Event).filter_by(band_id=band_id).delete(synchronize_session=False)
-    db.query(Notification).filter_by(band_id=band_id).delete(synchronize_session=False)
-    db.query(Membership).filter_by(band_id=band_id).delete(synchronize_session=False)
-    db.query(Reference).filter_by(band_id=band_id).delete(synchronize_session=False)
-    db.query(Invite).filter_by(band_id=band_id).delete(synchronize_session=False)
-    db.delete(b)
-    db.commit()
+    purge.delete_band(db, b)
     return {"ok": True}
 
 
@@ -1723,7 +1703,7 @@ def public_config(db: Session = Depends(get_db)):
 def band_billing(band_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
     need_member(db, user, band_id)
     band = db.get(Band, band_id)
-    pays = db.query(Payment).filter_by(band_id=band_id).order_by(Payment.paid_at.desc()).limit(12).all()
+    pays = db.query(Payment).filter_by(band_id=band_id).order_by(Payment.paid_at.desc()).limit(120).all()
     lim = billing.limits(db, band)
     return {
         "is_admin": band_role(db, user, band_id) == "admin", "status": billing.status(db, band),
@@ -1731,7 +1711,12 @@ def band_billing(band_id: int, user: User = Depends(current_user), db: Session =
                                  "members": db.query(Membership).filter_by(band_id=band_id).count()},
         "plans": billing.public_plans(db), "mp_enabled": billing.mp_enabled(), "trial_days": TRIAL_DAYS,
         "payer_email": band.mp_payer_email or user.email, "has_subscription": bool(band.mp_preapproval_id),
-        "payments": [{"amount": p.amount, "currency": p.currency, "status": p.status, "paid_at": p.paid_at} for p in pays],
+        "payments": [{"amount": p.amount, "currency": p.currency, "status": p.status, "paid_at": p.paid_at, "kind": p.kind} for p in pays],
+        "total_paid": float(sum(p.amount for p in pays if p.status == "approved")),
+        "can_cancel": band_role(db, user, band_id) == "admin" and not band.exempt and not band.purge_at
+                      and (bool(band.mp_preapproval_id) or band.mp_status is not None),
+        "cancel_reasons": [{"key": k, "label": v} for k, v in billing.CANCEL_REASONS.items()],
+        "purge_hours": PURGE_HOURS,
     }
 
 
@@ -1787,17 +1772,29 @@ def band_billing_sync(band_id: int, user: User = Depends(current_user), db: Sess
     return {"status": billing.status(db, band)}
 
 
+class CancelIn(BaseModel):
+    reasons: list[str] = Field(min_length=1, max_length=8)
+    comment: str = Field("", max_length=500)
+    confirm: bool = False
+
+
 @app.post("/bands/{band_id}/billing/cancel")
-def band_cancel(band_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+def band_cancel(band_id: int, body: CancelIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Baja de la banda: cuestionario obligatorio + confirmacion. A las PURGE_HOURS se borra todo."""
     band = _band_admin(db, user, band_id)
-    if not band.mp_preapproval_id:
-        raise HTTPException(409, "No hay una suscripción para cancelar")
+    if band.exempt:
+        raise HTTPException(409, "Esta banda no tiene una suscripción para cancelar")
+    if band.purge_at:
+        raise HTTPException(409, "La baja ya está en curso")
+    if not body.confirm:
+        raise HTTPException(422, "Confirmá que entendés que se eliminan todos los datos")
+    reasons = [r for r in dict.fromkeys(body.reasons) if r in billing.CANCEL_REASONS]
+    if not reasons:
+        raise HTTPException(422, "Elegí al menos un motivo")
     try:
-        billing.cancel_preapproval(band.mp_preapproval_id)
+        billing.request_cancellation(db, band, reasons, body.comment)
     except billing.MPError as e:
-        raise HTTPException(424, str(e)) from None
-    band.mp_status = "cancelled"
-    db.commit()  # el servicio sigue hasta el fin del periodo pagado
+        raise HTTPException(424, "No pudimos cancelar el cobro en Mercado Pago, así que no se dio de baja nada. Probá de nuevo en un rato. " + str(e)) from None
     return {"status": billing.status(db, band)}
 
 
@@ -1833,7 +1830,12 @@ def admin_billing_summary(_: User = Depends(require_super), db: Session = Depend
     return {**billing.overview(db), "mp_enabled": billing.mp_enabled(), "mail_enabled": mail.mail_enabled(),
             "turnstile": mail.turnstile_enabled(), "unread_messages": db.query(ContactMessage).filter_by(handled=False).count(),
             "pending_signups": [{"id": s.id, "band": s.band_name, "name": s.admin_name, "email": s.email,
-                                 "plan": plans.get(s.plan_id, "-"), "created_at": s.created_at} for s in pend]}
+                                 "plan": plans.get(s.plan_id, "-"), "created_at": s.created_at} for s in pend],
+            "cancellations": [{"id": c.id, "band_id": c.band_id, "band": c.band_name, "plan": c.plan_name,
+                               "reasons": [billing.CANCEL_REASONS.get(k, k) for k in c.reasons.split(",") if k],
+                               "comment": c.comment, "months": c.months, "created_at": c.created_at,
+                               "purge_at": c.purge_at, "purged_at": c.purged_at, "stopped": c.stopped}
+                              for c in db.query(Cancellation).order_by(Cancellation.created_at.desc()).limit(40).all()]}
 
 
 class BandBillingIn(BaseModel):
@@ -1878,6 +1880,16 @@ def admin_band_sync(band_id: int, _: User = Depends(require_super), db: Session 
         billing.sync_band(db, b)
     except billing.MPError as e:
         raise HTTPException(424, str(e)) from None
+    return {"status": billing.status(db, b)}
+
+
+@app.post("/admin/bands/{band_id}/billing/stop-closing")
+def admin_stop_closing(band_id: int, _: User = Depends(require_super), db: Session = Depends(get_db)):
+    """Frena una baja por error antes de que se borre todo. La banda queda sin suscripcion activa."""
+    b = db.get(Band, band_id)
+    if not b or not b.purge_at:
+        raise HTTPException(404, "Esa banda no tiene una baja en curso")
+    billing.stop_cancellation(db, b)
     return {"status": billing.status(db, b)}
 
 

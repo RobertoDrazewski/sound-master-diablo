@@ -63,6 +63,7 @@ COVER_AI_DAILY_LIMIT = int(os.getenv("COVER_AI_DAILY_LIMIT", "5"))  # imagenes c
 MP_ACCESS_TOKEN = os.getenv("MP_ACCESS_TOKEN", "")           # credencial de produccion (APP_USR-...)
 MP_WEBHOOK_SECRET = os.getenv("MP_WEBHOOK_SECRET", "")       # clave secreta de la notificacion (opcional, recomendada)
 TRIAL_DAYS = int(os.getenv("TRIAL_DAYS", "14"))              # prueba gratis de las bandas nuevas que pagan
+PURGE_HOURS = int(os.getenv("PURGE_HOURS", "48"))  # horas entre la baja de una banda y el borrado de todos sus datos
 PAST_DUE_GRACE_DAYS = int(os.getenv("PAST_DUE_GRACE_DAYS", "3"))  # dias de gracia despues de un pago vencido
 BILLING_CURRENCY = os.getenv("BILLING_CURRENCY", "ARS")
 

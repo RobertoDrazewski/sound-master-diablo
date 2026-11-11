@@ -74,6 +74,8 @@ const ICONS = {
   music: '<path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/>',
   menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
   key: '<circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M16 7l3 3"/>',
+  check: '<path d="M5 12.5l4.5 4.5L19 7"/>',
+  alert: '<path d="M12 4l9.5 16.5h-19z"/><path d="M12 10v4.5M12 17.6v.4"/>',
   phone: '<rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/>',
 };
 const ic = (n) => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${ICONS[n] || ""}</svg>`;

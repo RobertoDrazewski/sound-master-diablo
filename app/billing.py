@@ -18,10 +18,10 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from . import config, mail
-from .notify import notify_supers
+from .notify import notify_band, notify_supers
 from .security import gen_password, hash_password
 from .netutil import HTTPFail, http_json
-from .db import Band, Membership, Payment, Plan, Signup, Track, UsageEvent, User, Version, now
+from .db import Band, Cancellation, Membership, Payment, Plan, Signup, Track, UsageEvent, User, Version, now
 
 MP_API = "https://api.mercadopago.com"
 
@@ -63,6 +63,10 @@ def status(db: Session, band: Band) -> dict:
     plan = band_plan(db, band)
     base = {"plan": plan.slug if plan else None, "plan_name": plan.name if plan else None,
             "mp_status": band.mp_status, "paid_until": band.paid_until, "trial_ends_at": band.trial_ends_at}
+    if band.purge_at:
+        # baja pedida: solo lectura y descargas hasta que se borra todo
+        return {**base, "state": "closing", "can_write": False, "reason": "closing", "label": "Baja en curso",
+                "purge_at": band.purge_at, "hours_left": max(0, int((band.purge_at - t).total_seconds() // 3600))}
     if band.blocked:
         return {**base, "state": "suspended", "can_write": False, "reason": "blocked",
                 "label": "Servicio suspendido"}
@@ -238,7 +242,7 @@ def apply_preapproval(db: Session, data: dict) -> Band | None:
             except ValueError:
                 pass
     db.commit()
-    if st in ("cancelled", "paused") and prev != st:
+    if st in ("cancelled", "paused") and prev != st and not band.purge_at:
         _tell_owner(db, f"Suscripción {'cancelada' if st == 'cancelled' else 'pausada'}: {band.name}",
                     f"La banda \"{band.name}\" {'canceló' if st == 'cancelled' else 'pausó'} su suscripción en Mercado Pago.\n"
                     f"Mantiene el servicio hasta el fin del período ya pagado.", "#/admin/cobros")
@@ -328,9 +332,100 @@ def reconcile_all(db: Session):
                 continue
 
 
+# ------------------------------------------------------------------ baja de la suscripcion
+
+CANCEL_REASONS = {
+    "precio": "Me resulta caro",
+    "uso": "No lo usamos lo suficiente",
+    "banda": "La banda se disolvió o está en pausa",
+    "funciones": "Le faltan funciones que necesito",
+    "master": "No me convenció la calidad del master",
+    "otra": "Uso otra herramienta",
+    "dificil": "Me resultó difícil de usar",
+    "otro": "Otro motivo",
+}
+
+
+def _fecha_hora(d: datetime | None) -> str:
+    """Las fechas se guardan en UTC; a la gente se le muestra la hora de Argentina (UTC-3)."""
+    return (d - timedelta(hours=3)).strftime("%d/%m/%Y a las %H:%M") + " (hora de Argentina)" if d else ""
+
+
+def request_cancellation(db: Session, band: Band, reasons: list[str], comment: str = "") -> Cancellation:
+    """La banda se da de baja: se cancela el cobro en Mercado Pago y se programa el borrado de todos sus datos.
+    Si Mercado Pago no confirma la cancelacion no se programa nada (nunca queda cobrando una banda dada de baja)."""
+    if band.exempt:
+        raise ValueError("exempt")
+    if band.purge_at:
+        raise ValueError("closing")
+    if band.mp_preapproval_id and band.mp_status != "cancelled":
+        try:
+            cancel_preapproval(band.mp_preapproval_id)
+        except MPError:
+            # si ya estaba cancelada del lado de MP, seguimos; si no, se corta aca
+            if get_preapproval(band.mp_preapproval_id).get("status") != "cancelled":
+                raise
+    plan = band_plan(db, band)
+    t = now()
+    band.mp_status = "cancelled"
+    band.purge_at = t + timedelta(hours=config.PURGE_HOURS)
+    rec = Cancellation(band_id=band.id, band_name=band.name, plan_name=plan.name if plan else "",
+                       reasons=",".join(reasons), comment=comment.strip()[:500],
+                       months=max(0, (t - band.created_at).days // 30), purge_at=band.purge_at)
+    db.add(rec)
+    notify_band(db, band.id, f"La banda se dio de baja: todo se elimina el {_fecha(band.purge_at)}. Descargá tu material.",
+                kind="baja", link=f"#/band/{band.id}")
+    db.commit()
+    labels = "\n".join(f"- {CANCEL_REASONS[k]}" for k in reasons if k in CANCEL_REASONS)
+    _tell_owner(db, f"Baja de banda: {band.name}",
+                f"La banda \"{band.name}\" (plan {plan.name if plan else '-'}) se dio de baja.\n"
+                f"Se borra todo a partir del {_fecha_hora(band.purge_at)}.\n\nMotivos:\n{labels}\n"
+                + (f"\nComentario: {rec.comment}\n" if rec.comment else ""), "#/admin/cobros")
+    for em in _admin_emails(db, band.id):
+        mail.send_customer(em, "Diablo Master Mix: confirmamos la baja de tu banda",
+                           f"Recibimos la baja de la banda \"{band.name}\" y cancelamos la suscripción en Mercado Pago: "
+                           "no se te va a cobrar más.\n\n"
+                           f"Diablo Master Mix necesita su espacio en el servidor, por eso no guardamos información de las bandas que se dan de baja. "
+                           f"A partir del {_fecha_hora(band.purge_at)} se eliminan para siempre los temas, masters, álbumes, tapas, el calendario y las "
+                           "cuentas de todos los integrantes.\n\n"
+                           "Hasta entonces podés entrar, escuchar y descargar todo tu material (no se puede subir ni masterizar).\n"
+                           f"Para volver a usar Diablo Master Mix tendrías que darte de alta y suscribirte de nuevo desde {_site()}.\n\n"
+                           "Diablo Master Mix")
+    return rec
+
+
+def purge_due(db: Session) -> int:
+    """Corre cada hora: borra las bandas cuya baja ya cumplio el plazo. Devuelve cuantas."""
+    from .purge import delete_band
+    done = 0
+    for band in db.query(Band).filter(Band.purge_at.isnot(None), Band.purge_at <= now()).all():
+        name, bid = band.name, band.id
+        try:
+            users = delete_band(db, band, delete_orphan_users=True)
+        except Exception:  # noqa: BLE001
+            db.rollback()
+            log.exception("no se pudo borrar la banda %s", bid)
+            continue
+        for rec in db.query(Cancellation).filter_by(band_id=bid, purged_at=None, stopped=False).all():
+            rec.purged_at = now()
+        db.commit()
+        done += 1
+        _tell_owner(db, f"Banda eliminada: {name}", f"Pasó el plazo de la baja y se eliminaron todos los datos de \"{name}\" "
+                    f"({users} cuentas de integrantes).")
+    return done
+
+
+def stop_cancellation(db: Session, band: Band):
+    """El super admin frena una baja por error: la banda queda sin suscripcion (tiene que volver a suscribirse)."""
+    band.purge_at = None
+    for rec in db.query(Cancellation).filter_by(band_id=band.id, purged_at=None).all():
+        rec.stopped = True
+    db.commit()
+
+
 def overview(db: Session) -> dict:
     bands = db.query(Band).all()
-    counts = {"exempt": 0, "trial": 0, "active": 0, "past_due": 0, "suspended": 0}
+    counts = {"exempt": 0, "trial": 0, "active": 0, "past_due": 0, "suspended": 0, "closing": 0}
     mrr = 0
     for b in bands:
         s = status(db, b)

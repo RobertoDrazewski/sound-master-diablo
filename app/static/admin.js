@@ -6,7 +6,7 @@ const AD_TABS = [
   ["personas", "Personas"], ["referencias", "Referencias"], ["estilos", "Estilos"], ["mensajes", "Mensajes"],
 ];
 const AD_STATE = {
-  exempt: ["Sin cargo", "ok"], trial: ["En prueba", "warn"], active: ["Pagando", "ok"], past_due: ["Pago atrasado", "warn"], suspended: ["Servicio cortado", "err"],
+  exempt: ["Sin cargo", "ok"], trial: ["En prueba", "warn"], active: ["Pagando", "ok"], past_due: ["Pago atrasado", "warn"], suspended: ["Servicio cortado", "err"], closing: ["De baja", "err"],
 };
 const adChip = (st) => { const [l, k] = AD_STATE[st] || [st, ""]; return `<span class="chip-st ${k}">${l}</span>`; };
 const adDay = (iso) => (iso ? parseDate(iso).toLocaleDateString("es-AR", { day: "numeric", month: "short", year: "numeric" }) : "—");
@@ -168,8 +168,15 @@ async function adCobros(body, nav) {
   const [pays, bands, sum] = await Promise.all([api("/admin/payments"), api("/admin/bands"), api("/admin/billing/summary")]);
   if (nav !== state.nav) return;
   const pend = sum.pending_signups || [];
+  const bajas = sum.cancellations || [];
   const problem = bands.filter((b) => ["past_due", "suspended"].includes(b.billing.state) && !b.exempt);
   body.innerHTML = `
+    ${bajas.length ? `<section class="card"><h2>Bajas</h2><p class="small muted">Motivos que marcaron las bandas al darse de baja. Se borran todos sus datos a las 48 horas; si fue un error, frená la baja antes de que pase el plazo.</p>
+      <ul class="upcoming">${bajas.map((c) => `<li><div class="grow"><strong>${esc(c.band)}</strong> ${c.plan ? `<span class="chip-st">${esc(c.plan)}</span>` : ""}
+        ${c.purged_at ? `<span class="chip-st">Eliminada</span>` : c.stopped ? `<span class="chip-st ok">Frenada</span>` : `<span class="chip-st err">Se borra ${adDay(c.purge_at)}</span>`}
+        <div class="small muted">${adDay(c.created_at)} · ${c.months} ${c.months === 1 ? "mes" : "meses"} de antigüedad</div>
+        <ul class="cx-why">${c.reasons.map((r) => `<li>${esc(r)}</li>`).join("")}</ul>${c.comment ? `<div class="small">“${esc(c.comment)}”</div>` : ""}</div>
+        ${!c.purged_at && !c.stopped && c.band_id ? `<button class="btn small" data-stop="${c.band_id}">Frenar baja</button>` : ""}</li>`).join("")}</ul></section>` : ""}
     ${pend.length ? `<section class="card"><h2>Altas sin terminar</h2><p class="small muted">Eligieron un plan pero todavía no completaron el pago en Mercado Pago. Si lo completan, la banda se crea sola y se te avisa.</p>
       <ul class="upcoming">${pend.map((s) => `<li><div class="grow"><strong>${esc(s.band)}</strong> <span class="chip-st">${esc(s.plan)}</span><div class="small muted">${esc(s.name)} · ${esc(s.email)} · ${adDay(s.created_at)}</div></div></li>`).join("")}</ul></section>` : ""}
     ${problem.length ? `<section class="card"><h2>Para mirar</h2><ul class="upcoming">${problem.map((b) => `<li><div class="grow"><strong>${esc(b.name)}</strong> ${adChip(b.billing.state)}
@@ -179,6 +186,10 @@ async function adCobros(body, nav) {
       ${pays.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Fecha</th><th>Banda</th><th>Monto</th><th>Estado</th><th>Origen</th></tr></thead><tbody>
       ${pays.map((p) => `<tr><td>${adDay(p.paid_at)}</td><td>${esc(p.band || "—")}</td><td>${p.amount ? adMoney(p.amount) : "—"}</td><td>${p.status === "approved" ? `<span class="chip-st ok">Aprobado</span>` : `<span class="chip-st err">Rechazado</span>`}</td><td>${p.kind === "manual" ? "Manual" : "Mercado Pago"}</td></tr>`).join("")}
       </tbody></table></div>` : `<p class="muted">Todavía no hay pagos.</p>`}</section>`;
+  $$("[data-stop]", body).forEach((b) => b.addEventListener("click", adGuard(async () => {
+    if (!confirm("¿Frenar la baja? No se borra nada, pero la banda queda sin suscripción y tiene que volver a suscribirse.")) return;
+    await api(`/admin/bands/${b.dataset.stop}/billing/stop-closing`, { method: "POST" }); toast("Baja frenada", "ok"); adCobros(body, nav);
+  })));
 }
 
 /* ---------- planes ---------- */
