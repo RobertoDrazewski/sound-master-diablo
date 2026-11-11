@@ -454,3 +454,39 @@ html:has(.l2-page) { scroll-behavior: smooth; }
 .l2-page { position: relative; isolation: isolate; }
 .l2-photo { position: fixed; z-index: -1; pointer-events: none; }
 .l2-page .land2 { background: none; }
+
+/* ---------- master en celular: el formulario heredaba el estilo de lista (.steps) y se corría a la derecha ---------- */
+form.steps { padding-left: 0; grid-template-columns: minmax(0, 1fr); gap: 0; }
+.step { min-width: 0; }
+@media (max-width: 640px) {
+  .step { padding-left: 0; display: grid; grid-template-columns: 2.1rem minmax(0, 1fr); column-gap: .75rem; row-gap: .85rem; align-items: center; margin-bottom: 1.9rem; }
+  .step::before { position: static; grid-column: 1; grid-row: 1; }
+  .step > h3 { grid-column: 2; grid-row: 1; margin: 0; }
+  .step > :not(h3) { grid-column: 1 / -1; min-width: 0; }
+}
+.st-grid { grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); }
+.seg { grid-template-columns: repeat(auto-fit, minmax(min(190px, 100%), 1fr)); }
+@media (max-width: 640px) {
+  /* una sola numeración (la del paso); las tarjetas internas ganan ancho */
+  .st-n { display: none; }
+  .st-block { border: 0; background: none; padding: 0; }
+  .st-block + .st-block { border-top: 1px dashed var(--line-2); padding-top: 1.3rem; }
+  .st-title { flex-wrap: wrap; row-gap: .6rem; margin-bottom: 1rem; }
+  .st-title > div { flex: 1 1 100%; }
+  .st-title h3 { font-size: 1.35rem; }
+  .st-card { padding: .85rem .8rem; }
+  .st-genres { grid-template-columns: 1fr 1fr; }
+}
+
+/* calendario: las columnas no se ensanchan por el texto de los eventos */
+.cal { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.cal .day, .cal .dow { min-width: 0; overflow: hidden; }
+@media (max-width: 640px) {
+  .cal .dow { padding: .3rem 0; text-align: center; font-size: .72rem; }
+  .cal .day { padding: .25rem .2rem; font-size: .8rem; }
+  .cal-head { flex-wrap: wrap; }
+  /* lanzamiento: el "Cómo se hace" baja a su renglón y el título tiene todo el ancho */
+  .dest-item summary { flex-wrap: wrap; row-gap: .15rem; }
+  .dest-item summary strong { flex: 1 1 calc(100% - 50px); min-width: 0; }
+  .dest-go { flex: 1 0 100%; padding-left: calc(34px + .7rem); }
+}
