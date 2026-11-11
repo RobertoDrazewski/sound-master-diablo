@@ -1811,7 +1811,7 @@ async def billing_webhook(request: Request, db: Session = Depends(get_db)):
         body = {}
     topic = q.get("type") or q.get("topic") or body.get("type") or body.get("topic") or ""
     rid = q.get("data.id") or q.get("id") or (body.get("data") or {}).get("id") or ""
-    if not billing.verify_signature(request.headers, q.get("data.id") or ""):
+    if not billing.verify_signature(request.headers, [q.get("data.id"), (body.get("data") or {}).get("id") if isinstance(body, dict) else None]):
         raise HTTPException(401, "firma invalida")
     if rid and topic in ("subscription_preapproval", "preapproval", "subscription_authorized_payment", "authorized_payment"):
         try:

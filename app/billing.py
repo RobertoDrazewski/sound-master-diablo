@@ -10,6 +10,7 @@ El estado se calcula siempre a partir de fechas (no hay un "cron" que pueda fall
 """
 import hashlib
 import hmac
+import logging
 import json
 from datetime import datetime, timedelta
 
@@ -109,6 +110,9 @@ def record_usage(db: Session, band_id: int, kind: str):
 
 # --------------------------------------------------------------------------- Mercado Pago
 
+log = logging.getLogger("uvicorn.error")
+
+
 class MPError(Exception):
     def __init__(self, msg: str = "", status: int | None = None):
         super().__init__(msg)
@@ -163,25 +167,30 @@ def get_authorized_payment(pid: str) -> dict:
     return _mp("GET", f"/authorized_payments/{pid}")
 
 
-def verify_signature(headers, data_id: str = "") -> bool:
+def verify_signature(headers, data_ids=("",)) -> bool:
     """Valida el x-signature de las notificaciones. Si no hay secreto configurado, se confia en el re-fetch a la API.
-    Segun la doc de Mercado Pago, el manifiesto usa el data.id de la URL (no el del cuerpo) y omite lo que no llega."""
-    if not config.MP_WEBHOOK_SECRET:
+    El manifiesto usa el data.id de la URL y omite lo que no llega; como la simulacion del panel y los avisos reales
+    pueden diferir, se prueban las variantes (id de la URL, id del cuerpo, sin id). Todas pasan por el HMAC."""
+    secret = config.MP_WEBHOOK_SECRET
+    if not secret:
         return True
     sig = headers.get("x-signature", "")
     req_id = headers.get("x-request-id", "")
     parts = dict(p.strip().split("=", 1) for p in sig.split(",") if "=" in p)
     ts, v1 = parts.get("ts"), parts.get("v1")
     if not ts or not v1:
+        log.warning("webhook MP rechazado: falta ts/v1 en x-signature (header presente: %s)", bool(sig))
         return False
-    manifest = ""
-    if data_id:
-        manifest += f"id:{str(data_id).lower()};"
-    if req_id:
-        manifest += f"request-id:{req_id};"
-    manifest += f"ts:{ts};"
-    mine = hmac.new(config.MP_WEBHOOK_SECRET.encode(), manifest.encode(), hashlib.sha256).hexdigest()
-    return hmac.compare_digest(mine, v1)
+    tried = []
+    for did in dict.fromkeys([*(str(i) for i in data_ids if i), ""]):
+        manifest = (f"id:{did.lower()};" if did else "") + (f"request-id:{req_id};" if req_id else "") + f"ts:{ts};"
+        mine = hmac.new(secret.encode(), manifest.encode(), hashlib.sha256).hexdigest()
+        if hmac.compare_digest(mine, v1):
+            return True
+        tried.append(manifest)
+    log.warning("webhook MP rechazado: firma no coincide. secret_len=%d secret_sha4=%s v1_len=%d got4=%s manifiestos=%s",
+                len(secret), hashlib.sha256(secret.encode()).hexdigest()[:4], len(v1), v1[:4], tried)
+    return False
 
 
 def _band_from_ref(db: Session, ref: str | None, pid: str | None = None) -> Band | None:
