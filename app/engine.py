@@ -13,7 +13,9 @@ Devuelve un informe con el antes/despues y frases simples que explican que se hi
 """
 from __future__ import annotations
 
+import os
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -163,6 +165,7 @@ def _istft(z, n):
 
 def _harmonic_mask(mag: np.ndarray) -> np.ndarray:
     """Mascara suave: 1 = sonido sostenido (bajo, guitarras, voz), 0 = golpes (bateria)."""
+    mag = np.ascontiguousarray(mag, dtype=np.float32)   # float32: el filtro de mediana es bastante mas rapido
     h = median_filter(mag, size=(1, 21), mode="reflect")
     p = median_filter(mag, size=(17, 1), mode="reflect")
     return h * h / (h * h + p * p + 1e-12)
@@ -190,22 +193,26 @@ def apply_balance(x: np.ndarray, drums_db: float, bass_db: float, voice_db: floa
     n = len(x)
     if n <= seg + 2 * ov:
         return _balance_chunk(x, gp, gb, gm)
-    out = np.zeros_like(x)
-    pos = 0
+    spans, pos = [], 0
     while pos < n:
         end = min(n, pos + seg + ov)
         if n - end < 2 * ov:
             end = n
-        y = _balance_chunk(x[pos:end], gp, gb, gm)
+        spans.append((pos, end))
+        if end == n:
+            break
+        pos += seg
+    # los tramos son independientes: se procesan en paralelo (scipy y numpy sueltan el GIL)
+    with ThreadPoolExecutor(max_workers=max(1, min(os.cpu_count() or 1, 4))) as ex:
+        parts = list(ex.map(lambda se: _balance_chunk(x[se[0]:se[1]], gp, gb, gm), spans))
+    out = np.zeros_like(x)
+    for (pos, end), y in zip(spans, parts):
         w = np.ones(end - pos, dtype=np.float32)
         if pos > 0:
             w[:ov] = np.linspace(0, 1, ov, endpoint=False)
         if end < n:
             w[-ov:] = np.linspace(1, 0, ov, endpoint=False)
         out[pos:end] += y * w[:, None]
-        if end == n:
-            break
-        pos += seg
     return out
 
 
