@@ -41,6 +41,9 @@ function fmtSize(b) {
 const fmtGB = (g) => (g < 1 ? g.toFixed(2) : g.toFixed(1));
 
 const ICONS = {
+  volume: '<path d="M3 9v6h4l5 4V5L7 9zM16 8a5 5 0 0 1 0 8M18.5 5.5a9 9 0 0 1 0 13"/>',
+  upload: '<path d="M12 16V4M7 9l5-5 5 5M4 20h16"/>',
+  card: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h4"/>',
   play: '<path d="M7 4l13 8-13 8z"/>',
   download: '<path d="M12 3v12M7 10l5 5 5-5M4 20h16"/>',
   mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
@@ -283,6 +286,7 @@ function closeDrawer() { document.body.classList.remove("drawer-open"); const m 
 function renderShell(active) {
   setPublic(false);
   const me = state.me;
+  document.body.classList.toggle("is-super", !!me.is_super);
   const unread = state.notif ? state.notif.unread : 0;
   $("#topbar").innerHTML = `
     <button class="icon-btn menu-btn" id="menu" aria-label="Menú" aria-expanded="false">${ic("menu")}</button>
@@ -299,17 +303,29 @@ function renderShell(active) {
 
   const link = (hash, label, icon, on) =>
     `<a class="nav-link ${on ? "active" : ""}" href="${hash}" ${on ? 'aria-current="page"' : ""}>${ic(icon)}${label}</a>`;
-  let h = link("#/", "Inicio", "home", active.key === "home");
-  h += `<div class="side-group"><p class="side-title">Tus bandas</p>`;
-  for (const b of me.bands) {
-    const cur = String(active.bandId) === String(b.id);
-    h += `<a class="nav-link band-link ${cur ? "active-band" : ""}" href="#/band/${b.id}/ensayos">${avatar(b.photo, b.name)}<span>${esc(b.name)}</span></a>`;
-    if (cur) h += `<div class="side-tools">${TOOLS.map(([k, l, i]) => link(`#/band/${b.id}/${k}`, l, i, active.tool === k)).join("")}</div>`;
+  let h = "";
+  if (me.is_super) {
+    // el super admin solo administra: no tiene bandas propias ni herramientas musicales
+    h += link("#/admin/resumen", "Resumen", "home", active.key === "admin" && (!active.sub || active.sub === "resumen"));
+    h += link("#/admin/bandas", "Bandas", "users", active.sub === "bandas");
+    h += link("#/admin/cobros", "Cobros", "card", active.sub === "cobros");
+    h += link("#/admin/planes", "Planes", "rocket", active.sub === "planes");
+    h += link("#/admin/personas", "Personas", "user", active.sub === "personas");
+    h += link("#/admin/referencias", "Referencias", "target", active.sub === "referencias");
+    h += link("#/admin/estilos", "Estilos", "sliders", active.sub === "estilos");
+    h += link("#/admin/mensajes", "Mensajes", "bell", active.sub === "mensajes");
+    h += `<div class="side-sep"></div>`;
+  } else {
+    h += link("#/", "Inicio", "home", active.key === "home");
+    h += `<div class="side-group"><p class="side-title">${me.bands.length === 1 ? "Tu banda" : "Tus bandas"}</p>`;
+    for (const b of me.bands) {
+      const cur = String(active.bandId) === String(b.id);
+      h += `<a class="nav-link band-link ${cur ? "active-band" : ""}" href="#/band/${b.id}/ensayos">${avatar(b.photo, b.name)}<span>${esc(b.name)}</span></a>`;
+      if (cur) h += `<div class="side-tools">${TOOLS.map(([k, l, i]) => link(`#/band/${b.id}/${k}`, l, i, active.tool === k)).join("")}${b.role === "admin" ? link(`#/band/${b.id}/plan`, "Plan", "card", active.tool === "plan") : ""}</div>`;
+    }
+    h += `</div><div class="side-sep"></div>`;
+    h += link("#/reaper", "Conectar Reaper", "headphones", active.key === "reaper");
   }
-  h += `</div><div class="side-sep"></div>`;
-  h += link("#/reaper", "Conectar Reaper", "headphones", active.key === "reaper");
-  h += link("#/refs", "Referencias", "target", active.key === "refs");
-  if (me.is_super) h += link("#/admin", "Admin", "shield", active.key === "admin");
   h += link("#/account", "Tu cuenta", "user", active.key === "account");
   h += `<button type="button" class="nav-link nav-out" id="side-out">${ic("logout")}Cerrar sesión</button>`;
   $("#side").innerHTML = h;
@@ -369,25 +385,6 @@ document.addEventListener("click", (e) => {
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeNotif(); });
 
 /* ===================== reproductor ===================== */
-function stopPlayer() {
-  const audio = $("#audio");
-  audio.pause();
-  audio.removeAttribute("src");
-  audio.load();
-  $("#player").hidden = true;
-  document.body.classList.remove("has-player");
-}
-async function playVersion(id, title) {
-  try {
-    const { url } = await api(`/versions/${id}/link?fmt=preview`);
-    const audio = $("#audio");
-    audio.src = url;
-    $("#player-title").textContent = title;
-    $("#player").hidden = false;
-    document.body.classList.add("has-player");
-    await audio.play().catch(() => { /* el usuario puede darle play a mano */ });
-  } catch (e) { toast(e.message, "err"); }
-}
 async function download(id, fmt) {
   try {
     if (fmt !== "flac") toast("Preparando el archivo… con ensayos largos puede tardar un rato.");
@@ -421,13 +418,20 @@ async function router() {
     if (!state.me) state.me = await api("/me");
     if (nav !== state.nav) return;
     if (!state.notifTimer) startNotifPolling();
+    if (typeof chatMount === "function") { chatMount(); if (typeof chatUpdateVisibility === "function") chatUpdateVisibility(); }
     if (name === "login") { location.hash = "#/"; return; }
     switch (name) {
-      case "home": renderShell({ key: "home" }); return await viewHome(nav);
-      case "band": return await viewBand(arg, sub, nav);
-      case "refs": renderShell({ key: "refs" }); return await viewRefs(nav);
+      case "home":
+        if (state.me.is_super) { location.hash = "#/admin"; return; }
+        renderShell({ key: "home" }); return await viewHome(nav);
+      case "band":
+        if (state.me.is_super) { location.hash = "#/admin"; return; }
+        return await viewBand(arg, sub, nav);
+      case "refs": // las referencias viven dentro de Master
+        if (state.me.is_super) { location.hash = "#/admin/referencias"; return; }
+        { const b = currentBand(); location.hash = b ? `#/band/${b.id}/master` : "#/"; return; }
       case "reaper": renderShell({ key: "reaper" }); return await viewReaper(nav);
-      case "admin": renderShell({ key: "admin" }); return await viewAdmin(nav);
+      case "admin": renderShell({ key: "admin", sub: arg }); return await viewAdmin(nav, arg);
       case "account": renderShell({ key: "account" }); return await viewAccount(nav);
       default: renderShell({ key: "" }); return notFound();
     }
@@ -438,42 +442,6 @@ async function router() {
 window.addEventListener("hashchange", router);
 
 /* ===================== inicio público, login, invitación ===================== */
-function viewLanding() {
-  const tools = [
-    ["mic", "Ensayos", "Grabá desde el celular, ponele nombre y la banda lo escucha y lo descarga."],
-    ["music", "Producción", "Demos, tomas y mezclas ordenadas antes del master. Subí desde Reaper con un clic."],
-    ["sliders", "Master", "Subí la mezcla, elegí un estilo de referencia y bajá la versión masterizada."],
-    ["spark", "Asistente", "Analiza tu audio y te explica qué corregir, en palabras simples."],
-    ["disc", "Álbumes", "Ordená los temas y creá la tapa con tu foto o con inteligencia artificial."],
-    ["rocket", "Lanzamiento", "El álbum masterizado listo para Spotify, Bandcamp o para prensar un vinilo."],
-    ["calendar", "Calendario", "Ensayos y shows con aviso automático a toda la banda."],
-  ];
-  setApp(`
-    <section class="land">
-      <header class="land-top">
-        <a class="brand" href="#/"><img src="/logo-login.png" alt=""><span class="brand-name">diablomastermix.com.ar</span></a>
-        <a class="btn" href="#/login">Entrar</a>
-      </header>
-      <div class="land-hero">
-        <h1>Diablo Master</h1>
-        <p class="lead">De la sala de ensayo al master, sin productora.</p>
-        <p class="sub">Grabá el ensayo en el celular, mezclalo en tu estudio, masterizalo en un clic y publicá el disco donde quieras. Todo el equipo de la banda en un solo lugar.</p>
-        <div class="cta">
-          <a class="btn primary big" href="#/login">Entrar</a>
-          <span class="muted">¿Te invitaron? Abrí el link que te pasaron.</span>
-        </div>
-        <span class="chip-reaper">${ic("headphones")} Se conecta con REAPER</span>
-      </div>
-      <div class="land-tools" aria-label="Qué podés hacer">
-        ${tools.map(([i, t, d]) => `<article class="land-tool"><h2>${ic(i)}${t}</h2><p>${d}</p></article>`).join("")}
-      </div>
-      <footer class="land-foot">
-        <span class="mark"><img src="/logo-mark.png" alt="">© ${new Date().getFullYear()} Diablo Master · Propiedad de Puma Code</span>
-        <span><a href="https://www.puma-code.com" target="_blank" rel="noopener">www.puma-code.com</a></span>
-      </footer>
-    </section>`);
-}
-
 function authShell(inner, artText) {
   return `<section class="auth-wrap">
     <div class="auth-art"><h2>${esc(artText)}</h2></div>
@@ -638,11 +606,17 @@ async function viewHome(nav) {
 /* ===================== banda: estructura común ===================== */
 async function viewBand(id, sub, nav) {
   const band = state.me.bands.find((b) => String(b.id) === String(id));
-  const tool = sub || "ensayos";
+  const [tool, query] = (sub || "ensayos").split("?");
   renderShell({ key: "band", bandId: id, tool });
   if (!band) return notFound();
   state.bandId = band.id;
+  const out = await bandTool(band, tool, query, nav);
+  if (nav === state.nav && tool !== "plan") $("#app").insertAdjacentHTML("afterbegin", billingBanner(band));
+  return out;
+}
+async function bandTool(band, tool, query, nav) {
   switch (tool) {
+    case "plan": return await viewPlan(band, nav, query);
     case "ensayos": return await viewEnsayos(band, nav);
     case "produccion": return await viewProduccion(band, nav);
     case "master": return await viewMaster(band, nav);
@@ -716,10 +690,7 @@ function bestPlayable(t) {
   return masters.length ? masters[masters.length - 1] : primarySource(t);
 }
 function styleSelect(id, genres) {
-  const saved = Number(pref.get("style"));
-  const sel = genres.some((g) => g.id === saved) ? saved : (genres.find((g) => /rock/i.test(g.name)) || genres[0] || {}).id;
-  return `<select id="oc-${id}" class="mini-sel" data-style aria-label="Estilo para masterizar">${genres.map((g) =>
-    `<option value="${g.id}" ${g.id === sel ? "selected" : ""}>${esc(g.name)}</option>`).join("")}</select>`;
+  return `<select id="oc-${id}" class="mini-sel" data-style aria-label="Estilo para masterizar">${genreOptions(genres, defaultGenreId(genres))}</select>`;
 }
 
 function trackCard(t, ctx) {
@@ -743,9 +714,9 @@ function trackCard(t, ctx) {
       <ul class="versions">${versions.map((v) => versionRow(t, v)).join("")}</ul>
       <div class="track-foot">
         <div class="oneclick">${styleSelect(t.id, ctx.genres)}
-          <button class="btn primary" data-act="oneclick" data-id="${t.id}" ${hasAudio ? "" : "disabled"}>${ic("sliders")} Masterizar con un clic</button></div>
+          <button class="btn primary" data-act="oneclick" data-id="${t.id}" ${hasAudio ? "" : "disabled"}>${ic("sliders")} Master en un clic</button></div>
         <button class="btn" data-act="assist" data-id="${t.id}" ${hasAudio ? "" : "disabled"}>${ic("spark")} Asistente</button>
-        <button class="btn ghost small" data-act="master" data-id="${t.id}" ${hasAudio ? "" : "disabled"}>Más opciones</button>
+        <button class="btn small" data-act="master" data-id="${t.id}" ${hasAudio ? "" : "disabled"}>${ic("sliders")} Estudio de master</button>
         ${albumSel}${moveSel}
       </div>
       <div id="as-${t.id}" hidden></div>
@@ -763,6 +734,7 @@ function versionRow(t, v) {
   const actions = v.status === "ready" ? `
     <div class="ver-actions">
       <button class="btn small ${isMaster ? "primary" : ""}" data-act="play" data-id="${v.id}" data-title="${esc(title)}">${ic("play")} Escuchar</button>
+      ${isMaster ? `<button class="btn small" data-act="report" data-id="${v.id}" data-title="${esc(title)}" title="Qué hizo el master, con antes y después y comparación a igual volumen">Qué hizo · A/B</button>` : ""}
       <span class="dl-label">Bajar:</span>
       <button class="btn small" data-act="dl" data-id="${v.id}" data-fmt="wav" title="Calidad original, sin comprimir">WAV</button>
       <button class="btn small" data-act="dl" data-id="${v.id}" data-fmt="mp3" title="Liviano, para el celular">MP3</button>
@@ -811,6 +783,7 @@ async function onTrackClick(ev) {
   try {
     switch (btn.dataset.act) {
       case "play": return playVersion(id, btn.dataset.title);
+      case "report": return openMasterReport(id, btn.dataset.title);
       case "dl": return download(id, btn.dataset.fmt);
       case "master": return openMasterModal(id);
       case "oneclick": return oneClick(id, btn);
@@ -952,74 +925,6 @@ async function askAiNote(id, btn) {
 }
 
 /* ===================== masterizar: más opciones ===================== */
-async function openMasterModal(trackId) {
-  const track = state.tracks.get(trackId);
-  if (!track) return;
-  let genres, refs;
-  try { [genres, refs] = await Promise.all([getGenres(), api("/references")]); }
-  catch (e) { return toast(e.message, "err"); }
-
-  const hasStems = track.versions.some((v) => v.kind === "stem" && v.status === "ready");
-  const hasMix = track.versions.some((v) => v.kind === "mix" && v.status === "ready");
-  const sourceNote = hasMix ? "Se masteriza la mezcla del tema."
-    : hasStems ? "Se suman las pistas separadas y se masteriza el resultado."
-    : "Se masteriza el ensayo completo.";
-  const opts = (list, sel) => list.map((g) => `<option value="${g.id}" ${g.id === sel ? "selected" : ""}>${esc(g.name)}</option>`).join("");
-
-  openModal(`
-    <form id="mf" class="stack">
-      <h2>Masterizar "${esc(track.title)}"</h2>
-      <p class="muted small">${sourceNote} Vas a tener una versión nueva, la original no se toca.</p>
-      <div class="seg" role="radiogroup" aria-label="Cómo masterizar">
-        <label><input type="radio" name="how" value="genre" checked>Por estilo<span class="hint">Volumen típico del género</span></label>
-        <label><input type="radio" name="how" value="ref">Imitar una referencia<span class="hint">Que suene como otro tema</span></label>
-      </div>
-      <div id="by-genre" class="field"><label for="g">Estilo</label>
-        <select id="g">${genres.map((g) => `<option value="${g.id}">${esc(g.name)} (${g.target_lufs} LUFS)</option>`).join("")}</select></div>
-      <div id="by-ref" hidden>
-        <div class="field"><label for="rg">Estilo de la referencia</label><select id="rg">${opts(genres, genres[0]?.id)}</select></div>
-        <div class="field"><label for="r">Referencia</label><select id="r"></select></div>
-        <p class="small muted hidden" id="no-refs">Todavía no hay referencias de este estilo. Cargá una en la sección Referencias.</p>
-      </div>
-      <div class="row" style="justify-content:flex-end">
-        <button type="button" class="btn" id="mc">Cancelar</button>
-        <button class="btn primary" id="mgo">Masterizar</button>
-      </div>
-    </form>`, (m) => {
-    const form = $("#mf", m), how = () => form.elements.how.value;
-    const fillRefs = () => {
-      const gid = Number($("#rg", m).value);
-      const list = refs.filter((r) => r.genre_id === gid);
-      $("#r", m).innerHTML = list.map((r) => `<option value="${r.id}">${esc(r.name)}${r.scope === "band" ? " (de la banda)" : ""}</option>`).join("");
-      $("#no-refs", m).classList.toggle("hidden", list.length > 0);
-      sync();
-    };
-    const sync = () => {
-      const byRef = how() === "ref";
-      $("#by-genre", m).hidden = byRef;
-      $("#by-ref", m).hidden = !byRef;
-      $("#mgo", m).disabled = byRef && !$("#r", m).value;
-    };
-    $$('input[name="how"]', m).forEach((r) => r.addEventListener("change", sync));
-    $("#rg", m).addEventListener("change", fillRefs);
-    $("#mc", m).addEventListener("click", closeModal);
-    fillRefs();
-    form.addEventListener("submit", async (ev) => {
-      ev.preventDefault();
-      const json = how() === "ref" ? { reference_id: Number($("#r", m).value) } : { genre_id: Number($("#g", m).value) };
-      await withBusy($("#mgo", m), async () => {
-        try {
-          await api(`/tracks/${trackId}/master`, { method: "POST", json });
-          closeModal();
-          toast("En cola. La versión master aparece en el tema cuando termina.", "ok");
-          if (state.refresh) await state.refresh();
-        } catch (e) { toast(e.message, "err"); }
-      });
-    });
-  });
-}
-
-/* ===================== ENSAYOS y PRODUCCIÓN ===================== */
 const SECTION_CFG = {
   ensayo: {
     section: "ensayo", tool: "ensayos", title: "Ensayos",
@@ -1282,19 +1187,12 @@ function setupRecorder(band, nav, onSaved, cfg) {
 
 /* ===================== MASTER ===================== */
 async function viewMaster(band, nav) {
-  const [genres, refs, data, alb] = await Promise.all([
-    getGenres(), api("/references"), api(`/bands/${band.id}/tracks?section=master`), api(`/bands/${band.id}/albums`)]);
+  const [genres, data, alb] = await Promise.all([
+    getGenres(), api(`/bands/${band.id}/tracks?section=master`), api(`/bands/${band.id}/albums`)]);
   if (nav !== state.nav) return;
   const ctx = { genres, albums: alb.albums, section: "master" };
-  const refGroups = genres.map((g) => {
-    const list = refs.filter((r) => r.genre_id === g.id);
-    return list.length ? `<optgroup label="${esc(g.name)}">${list.map((r) => `<option value="${r.id}">${esc(r.name)}</option>`).join("")}</optgroup>` : "";
-  }).join("");
-  const saved = Number(pref.get("style"));
-  const defGenre = genres.some((g) => g.id === saved) ? saved : (genres.find((g) => /rock/i.test(g.name)) || genres[0] || {}).id;
-
   setApp(`
-    ${bandHead(band, "Master", "Subí tu mezcla, elegí cómo querés que suene y bajá la versión masterizada.")}
+    ${bandHead(band, "Master", "La herramienta principal: elegí el estilo o una referencia, ajustá a tu gusto y escuchá la diferencia.")}
     <div id="usage" class="stack" style="margin-bottom:1rem"></div>
     <section class="card"><h2>Masterizá un tema</h2>
       <form id="mw" class="steps" style="margin-top:1rem">
@@ -1310,16 +1208,7 @@ async function viewMaster(band, nav) {
           </div>
           <div id="picked" class="small muted" style="margin-top:.4rem"></div>
         </div>
-        <div class="step"><h3>Elegí cómo querés que suene</h3>
-          <div class="seg" role="radiogroup" aria-label="Cómo masterizar">
-            <label><input type="radio" name="how" value="genre" checked>Por estilo<span class="hint">El volumen típico del género</span></label>
-            <label><input type="radio" name="how" value="ref">Que suene como otro tema<span class="hint">Usá una referencia</span></label>
-          </div>
-          <div class="field" id="by-genre" style="margin-top:.8rem"><label for="g">Estilo</label>
-            <select id="g">${genres.map((g) => `<option value="${g.id}" ${g.id === defGenre ? "selected" : ""}>${esc(g.name)}</option>`).join("")}</select></div>
-          <div class="field" id="by-ref" style="margin-top:.8rem" hidden><label for="r">Referencia</label>
-            ${refGroups ? `<select id="r">${refGroups}</select>` : `<p class="muted small">Todavía no hay referencias. Cargalas en la sección Referencias.</p>`}</div>
-        </div>
+        <div class="step"><h3>Armá el master a tu gusto</h3><div id="st-host"></div></div>
         <div class="step"><h3>Masterizá y bajalo</h3>
           <label class="check"><input type="checkbox" id="auto" checked> Masterizar apenas termine de subir</label>
           <p class="small muted" id="autonote" hidden style="margin:.3rem 0 0">Con pistas separadas se sube primero y después masterizás desde el tema con el botón.</p>
@@ -1342,15 +1231,14 @@ async function viewMaster(band, nav) {
   const form = $("#mw"), send = $("#send"), picked = $("#picked");
   let files = [];
   const mode = () => form.elements.mode.value;
-  const how = () => form.elements.how.value;
+  const studio = studioMount($("#st-host"), { genres, bandId: band.id, onChange: () => sync(),
+    hint: "Elegí un estilo (el master aprende su sonido típico) o subí una referencia: un tema que te guste para que el tuyo se le parezca. Si subís pistas separadas, ajustás cada una desde el tema." });
   const sync = () => {
-    $("#by-genre").hidden = how() === "ref";
-    $("#by-ref").hidden = how() !== "ref";
     const stems = mode() === "stems";
     $("#auto").disabled = stems;
     $("#autonote").hidden = !stems;
     send.textContent = stems ? "Subir las pistas" : ($("#auto").checked ? "Subir y masterizar" : "Subir");
-    send.disabled = !files.length || (how() === "ref" && !$("#r"));
+    send.disabled = !files.length || (mode() !== "stems" && $("#auto").checked && !studio.valid());
   };
   const take = (fs) => {
     files = fs;
@@ -1361,9 +1249,7 @@ async function viewMaster(band, nav) {
   };
   setupDrop($("#drop"), $("#file"), take);
   $$('input[name="mode"]', form).forEach((r) => r.addEventListener("change", () => { $("#file").multiple = mode() === "stems"; take(files); }));
-  $$('input[name="how"]', form).forEach((r) => r.addEventListener("change", sync));
   $("#auto").addEventListener("change", sync);
-  $("#g").addEventListener("change", () => pref.set("style", $("#g").value));
   sync();
 
   form.addEventListener("submit", async (ev) => {
@@ -1375,10 +1261,7 @@ async function viewMaster(band, nav) {
     fd.append("title", title);
     fd.append("mode", mode());
     fd.append("section", "master");
-    if (mode() === "mix" && $("#auto").checked) {
-      if (how() === "ref" && $("#r")) fd.append("master_reference_id", $("#r").value);
-      else fd.append("master_genre_id", $("#g").value);
-    }
+    if (mode() === "mix" && $("#auto").checked) fd.append("master_options", JSON.stringify(studio.options()));
     files.forEach((f) => fd.append("files", f));
     const prog = $("#prog"), bar = $("i", prog);
     send.disabled = true; prog.classList.remove("hidden");
@@ -1812,10 +1695,15 @@ async function viewRelease(band, nav) {
   let list = await api(`/bands/${band.id}/releases`);
   if (nav !== state.nav) return;
   const dests = [
-    ["Spotify, Apple Music y YouTube Music", "Se publican a través de una distribuidora (DistroKid, TuneCore, CD Baby, Amuse). Le subís los WAV y la tapa del paquete, y ella lo manda a todas las plataformas."],
-    ["Bandcamp", "Recibe la música directo de la banda. Subís los WAV y la tapa, ponés el precio y compartís el link."],
-    ["Vinilo y CD", "Para prensar, la planta pide los WAV (separados por lado en el vinilo) y la tapa. El paquete trae una guía con lo que tenés que preguntar."],
+    ["Spotify, Apple Music y YouTube Music", "Se publican a través de una distribuidora (DistroKid, TuneCore, CD Baby, Amuse). Le subís los WAV y la tapa del paquete, y ella lo manda a todas las plataformas.", "upload"],
+    ["Bandcamp", "Recibe la música directo de la banda. Subís los WAV y la tapa, ponés el precio y compartís el link.", "music"],
+    ["Vinilo y CD", "Para prensar, la planta pide los WAV (separados por lado en el vinilo) y la tapa. El paquete trae una guía con lo que tenés que preguntar.", "disc"],
   ];
+  const DEST_STEPS = {
+    "Spotify, Apple Music y YouTube Music": ["Descargá el paquete del álbum (arriba).", "Elegí una distribuidora: DistroKid, TuneCore, CD Baby o Amuse.", "Subí los WAV 24 bits y la tapa de 3000 px.", "Completá título, artista, géneros y fecha de salida.", "La distribuidora lo manda a Spotify, Apple Music y YouTube Music (tarda entre 2 y 7 días)."],
+    "Bandcamp": ["Descargá el paquete del álbum (arriba).", "Entrá a tu cuenta de Bandcamp y creá un álbum nuevo.", "Subí los WAV y la tapa; Bandcamp genera solo los demás formatos.", "Ponés el precio (o “el que quieras pagar”) y publicás.", "Compartí el link con tu banda y tu público."],
+    "Vinilo y CD": ["Descargá el paquete del álbum (arriba): trae una guía con lo que hay que preguntarle a la planta.", "Pedí presupuesto a una planta de prensado y confirmá qué formato de archivo necesita.", "Para vinilo, repartí los temas por lado (A y B, hasta unos 20 minutos por lado).", "Enviá los WAV y la tapa; pedí una prueba de prensado antes de la tirada completa."],
+  };
   const mins = (s) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
   const card = (r) => {
     const b = r.build || {};
@@ -1843,7 +1731,10 @@ async function viewRelease(band, nav) {
   setApp(`
     ${bandHead(band, "Lanzamiento", "Cuando el álbum está masterizado, armá el paquete para publicarlo donde quieran o prensarlo.")}
     <div id="rel">${list.length ? list.map(card).join("") : `<div class="card empty">${ic("rocket")}Todavía no tienen álbumes.<br><a href="#/band/${band.id}/albumes">Armá el primero en Álbumes</a></div>`}</div>
-    <section class="card"><h2>Dónde publicarlo</h2><div class="dest">${dests.map(([t, d]) => `<div><h3>${esc(t)}</h3><p class="muted">${esc(d)}</p></div>`).join("")}</div></section>`);
+    <section class="card"><h2>Descargá el álbum para…</h2>
+      <p class="muted small" style="margin:0 0 .8rem">Armá el paquete arriba y descargalo. Después tocá la plataforma para ver cómo se sube.</p>
+      <div class="dest-acc">${dests.map(([t, d, i]) => `<details class="dest-item"><summary><span class="dest-ico">${ic(i)}</span><strong>${esc(t)}</strong><span class="dest-go">Cómo se hace</span></summary>
+        <p class="muted">${esc(d)}</p><ol class="dest-steps">${DEST_STEPS[t].map((x) => `<li>${esc(x)}</li>`).join("")}</ol></details>`).join("")}</div></section>`);
   wireBandHead(band);
   let timer = null;
   const stop = () => { if (timer) { clearInterval(timer); timer = null; } };
@@ -1971,245 +1862,6 @@ async function viewReaper(nav) {
 }
 
 /* ===================== referencias ===================== */
-async function viewRefs(nav) {
-  const [genres, refs] = await Promise.all([getGenres(true), api("/references")]);
-  if (nav !== state.nav) return;
-  const me = state.me;
-  const byGenre = genres.map((g) => ({ g, list: refs.filter((r) => r.genre_id === g.id) })).filter((x) => x.list.length);
-  const scopes = [
-    ...(me.is_super ? [`<option value="">Global (todas las bandas)</option>`] : []),
-    ...me.bands.map((b) => `<option value="${b.id}">Solo ${esc(b.name)}</option>`),
-  ];
-  setApp(`
-    <div class="page-head"><div class="grow"><h1>Referencias</h1>
-      <p class="lead">Una referencia es un tema que te gusta cómo suena. Al masterizar, la app lleva tu mezcla hacia ese volumen y ese carácter.</p></div></div>
-    <div class="callout" style="margin-bottom:1rem">Solo se guarda un fragmento de 1 minuto y medio, y <strong>nadie puede escucharlo ni bajarlo</strong>: se usa únicamente para masterizar.</div>
-    ${byGenre.length ? byGenre.map(({ g, list }) => `
-      <section class="card"><h2>${esc(g.name)}</h2>
-        <ul class="upcoming">${list.map((r) => `
-          <li><span class="grow">${esc(r.name)} <span class="badge">${r.scope === "global" ? "global" : "banda"}</span></span>
-            ${me.is_super || r.mine ? `<button class="icon-btn" data-del="${r.id}" aria-label="Borrar la referencia ${esc(r.name)}" title="Borrar">${ic("trash")}</button>` : ""}</li>`).join("")}</ul></section>`).join("")
-      : `<div class="card empty">${ic("target")}Todavía no hay referencias. Cargá la primera abajo.</div>`}
-    <section class="card"><h2>Cargar una referencia</h2>
-      <form id="rf" class="stack">
-        <div class="field" style="margin:0"><label for="rgen">Estilo</label><select id="rgen" required>${genres.map((g) => `<option value="${g.id}">${esc(g.name)}</option>`).join("")}</select></div>
-        <div class="field" style="margin:0"><label for="rname">Nombre (ej: "Kyuss - Green Machine")</label><input id="rname" type="text" maxlength="160" required></div>
-        <div class="field" style="margin:0"><label for="rscope">Quién la puede usar</label><select id="rscope">${scopes.join("")}</select></div>
-        <div class="field" style="margin:0"><label for="rfile">Archivo de audio (mejor WAV o FLAC)</label><input id="rfile" type="file" accept="audio/*,.wav,.flac,.mp3,.m4a" required></div>
-        <div class="progress hidden" id="rprog" role="progressbar" aria-label="Progreso"><i></i></div>
-        <button class="btn primary">Cargar</button>
-      </form></section>`);
-
-  $$("[data-del]").forEach((b) => b.addEventListener("click", async () => {
-    if (!confirm("¿Borrar esta referencia?")) return;
-    try { await api(`/references/${b.dataset.del}`, { method: "DELETE" }); toast("Referencia borrada", "ok"); viewRefs(nav); }
-    catch (e) { toast(e.message, "err"); }
-  }));
-  $("#rf").addEventListener("submit", async (ev) => {
-    ev.preventDefault();
-    const f = $("#rfile").files[0];
-    if (!f) return;
-    const fd = new FormData();
-    fd.append("genre_id", $("#rgen").value);
-    fd.append("name", $("#rname").value.trim());
-    if ($("#rscope").value) fd.append("band_id", $("#rscope").value);
-    fd.append("file", f);
-    const prog = $("#rprog"), bar = $("i", prog);
-    prog.classList.remove("hidden");
-    await withBusy($("button", ev.target), async () => {
-      try {
-        await uploadWithProgress("/references", fd, (p) => { bar.style.width = Math.round(p * 100) + "%"; });
-        toast("Referencia cargada", "ok");
-        await viewRefs(nav);
-      } catch (e) { toast(e.message, "err"); prog.classList.add("hidden"); }
-    });
-  });
-}
-
-/* ===================== admin ===================== */
-async function viewAdmin(nav) {
-  if (!state.me.is_super) { location.hash = "#/"; return; }
-  const [ov, bands, users, genres] = await Promise.all([api("/admin/overview"), api("/admin/bands"), api("/admin/users"), getGenres(true)]);
-  if (nav !== state.nav) return;
-  const roleName = (r) => (r === "admin" ? "Admin de banda" : "Integrante");
-  const ago = (iso) => (iso ? fmtDate(iso) : "sin actividad");
-  const tile = (n, l) => `<div class="stat"><b>${n}</b><span>${l}</span></div>`;
-
-  setApp(`
-    <div class="page-head"><div class="grow"><h1>Administración</h1><p class="lead">Todo lo de la plataforma en un solo lugar.</p></div></div>
-
-    <section class="stats">
-      ${tile(ov.users, "Personas")}${tile(ov.bands, "Bandas")}${tile(ov.tracks, "Temas")}
-      ${tile(fmtGB(ov.used_gb) + " GB", "Audio guardado")}${tile(fmtGB(ov.disk_free_gb) + " GB", "Libres en el servidor")}
-      ${tile(ov.ai_enabled ? "Activada" : "Apagada", "IA (con costo)")}
-    </section>
-
-    <section class="card"><h2>Bandas</h2>
-      ${bands.map((b) => {
-        const pct = Math.min(100, (b.used_gb / b.quota_gb) * 100 || 0);
-        const st = b.stats;
-        return `<div class="admin-band">
-          <div class="row"><a href="#/band/${b.id}/ensayos" class="row grow" style="text-decoration:none;color:inherit">${avatar(b.photo, b.name)}<h3 style="margin:0">${esc(b.name)}</h3></a>
-            <button class="btn small" data-bren="${b.id}" data-name="${esc(b.name)}">Cambiar nombre</button>
-            <button class="btn small danger" data-bdel="${b.id}" data-name="${esc(b.name)}">Borrar banda</button></div>
-          <p class="small muted" style="margin:.5rem 0 .3rem">${st.ensayos} ensayos · ${st.produccion} en producción · ${st.master} en master · ${st.masters_hechos} masters hechos · ${st.albumes} álbumes · Última actividad: ${ago(st.ultima_actividad)}</p>
-          <div class="small muted row between"><span>Espacio</span><span>${fmtGB(b.used_gb)} de ${esc(b.quota_gb)} GB</span></div>
-          <div class="meter ${pct >= 100 ? "full" : pct >= 80 ? "warn" : ""}"><i style="width:${pct}%"></i></div>
-          ${b.members.length ? `<table class="table" style="margin-top:.5rem"><tbody>${b.members.map((m) => `
-            <tr><td>${esc(m.name || "—")}<div class="small muted">${esc(m.email)}</div></td>
-            <td><select class="mini-sel" data-role="${b.id}:${m.user_id}" aria-label="Rol de ${esc(m.name || m.email)}"><option value="member" ${m.role === "member" ? "selected" : ""}>Integrante</option><option value="admin" ${m.role === "admin" ? "selected" : ""}>Admin de banda</option></select></td>
-            <td style="text-align:right"><button class="icon-btn" data-rm="${b.id}:${m.user_id}" aria-label="Sacar a ${esc(m.name || m.email)} de ${esc(b.name)}" title="Sacar de la banda">${ic("x")}</button></td></tr>`).join("")}</tbody></table>`
-            : `<p class="small muted" style="margin-top:.5rem">Sin integrantes todavía.</p>`}</div>`;
-      }).join("") || `<p class="muted">Todavía no hay bandas.</p>`}
-      <form id="nb" class="row" style="margin-top:.8rem">
-        <input id="nbn" type="text" maxlength="120" placeholder="Nombre de la banda nueva" aria-label="Nombre de la banda nueva" required class="grow">
-        <button class="btn primary">Crear banda</button>
-      </form>
-    </section>
-
-    <section class="card"><h2>Personas</h2>
-      <p class="small muted">Si alguien olvidó su contraseña, generale una nueva y pasásela. Puede cambiarla desde Tu cuenta.</p>
-      <div class="table-wrap"><table class="table"><tbody>${users.map((u) => `
-        <tr class="${u.active ? "" : "inactive"}"><td><div class="row" style="gap:.6rem;flex-wrap:nowrap">${avatar(u.photo, u.name || u.email)}
-          <div><strong>${esc(u.name || "—")}</strong> ${u.is_super ? `<span class="badge">Super admin</span>` : ""}${u.active ? "" : ` <span class="badge raw">Desactivado</span>`}
-          <div class="small muted">${esc(u.email)}</div>
-          <div class="small muted">${u.bands.length ? u.bands.map((b) => esc(b.name) + (b.role === "admin" ? " (admin)" : "")).join(" · ") : "Sin banda"}</div></div></div></td>
-          <td style="text-align:right;white-space:nowrap"><button class="btn small" data-reset="${u.id}" data-who="${esc(u.name || u.email)}">${ic("key")} Nueva contraseña</button>
-          ${u.id === state.me.id ? "" : `<button class="btn small ${u.active ? "danger" : ""}" data-active="${u.id}" data-to="${u.active ? "0" : "1"}">${u.active ? "Desactivar" : "Activar"}</button>`}</td></tr>`).join("")}
-      </tbody></table></div>
-    </section>
-
-    <section class="card"><h2>Invitar a alguien</h2>
-      ${bands.length ? `
-      <form id="inv" class="stack">
-        <div class="field" style="margin:0"><label for="ib">Banda</label><select id="ib">${bands.map((b) => `<option value="${b.id}">${esc(b.name)}</option>`).join("")}</select></div>
-        <div class="field" style="margin:0"><label for="ie">Email de la persona</label><input id="ie" type="email" required></div>
-        <div class="field" style="margin:0"><label for="ir">Rol</label><select id="ir"><option value="member">Integrante</option><option value="admin">Admin de la banda</option></select></div>
-        <button class="btn primary">Crear invitación</button>
-      </form>
-      <div id="invout" class="stack hidden" style="margin-top:1rem"></div>` : `<p class="muted">Primero creá una banda.</p>`}
-    </section>
-
-    <section class="card"><h2>Estilos de master</h2>
-      <p class="small muted">El volumen objetivo se mide en LUFS: cuanto más cerca de 0, más fuerte. Se usa al masterizar "por estilo".</p>
-      <table class="table"><thead><tr><th>Estilo</th><th>LUFS</th><th></th></tr></thead><tbody>
-      ${genres.map((g) => `<tr data-g="${g.id}">
-        <td><input type="text" data-f="name" value="${esc(g.name)}" aria-label="Nombre del estilo" maxlength="60"></td>
-        <td style="width:90px"><input type="number" data-f="lufs" value="${g.target_lufs}" step="0.5" min="-24" max="-6" aria-label="LUFS de ${esc(g.name)}"></td>
-        <td style="white-space:nowrap"><button class="btn small" data-gsave="${g.id}">Guardar</button> <button class="icon-btn" data-gdel="${g.id}" aria-label="Borrar estilo ${esc(g.name)}">${ic("trash")}</button></td></tr>`).join("")}
-      </tbody></table>
-      <form id="ng" class="row" style="margin-top:.75rem">
-        <input id="ngn" type="text" maxlength="60" placeholder="Estilo nuevo" aria-label="Nombre del estilo nuevo" required class="grow">
-        <input id="ngl" type="number" value="-12" step="0.5" min="-24" max="-6" aria-label="LUFS del estilo nuevo" style="width:90px">
-        <button class="btn">Agregar</button>
-      </form>
-    </section>`);
-
-  const reload = () => viewAdmin(nav);
-  const guard = (fn) => async (...a) => { try { await fn(...a); } catch (e) { toast(e.message, "err"); } };
-
-  const inv = $("#inv");
-  if (inv) inv.addEventListener("submit", guard(async (ev) => {
-    ev.preventDefault();
-    const email = $("#ie").value.trim();
-    const r = await api("/admin/invites", { method: "POST", json: { email, band_id: Number($("#ib").value), role: $("#ir").value } });
-    const link = r.link_hint || `${location.origin}/#/invite/${r.invite_token}`;
-    const bandName = bands.find((b) => String(b.id) === $("#ib").value)?.name || "";
-    const wa = `https://wa.me/?text=${encodeURIComponent(`Te invité a la banda "${bandName}" en Diablo Master. Entrá acá y creá tu cuenta: ${link}`)}`;
-    const out = $("#invout");
-    out.classList.remove("hidden");
-    out.innerHTML = `<p>Listo. Pasale este link a <strong>${esc(email)}</strong> (sirve una sola vez y vence en ${esc(r.expires_in_days)} días):</p>
-      <div class="copybox"><span class="grow">${esc(link)}</span><button type="button" class="btn small" id="cp">Copiar</button></div>
-      <a class="btn" href="${esc(wa)}" target="_blank" rel="noopener">Mandar por WhatsApp</a>`;
-    $("#cp").addEventListener("click", () => copyText(link));
-  }));
-
-  $("#nb").addEventListener("submit", guard(async (ev) => {
-    ev.preventDefault();
-    await api("/admin/bands", { method: "POST", json: { name: $("#nbn").value } });
-    state.me = await api("/me");
-    toast("Banda creada", "ok");
-    reload();
-  }));
-  $$("[data-bren]").forEach((b) => b.addEventListener("click", () => {
-    openModal(`<form id="brf" class="stack"><h2>Cambiar el nombre de la banda</h2>
-      <div class="field"><label for="brn">Nombre</label><input id="brn" type="text" maxlength="120" value="${esc(b.dataset.name)}" required></div>
-      <div class="row" style="justify-content:flex-end"><button type="button" class="btn" id="brc">Cancelar</button><button class="btn primary">Guardar</button></div></form>`, (m) => {
-      $("#brc", m).addEventListener("click", closeModal);
-      $("#brf", m).addEventListener("submit", guard(async (ev) => {
-        ev.preventDefault();
-        await api(`/admin/bands/${b.dataset.bren}`, { method: "PUT", json: { name: $("#brn", m).value } });
-        closeModal(); state.me = await api("/me"); toast("Nombre guardado", "ok"); reload();
-      }));
-    });
-  }));
-  $$("[data-bdel]").forEach((b) => b.addEventListener("click", () => {
-    openModal(`<form id="bdf" class="stack"><h2>Borrar "${esc(b.dataset.name)}"</h2>
-      <p class="callout">Se borran <strong>todos</strong> sus ensayos, temas, masters, álbumes, eventos y avisos. No se puede deshacer. Las personas no se borran.</p>
-      <div class="field"><label for="bdn">Para confirmar, escribí el nombre de la banda</label><input id="bdn" type="text" autocomplete="off" required></div>
-      <div class="row" style="justify-content:flex-end"><button type="button" class="btn" id="bdc">Cancelar</button><button class="btn danger">Borrar para siempre</button></div></form>`, (m) => {
-      $("#bdc", m).addEventListener("click", closeModal);
-      $("#bdf", m).addEventListener("submit", guard(async (ev) => {
-        ev.preventDefault();
-        await api(`/admin/bands/${b.dataset.bdel}?confirm_name=${encodeURIComponent($("#bdn", m).value)}`, { method: "DELETE" });
-        closeModal(); state.me = await api("/me"); toast("Banda borrada", "ok"); reload();
-      }));
-    });
-  }));
-  $$("[data-role]").forEach((s) => s.addEventListener("change", guard(async () => {
-    const [bid, uid] = s.dataset.role.split(":");
-    await api(`/admin/bands/${bid}/members/${uid}`, { method: "PUT", json: { role: s.value } });
-    toast("Rol actualizado", "ok");
-  })));
-  $$("[data-rm]").forEach((b) => b.addEventListener("click", guard(async () => {
-    const [bid, uid] = b.dataset.rm.split(":");
-    if (!confirm("¿Sacar a esta persona de la banda? Deja de ver sus temas.")) return;
-    await api(`/admin/bands/${bid}/members/${uid}`, { method: "DELETE" });
-    toast("Listo", "ok");
-    reload();
-  })));
-  $$("[data-reset]").forEach((b) => b.addEventListener("click", guard(async () => {
-    if (!confirm(`¿Generar una contraseña nueva para ${b.dataset.who}? La anterior deja de funcionar.`)) return;
-    const r = await api(`/admin/users/${b.dataset.reset}/reset-password`, { method: "POST" });
-    const msg = `Hola ${r.name || ""}! Tu acceso a Diablo Master (${location.origin}): email ${r.email}, contraseña temporal ${r.password}. Entrá y cambiala desde Tu cuenta.`;
-    openModal(`<div class="stack"><h2>Contraseña nueva</h2>
-      <p>Para <strong>${esc(r.email)}</strong>. Pasásela ahora: <strong>no se vuelve a mostrar</strong>.</p>
-      <div class="copybox"><span class="grow" style="font-size:1.25rem;letter-spacing:.04em">${esc(r.password)}</span><button type="button" class="btn small" id="cpw">Copiar</button></div>
-      <a class="btn" href="https://wa.me/?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener">Mandar por WhatsApp</a>
-      <div class="row" style="justify-content:flex-end"><button class="btn primary" id="cpd">Listo</button></div></div>`, (m) => {
-      $("#cpw", m).addEventListener("click", () => copyText(r.password));
-      $("#cpd", m).addEventListener("click", closeModal);
-    });
-  })));
-  $$("[data-active]").forEach((b) => b.addEventListener("click", guard(async () => {
-    const to = b.dataset.to === "1";
-    if (!to && !confirm("¿Desactivar esta cuenta? No va a poder entrar, pero sus temas quedan.")) return;
-    await api(`/admin/users/${b.dataset.active}`, { method: "PUT", json: { active: to } });
-    toast(to ? "Cuenta activada" : "Cuenta desactivada", "ok");
-    reload();
-  })));
-  $$("[data-gsave]").forEach((b) => b.addEventListener("click", guard(async () => {
-    const row = b.closest("tr");
-    await api(`/admin/genres/${b.dataset.gsave}`, {
-      method: "PUT", json: { name: $('[data-f="name"]', row).value, target_lufs: Number($('[data-f="lufs"]', row).value) },
-    });
-    state.genres = null;
-    toast("Estilo guardado", "ok");
-  })));
-  $$("[data-gdel]").forEach((b) => b.addEventListener("click", guard(async () => {
-    if (!confirm("¿Borrar este estilo?")) return;
-    await api(`/admin/genres/${b.dataset.gdel}`, { method: "DELETE" });
-    state.genres = null;
-    reload();
-  })));
-  $("#ng").addEventListener("submit", guard(async (ev) => {
-    ev.preventDefault();
-    await api("/admin/genres", { method: "POST", json: { name: $("#ngn").value, target_lufs: Number($("#ngl").value) } });
-    state.genres = null;
-    reload();
-  }));
-}
-
 /* ===================== cuenta ===================== */
 async function viewAccount(nav) {
   const tokens = await api("/me/api-tokens");
@@ -2287,10 +1939,6 @@ window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); stat
 window.addEventListener("appinstalled", () => { state.installEvt = null; });
 if ("serviceWorker" in navigator) window.addEventListener("load", () => { navigator.serviceWorker.register("/sw.js").catch(() => {}); });
 $("#scrim").addEventListener("click", closeDrawer);
-$("#player-close").addEventListener("click", stopPlayer);
-$("#audio").addEventListener("error", () => {
-  if ($("#audio").getAttribute("src")) toast("No se pudo reproducir. Probá de nuevo con Escuchar.", "err");
-});
 $("#modal").addEventListener("click", (e) => { if (e.target === $("#modal")) closeModal(); });
 $("#modal").addEventListener("close", () => { $("#modal").innerHTML = ""; });
 router();

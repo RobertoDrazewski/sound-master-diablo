@@ -4,9 +4,9 @@ sqlalchemy>=2.0
 pyjwt>=2.8
 python-multipart>=0.0.9
 
-# Masterizado (ver app/mastering.py)
+# Masterizado (ver app/engine.py)
 pedalboard
-matchering
+scipy
 soundfile
 numpy
 # demucs   # solo si vas a usar separacion de stems

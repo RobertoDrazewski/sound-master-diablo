@@ -14,12 +14,13 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from . import analysis, assistant, audio, covers, release
-from .config import (ASSISTANT_DAILY_LIMIT, COVER_AI_DAILY_LIMIT, PUBLIC_URL, BAND_QUOTA_GB, CORS_ORIGINS, DATA_DIR, DEFAULT_GENRES,
+from . import analysis, assistant, audio, billing, chat, covers, genres, mail, masterjob, release
+from .config import (ASSISTANT_DAILY_LIMIT, COVER_AI_DAILY_LIMIT, PUBLIC_URL, BAND_QUOTA_GB, CORS_ORIGINS, DATA_DIR,
                      INVITE_TTL_DAYS, MAX_UPLOAD_MB, RAW_RETENTION_DAYS,
-                     REFERENCE_SECONDS, SUPERADMIN_EMAIL, SUPERADMIN_PASSWORD)
-from .db import (Album, ApiToken, Band, Event, Genre, Invite, Job, Membership, Notification,
-                 Reference, SessionLocal, Track, User, Version, init_db, now)
+                     REFERENCE_SECONDS, SUPERADMIN_EMAIL, SUPERADMIN_PASSWORD, CHAT_ENABLED, TRIAL_DAYS,
+                     TURNSTILE_SITE_KEY)
+from .db import (Album, ApiToken, Band, ContactMessage, Event, Genre, Invite, Job, Membership, Notification,
+                 Payment, Plan, Reference, SessionLocal, Track, User, Version, init_db, now)
 from .notify import notify_band
 from .security import (create_media_token, create_session_jwt,
                        decode_media_token, decode_session_jwt, hash_password,
@@ -27,13 +28,31 @@ from .security import (create_media_token, create_session_jwt,
 from .worker import remove_version_files, worker
 
 
+def seed_genres(db: Session):
+    """Carga el catalogo de generos por nombre: no pisa los que ya existen (ni su volumen objetivo)."""
+    old = db.query(Genre).filter(Genre.name == "stoner").first()
+    if old and not db.query(Genre).filter(Genre.name == "stoner rock").first():
+        old.name = "stoner rock"
+        db.flush()
+    have = {g.name: g for g in db.query(Genre).all()}
+    for name, family, lufs in genres.catalog_rows():
+        g = have.get(name)
+        if g is None:
+            db.add(Genre(name=name, target_lufs=lufs, family=family))
+        elif not g.family:
+            g.family = family
+    for g in have.values():
+        if not g.family:
+            g.family = genres.family(g.name)
+    db.commit()
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     init_db()
     with SessionLocal() as db:
-        if db.query(Genre).count() == 0:
-            for name, lufs in DEFAULT_GENRES.items():
-                db.add(Genre(name=name, target_lufs=lufs))
+        seed_genres(db)
+        billing.seed_plans(db)
         if db.query(User).count() == 0 and SUPERADMIN_EMAIL and SUPERADMIN_PASSWORD:
             db.add(User(email=SUPERADMIN_EMAIL.lower(), name="Super admin", is_super=True,
                         password_hash=hash_password(SUPERADMIN_PASSWORD)))
@@ -100,8 +119,7 @@ def need_member(db: Session, user: User, band_id: int, admin: bool = False) -> s
 
 
 def user_band_ids(db: Session, user: User) -> list[int]:
-    if user.is_super:
-        return [b.id for b in db.query(Band.id).all()]
+    # el super admin no tiene "sus bandas": solo las suyas propias si es integrante (hoy ninguna)
     return [m.band_id for m in db.query(Membership).filter_by(user_id=user.id).all()]
 
 
@@ -172,7 +190,16 @@ class MasterIn(BaseModel):
     reference_id: int | None = None
     genre_id: int | None = None
     lufs: float | None = Field(default=None, ge=-24, le=-6)
-    separate_stems: bool = False
+    strength: float | None = Field(default=None, ge=0, le=1)       # cuanto se acerca al tono objetivo
+    power: float | None = Field(default=None, ge=0, le=1.5)        # potencia (compresion)
+    width: float | None = Field(default=None, ge=0.5, le=1.6)      # ancho estereo
+    tone: dict | None = None                                       # bass/body/presence/air en dB
+    auto_balance: bool = True
+    drums_db: float | None = Field(default=None, ge=-8, le=6)
+    bass_db: float | None = Field(default=None, ge=-8, le=6)
+    voice_db: float | None = Field(default=None, ge=-8, le=6)
+    stem_gains: dict | None = None                                 # {version_id: dB} para temas con pistas separadas
+    separate_stems: bool = False                                   # ignorado (se conserva por compatibilidad)
 
 
 # ------------------------------------------------------------------------ helpers
@@ -253,9 +280,26 @@ def ingest_files(db: Session, user: User, track: Track, mode: str, files: list[U
     worker.wake.set()
 
 
+def write_gate(db: Session, band_id: int) -> Band:
+    """Corta lo que cuesta plata (subir, masterizar, IA, lanzar) si la banda no tiene el servicio al dia.
+    Ver y descargar sus archivos queda siempre habilitado."""
+    band = db.get(Band, band_id)
+    if not band:
+        raise HTTPException(404, "No encontrado")
+    st = billing.status(db, band)
+    if not st["can_write"]:
+        msg = ("Esta banda está suspendida. Escribinos desde Contacto." if st.get("reason") == "blocked" else
+               "La suscripción de la banda está vencida. El admin de la banda puede renovarla desde la sección Plan. "
+               "Mientras tanto podés escuchar y descargar todo tu material.")
+        raise HTTPException(402, msg)
+    return band
+
+
 def check_quota(db: Session, band_id: int, incoming: int = 0):
-    if band_used_bytes(db, band_id) + incoming > BAND_QUOTA_GB * 1e9:
-        raise HTTPException(413, "La banda llego al tope de espacio. Borra ensayos viejos.")
+    band = write_gate(db, band_id)
+    quota = billing.limits(db, band)["quota_gb"]
+    if band_used_bytes(db, band_id) + incoming > quota * 1e9:
+        raise HTTPException(413, f"La banda llegó al tope de espacio de su plan ({quota:g} GB). Borrá material viejo o pasá a un plan mayor.")
 
 
 # --------------------------------------------------------------------------- auth
@@ -385,11 +429,15 @@ def get_image(kind: str, name: str):
 def me(user: User = Depends(current_user), db: Session = Depends(get_db)):
     ids = user_band_ids(db, user)
     bands = db.query(Band).filter(Band.id.in_(ids)).order_by(Band.name).all() if ids else []
+    if user.is_super:
+        bands = []  # el panel de super admin no mezcla bandas: se administran desde Admin
     return {
         "id": user.id, "email": user.email, "name": user.name, "is_super": user.is_super,
         "photo": img_url("users", user.id, user.photo),
         "bands": [{"id": b.id, "name": b.name, "role": band_role(db, user, b.id),
-                   "photo": img_url("bands", b.id, b.photo)} for b in bands],
+                   "photo": img_url("bands", b.id, b.photo),
+                   "billing": {k: v for k, v in billing.status(db, b).items() if k in ("state", "label", "can_write", "days_left")}}
+                  for b in bands],
     }
 
 
@@ -461,14 +509,29 @@ def delete_api_token(token_id: int, user: User = Depends(current_user), db: Sess
 
 # -------------------------------------------------------------------------- admin
 
+class AdminBandIn(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    exempt: bool = False                 # True = la banda no paga (la decide el super admin)
+    plan_id: int | None = None
+    trial_days: int | None = Field(None, ge=0, le=365)
+    admin_email: str = ""                # si se completa, se genera la invitacion como admin de la banda
+
+
 @app.post("/admin/bands")
-def create_band(body: BandIn, _: User = Depends(require_super), db: Session = Depends(get_db)):
+def create_band(body: AdminBandIn, request: Request, user: User = Depends(require_super), db: Session = Depends(get_db)):
     if db.query(Band).filter(Band.name == body.name.strip()).first():
         raise HTTPException(409, "Ya existe una banda con ese nombre")
-    band = Band(name=body.name.strip())
+    plan = db.get(Plan, body.plan_id) if body.plan_id else db.query(Plan).filter_by(slug="estudio").first()
+    band = Band(name=body.name.strip(), exempt=body.exempt, plan_id=plan.id if plan else None)
+    if not body.exempt:
+        days = TRIAL_DAYS if body.trial_days is None else body.trial_days
+        band.trial_ends_at = now() + timedelta(days=days) if days else None
     db.add(band)
     db.commit()
-    return {"id": band.id, "name": band.name}
+    out = {"id": band.id, "name": band.name}
+    if body.admin_email.strip():
+        out["invite"] = make_invite(db, request, user, band.id, body.admin_email, "admin", "musico", "", False)
+    return out
 
 
 class UserAdminIn(BaseModel):
@@ -611,8 +674,10 @@ def admin_bands(_: User = Depends(require_super), db: Session = Depends(get_db))
                    .filter(Membership.band_id == b.id).all())
         out.append({
             "id": b.id, "name": b.name, "photo": img_url("bands", b.id, b.photo),
-            "used_gb": round(band_used_bytes(db, b.id) / 1e9, 2), "quota_gb": BAND_QUOTA_GB,
-            "stats": band_stats(db, b.id),
+            "used_gb": round(band_used_bytes(db, b.id) / 1e9, 2), "quota_gb": billing.limits(db, b)["quota_gb"],
+            "stats": band_stats(db, b.id), "billing": billing.status(db, b), "exempt": b.exempt, "blocked": b.blocked,
+            "plan_id": b.plan_id, "mp_status": b.mp_status, "created_at": b.created_at,
+            "usage": billing.usage(db, b.id),
             "members": [{"user_id": u.id, "email": u.email, "name": u.name, "role": m.role}
                         for m, u in members],
         })
@@ -632,6 +697,12 @@ def make_invite(db: Session, request: Request, inviter: User, band_id: int, emai
     existing = db.query(User).filter(User.email == email).first()
     if existing and db.query(Membership).filter_by(user_id=existing.id, band_id=band_id).first():
         raise HTTPException(409, "Esa persona ya está en la banda")
+    cap = billing.limits(db, db.get(Band, band_id))["max_members"]
+    if cap is not None:
+        used = db.query(Membership).filter_by(band_id=band_id).count() + \
+            db.query(Invite).filter(Invite.band_id == band_id, Invite.used_at.is_(None), Invite.expires_at > now()).count()
+        if used >= cap:
+            raise HTTPException(409, f"Tu plan admite hasta {cap} integrantes por banda.")
     token = new_secret()
     db.add(Invite(token_hash=sha256(token), email=email, band_id=band_id, role=role, kind=kind,
                   instrument=instrument, sings=sings, invited_by=inviter.id,
@@ -717,8 +788,13 @@ def remove_member(band_id: int, user_id: int, _: User = Depends(require_super),
 
 @app.get("/genres")
 def list_genres(_: User = Depends(current_user), db: Session = Depends(get_db)):
-    return [{"id": g.id, "name": g.name, "target_lufs": g.target_lufs}
-            for g in db.query(Genre).order_by(Genre.name).all()]
+    out = []
+    for g in db.query(Genre).order_by(Genre.name).all():
+        p = genres.profile(g.name)
+        out.append({"id": g.id, "name": g.name, "target_lufs": g.target_lufs, "family": g.family or p["family"],
+                    "desc": p.get("desc", ""), "comp": p.get("comp"), "width": p.get("width"),
+                    "drums": p.get("drums"), "shape": p.get("shape")})
+    return out
 
 
 @app.post("/admin/genres")
@@ -765,7 +841,7 @@ def list_references(genre_id: int | None = None, user: User = Depends(current_us
         q = q.filter(Reference.genre_id == genre_id)
     return [{"id": r.id, "name": r.name, "genre_id": r.genre_id, "genre": r.genre.name,
              "scope": "global" if r.band_id is None else "band", "band_id": r.band_id,
-             "mine": r.uploaded_by == user.id}
+             "mine": r.uploaded_by == user.id, "lufs": r.lufs, "family": r.genre.family}
             for r in q.order_by(Reference.name).all()]
 
 
@@ -781,6 +857,9 @@ def upload_reference(genre_id: int = Form(...), name: str = Form(...),
             raise HTTPException(403, "Solo el super admin carga referencias globales")
     else:
         need_member(db, user, band_id)
+        write_gate(db, band_id)
+        if db.query(Reference).filter_by(band_id=band_id).count() >= 40:
+            raise HTTPException(409, "Ya tenés 40 referencias en la banda: borrá alguna para subir otra")
     tmp = DATA_DIR / "tmp" / f"{uuid.uuid4().hex}{Path(file.filename or '').suffix[:8] or '.bin'}"
     save_upload(file, tmp)
     dest_dir = DATA_DIR / "references"
@@ -793,7 +872,12 @@ def upload_reference(genre_id: int = Form(...), name: str = Form(...),
         raise HTTPException(422, f"No se pudo leer el audio: {e}") from None
     finally:
         tmp.unlink(missing_ok=True)
-    ref = Reference(genre_id=genre_id, band_id=band_id, name=safe_name(name),
+    try:
+        from . import engine
+        ref_lufs = round(engine.lufs(engine.decode(dest)), 1)
+    except Exception:  # noqa: BLE001
+        ref_lufs = None
+    ref = Reference(genre_id=genre_id, band_id=band_id, name=safe_name(name), lufs=ref_lufs,
                     path=str(dest), size_bytes=dest.stat().st_size, uploaded_by=user.id)
     db.add(ref)
     db.commit()
@@ -831,7 +915,8 @@ def list_tracks(band_id: int, section: str | None = None, user: User = Depends(c
 @app.post("/bands/{band_id}/tracks")
 def upload_track(band_id: int, title: str = Form(""), mode: str = Form("mix"),
                  section: str = Form("master"), session: str = Form(""), master_genre_id: int | None = Form(None),
-                 master_reference_id: int | None = Form(None), files: list[UploadFile] = File(...), user: User = Depends(current_user),
+                 master_reference_id: int | None = Form(None), master_options: str = Form(""),
+                 files: list[UploadFile] = File(...), user: User = Depends(current_user),
                  db: Session = Depends(get_db)):
     """mode: mix (una cancion), stems (una pista por archivo) o raw (ensayo completo, vence)."""
     need_member(db, user, band_id)
@@ -848,10 +933,24 @@ def upload_track(band_id: int, title: str = Form(""), mode: str = Form("mix"),
     db.add(track)
     db.flush()
     then = None
-    if mode != "stems" and len(files) == 1 and (master_genre_id or master_reference_id):
-        if master_genre_id and not db.get(Genre, master_genre_id):
+    if mode != "stems" and len(files) == 1 and (master_genre_id or master_reference_id or master_options.strip()):
+        try:
+            then = json.loads(master_options) if master_options.strip() else {}
+            assert isinstance(then, dict)
+        except Exception:  # noqa: BLE001
+            raise HTTPException(422, "master_options invalido") from None
+        then.setdefault("genre_id", master_genre_id)
+        then.setdefault("reference_id", master_reference_id)
+        then = masterjob.normalize(then)
+        if then["genre_id"] and not db.get(Genre, then["genre_id"]):
             raise HTTPException(404, "Género inexistente")
-        then = {"genre_id": master_genre_id, "reference_id": master_reference_id}
+        if then["reference_id"]:
+            ref = db.get(Reference, then["reference_id"])
+            if not ref or ref.band_id not in (None, band_id):
+                raise HTTPException(404, "Referencia inexistente")
+        cap = billing.limits(db, db.get(Band, band_id))["masters_month"]
+        if cap is not None and billing.usage(db, band_id)["masters_month"] >= cap:
+            raise HTTPException(402, f"Usaste los {cap} masters de este mes en tu plan.")
     ingest_files(db, user, track, mode, files, then)
     who = user.name or user.email
     notify_band(db, band_id, f'{who} subió "{name}" a {SECTION_NAMES[section]}',
@@ -1007,31 +1106,39 @@ def master_track(track_id: int, body: MasterIn, user: User = Depends(current_use
     if not any(v.status == "ready" and v.kind in ("mix", "stem", "raw") for v in track.versions):
         raise HTTPException(409, "El tema todavia no tiene audio listo")
     check_quota(db, track.band_id)
+    band = db.get(Band, track.band_id)
+    cap = billing.limits(db, band)["masters_month"]
+    if cap is not None and billing.usage(db, band.id)["masters_month"] >= cap:
+        raise HTTPException(402, f"Usaste los {cap} masters de este mes en tu plan. Se renuevan el 1° o podés pasar a un plan mayor.")
 
-    lufs, label = -14.0, "master"
-    if body.genre_id:
-        g = db.get(Genre, body.genre_id)
-        if not g:
-            raise HTTPException(404, "Genero inexistente")
-        lufs, label = g.target_lufs, f"master {g.name}"
-    if body.lufs is not None:
-        lufs = body.lufs
+    if body.genre_id and not db.get(Genre, body.genre_id):
+        raise HTTPException(404, "Genero inexistente")
     if body.reference_id:
         ref = db.get(Reference, body.reference_id)
         if not ref or (ref.band_id is not None and ref.band_id != track.band_id):
             raise HTTPException(404, "Referencia inexistente")
-        label = f"master ref: {ref.name}"
-
-    v = Version(track_id=track.id, kind="master", label=label, status="processing", created_by=user.id)
+    opts = masterjob.normalize(body.model_dump())
+    v = Version(track_id=track.id, kind="master", label=masterjob.label_for(db, opts), status="processing",
+                created_by=user.id)
     db.add(v)
     db.flush()
-    job = Job(kind="master", version_id=v.id, created_by=user.id,
-              payload=json.dumps({"reference_id": body.reference_id, "lufs": lufs,
-                                  "separate_stems": body.separate_stems}))
+    job = Job(kind="master", version_id=v.id, created_by=user.id, payload=json.dumps(opts))
     db.add(job)
     db.commit()
     worker.wake.set()
     return {"job_id": job.id, "version_id": v.id}
+
+
+@app.get("/versions/{version_id}/master-report")
+def master_report(version_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    v = db.get(Version, version_id)
+    if not v:
+        raise HTTPException(404, "No encontrado")
+    _track_for(db, user, v.track_id)
+    f = DATA_DIR / "analysis" / f"{v.id}.master.json"
+    if not f.exists():
+        raise HTTPException(404, "Este master no tiene informe")
+    return json.loads(f.read_text())
 
 
 @app.get("/jobs/{job_id}")
@@ -1150,6 +1257,7 @@ def list_releases(band_id: int, user: User = Depends(current_user), db: Session 
 @app.post("/albums/{album_id}/release/build")
 def release_build(album_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
     a = _album_for(db, user, album_id)
+    write_gate(db, a.band_id)
     info = _release_out(a, db)
     if not info["tracks"]:
         raise HTTPException(409, "El álbum no tiene temas")
@@ -1239,14 +1347,17 @@ def assistant_note(version_id: int, body: NoteIn, user: User = Depends(current_u
     if note.exists():
         return {"note": note.read_text()}
     base = version_analysis(version_id, user, db)
+    band = write_gate(db, track.band_id)
     key = (track.band_id, now().strftime("%Y-%m-%d"))
-    if _ai_usage.get(key, 0) >= ASSISTANT_DAILY_LIMIT:
+    day_cap = min(ASSISTANT_DAILY_LIMIT, billing.limits(db, band)["ai_notes_day"] or ASSISTANT_DAILY_LIMIT)
+    if _ai_usage.get(key, 0) >= day_cap:
         raise HTTPException(429, "Se alcanzó el límite de consultas de hoy para esta banda. Mañana vuelve.")
     try:
         text = assistant.summarize(base, track.title, body.style)
     except RuntimeError as e:
         raise HTTPException(502, str(e)) from None
     _ai_usage[key] = _ai_usage.get(key, 0) + 1
+    billing.record_usage(db, band.id, "note")
     note.parent.mkdir(parents=True, exist_ok=True)
     note.write_text(text)
     return {"note": text}
@@ -1543,11 +1654,16 @@ def cover_preview(album_id: int, mode: str = Form("style"), style: str = Form("e
                 raise HTTPException(404, "La generación con IA no está activada")
             if len(prompt.strip()) < 8:
                 raise HTTPException(422, "Contá un poco más qué imagen querés (mínimo 8 letras)")
+            band = write_gate(db, a.band_id)
             key = (a.band_id, now().strftime("%Y-%m-%d"))
             if _cover_ai_usage.get(key, 0) >= COVER_AI_DAILY_LIMIT:
                 raise HTTPException(429, "Se alcanzó el límite de imágenes con IA de hoy para esta banda. Mañana vuelve.")
+            cap = billing.limits(db, band)["ai_covers_month"]
+            if cap is not None and billing.usage(db, band.id)["ai_covers_month"] >= cap:
+                raise HTTPException(402, f"Usaste las {cap} tapas con IA de este mes en tu plan.")
             jpeg, notice = covers.generate_ai(prompt.strip()[:600], src)
             _cover_ai_usage[key] = _cover_ai_usage.get(key, 0) + 1
+            billing.record_usage(db, band.id, "cover")
             if logo_bytes:
                 jpeg = covers.add_logo(jpeg, logo_bytes, logo_pos, logo_size)
             if show_text:
@@ -1579,6 +1695,317 @@ def remove_album_photo(album_id: int, user: User = Depends(current_user), db: Se
     a.photo = None
     db.commit()
     return {"photo": None}
+
+
+# ===================================================================== planes y suscripciones
+
+def _client_ip(request: Request) -> str:
+    return (request.headers.get("cf-connecting-ip") or (request.client.host if request.client else "?"))[:64]
+
+
+def _band_admin(db: Session, user: User, band_id: int) -> Band:
+    """Quien gestiona el pago de la banda: su admin (o el super admin)."""
+    band = db.get(Band, band_id)
+    if not band or band_role(db, user, band_id) is None:
+        raise HTTPException(404, "No encontrado")
+    if band_role(db, user, band_id) != "admin":
+        raise HTTPException(403, "Solo el admin de la banda gestiona la suscripción")
+    return band
+
+
+@app.get("/public-config")
+def public_config(db: Session = Depends(get_db)):
+    return {"turnstile_site_key": TURNSTILE_SITE_KEY, "chat": CHAT_ENABLED, "trial_days": TRIAL_DAYS,
+            "plans": billing.public_plans(db)}
+
+
+@app.get("/bands/{band_id}/billing")
+def band_billing(band_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    need_member(db, user, band_id)
+    band = db.get(Band, band_id)
+    pays = db.query(Payment).filter_by(band_id=band_id).order_by(Payment.paid_at.desc()).limit(12).all()
+    lim = billing.limits(db, band)
+    return {
+        "is_admin": band_role(db, user, band_id) == "admin", "status": billing.status(db, band),
+        "limits": lim, "usage": {**billing.usage(db, band_id), "used_gb": round(band_used_bytes(db, band_id) / 1e9, 2),
+                                 "members": db.query(Membership).filter_by(band_id=band_id).count()},
+        "plans": billing.public_plans(db), "mp_enabled": billing.mp_enabled(), "trial_days": TRIAL_DAYS,
+        "payer_email": band.mp_payer_email or user.email, "has_subscription": bool(band.mp_preapproval_id),
+        "payments": [{"amount": p.amount, "currency": p.currency, "status": p.status, "paid_at": p.paid_at} for p in pays],
+    }
+
+
+class SubscribeIn(BaseModel):
+    plan_id: int
+    payer_email: str = Field(min_length=5, max_length=255)
+
+
+@app.post("/bands/{band_id}/billing/subscribe")
+def band_subscribe(band_id: int, body: SubscribeIn, request: Request, user: User = Depends(current_user),
+                   db: Session = Depends(get_db)):
+    band = _band_admin(db, user, band_id)
+    if band.exempt:
+        raise HTTPException(409, "Esta banda no necesita suscripción")
+    plan = db.get(Plan, body.plan_id)
+    if not plan or not plan.active:
+        raise HTTPException(404, "Plan inexistente")
+    if "@" not in body.payer_email:
+        raise HTTPException(422, "Poné el email de tu cuenta de Mercado Pago")
+    if not billing.mp_enabled():
+        raise HTTPException(503, "El cobro con Mercado Pago todavía no está activado. Escribinos desde Contacto.")
+    base = PUBLIC_URL or str(request.base_url).rstrip("/")
+    try:
+        # ya tiene una suscripcion autorizada: solo se cambia el monto (no hay que volver a autorizar)
+        if band.mp_preapproval_id and band.mp_status == "authorized":
+            billing.reprice_preapproval(band.mp_preapproval_id, plan.price_ars)
+            band.plan_id, band.pending_plan_id = plan.id, None
+            db.commit()
+            return {"changed": True}
+        st = billing.status(db, band)
+        trial_days = st.get("days_left", 0) if st["state"] == "trial" else 0
+        res = billing.create_preapproval(band, plan, body.payer_email.strip(), f"{base}/#/band/{band_id}/plan?mp=back",
+                                         start_in_days=trial_days)
+    except billing.MPError as e:
+        raise HTTPException(424, str(e)) from None
+    band.pending_plan_id = plan.id
+    if not band.plan_id:
+        band.plan_id = plan.id
+    band.mp_preapproval_id, band.mp_status = res["id"], "pending"
+    band.mp_payer_email = body.payer_email.strip()
+    db.commit()
+    return {"init_point": res["init_point"]}
+
+
+@app.post("/bands/{band_id}/billing/sync")
+def band_billing_sync(band_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Despues de volver de Mercado Pago: pregunta el estado real (por si el aviso tarda)."""
+    band = _band_admin(db, user, band_id)
+    try:
+        billing.sync_band(db, band)
+    except billing.MPError as e:
+        raise HTTPException(424, str(e)) from None
+    return {"status": billing.status(db, band)}
+
+
+@app.post("/bands/{band_id}/billing/cancel")
+def band_cancel(band_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    band = _band_admin(db, user, band_id)
+    if not band.mp_preapproval_id:
+        raise HTTPException(409, "No hay una suscripción para cancelar")
+    try:
+        billing.cancel_preapproval(band.mp_preapproval_id)
+    except billing.MPError as e:
+        raise HTTPException(424, str(e)) from None
+    band.mp_status = "cancelled"
+    db.commit()  # el servicio sigue hasta el fin del periodo pagado
+    return {"status": billing.status(db, band)}
+
+
+@app.post("/billing/webhook")
+async def billing_webhook(request: Request, db: Session = Depends(get_db)):
+    """Avisos de Mercado Pago. No se confia en el cuerpo: se re-consulta el recurso a la API con nuestro token."""
+    q = request.query_params
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        body = {}
+    topic = q.get("type") or q.get("topic") or body.get("type") or body.get("topic") or ""
+    rid = q.get("data.id") or q.get("id") or (body.get("data") or {}).get("id") or ""
+    if not billing.verify_signature(request.headers, str(rid)):
+        raise HTTPException(401, "firma invalida")
+    if rid and topic in ("subscription_preapproval", "preapproval", "subscription_authorized_payment", "authorized_payment"):
+        try:
+            billing.handle_notification(db, topic, str(rid))
+        except billing.MPError:
+            raise HTTPException(502, "reintentar") from None  # MP reintenta solo
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------- super admin: cobros
+
+@app.get("/admin/billing/summary")
+def admin_billing_summary(_: User = Depends(require_super), db: Session = Depends(get_db)):
+    return {**billing.overview(db), "mp_enabled": billing.mp_enabled(), "mail_enabled": mail.mail_enabled(),
+            "turnstile": mail.turnstile_enabled(), "unread_messages": db.query(ContactMessage).filter_by(handled=False).count()}
+
+
+class BandBillingIn(BaseModel):
+    exempt: bool | None = None
+    blocked: bool | None = None
+    plan_id: int | None = None
+    trial_days: int | None = Field(None, ge=0, le=365)      # reinicia la prueba gratis
+    add_paid_days: int | None = Field(None, ge=1, le=366)   # cobro manual (transferencia, efectivo)
+    amount: float | None = None
+
+
+@app.put("/admin/bands/{band_id}/billing")
+def admin_band_billing(band_id: int, body: BandBillingIn, _: User = Depends(require_super),
+                       db: Session = Depends(get_db)):
+    b = db.get(Band, band_id)
+    if not b:
+        raise HTTPException(404, "Banda inexistente")
+    if body.exempt is not None:
+        b.exempt = body.exempt
+    if body.blocked is not None:
+        b.blocked = body.blocked
+    if body.plan_id is not None:
+        if not db.get(Plan, body.plan_id):
+            raise HTTPException(404, "Plan inexistente")
+        b.plan_id = body.plan_id
+    if body.trial_days is not None:
+        b.trial_ends_at = now() + timedelta(days=body.trial_days) if body.trial_days else None
+        b.paid_until = None if body.trial_days else b.paid_until
+    if body.add_paid_days:
+        b.paid_until = max(b.paid_until or now(), now()) + timedelta(days=body.add_paid_days)
+        db.add(Payment(band_id=b.id, band_name=b.name, amount=body.amount or 0, kind="manual", status="approved"))
+    db.commit()
+    return {"status": billing.status(db, b)}
+
+
+@app.post("/admin/bands/{band_id}/billing/sync")
+def admin_band_sync(band_id: int, _: User = Depends(require_super), db: Session = Depends(get_db)):
+    b = db.get(Band, band_id)
+    if not b:
+        raise HTTPException(404, "Banda inexistente")
+    try:
+        billing.sync_band(db, b)
+    except billing.MPError as e:
+        raise HTTPException(424, str(e)) from None
+    return {"status": billing.status(db, b)}
+
+
+@app.get("/admin/payments")
+def admin_payments(_: User = Depends(require_super), db: Session = Depends(get_db)):
+    return [{"id": p.id, "band": p.band_name, "amount": p.amount, "currency": p.currency, "status": p.status,
+             "kind": p.kind, "paid_at": p.paid_at} for p in db.query(Payment).order_by(Payment.paid_at.desc()).limit(200).all()]
+
+
+@app.get("/admin/plans")
+def admin_plans(_: User = Depends(require_super), db: Session = Depends(get_db)):
+    out = []
+    for p in db.query(Plan).order_by(Plan.sort).all():
+        d = billing.plan_dict(p)
+        d["bands"] = db.query(Band).filter(Band.plan_id == p.id, Band.exempt.is_(False)).count()
+        out.append(d)
+    return out
+
+
+class PlanIn(BaseModel):
+    name: str = Field(min_length=1, max_length=60)
+    tagline: str = Field("", max_length=160)
+    price_ars: int = Field(ge=0, le=100_000_000)
+    quota_gb: float = Field(ge=1, le=2000)
+    masters_month: int = Field(ge=1, le=10000)
+    ai_covers_month: int = Field(ge=0, le=10000)
+    ai_notes_day: int = Field(ge=0, le=1000)
+    max_members: int = Field(ge=1, le=100)
+    active: bool = True
+    highlight: bool = False
+
+
+@app.put("/admin/plans/{plan_id}")
+def admin_update_plan(plan_id: int, body: PlanIn, _: User = Depends(require_super), db: Session = Depends(get_db)):
+    p = db.get(Plan, plan_id)
+    if not p:
+        raise HTTPException(404, "Plan inexistente")
+    price_changed = p.price_ars != body.price_ars
+    for k, v in body.model_dump().items():
+        setattr(p, k, v)
+    db.commit()
+    failed = repriced = 0
+    if price_changed and billing.mp_enabled():
+        # el nuevo precio rige desde el proximo cobro de las bandas suscriptas a este plan
+        for b in db.query(Band).filter(Band.plan_id == p.id, Band.mp_status == "authorized",
+                                       Band.mp_preapproval_id.isnot(None)).all():
+            try:
+                billing.reprice_preapproval(b.mp_preapproval_id, p.price_ars)
+                repriced += 1
+            except billing.MPError:
+                failed += 1
+    return {"ok": True, "repriced": repriced, "failed": failed}
+
+
+@app.get("/admin/contact-messages")
+def admin_messages(_: User = Depends(require_super), db: Session = Depends(get_db)):
+    return [{"id": m.id, "name": m.name, "email": m.email, "band": m.band, "message": m.message,
+             "handled": m.handled, "emailed": m.emailed, "created_at": m.created_at}
+            for m in db.query(ContactMessage).order_by(ContactMessage.created_at.desc()).limit(200).all()]
+
+
+@app.put("/admin/contact-messages/{mid}")
+def admin_message_handled(mid: int, handled: bool = True, _: User = Depends(require_super), db: Session = Depends(get_db)):
+    m = db.get(ContactMessage, mid)
+    if not m:
+        raise HTTPException(404, "No encontrado")
+    m.handled = handled
+    db.commit()
+    return {"ok": True}
+
+
+@app.delete("/admin/contact-messages/{mid}")
+def admin_message_delete(mid: int, _: User = Depends(require_super), db: Session = Depends(get_db)):
+    m = db.get(ContactMessage, mid)
+    if m:
+        db.delete(m)
+        db.commit()
+    return {"ok": True}
+
+
+# ----------------------------------------------------------------- contacto y chat (publicos)
+
+class ContactIn(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    email: str = Field(min_length=5, max_length=255)
+    band: str = Field("", max_length=120)
+    message: str = Field(min_length=5, max_length=3000)
+    website: str = ""                    # honeypot: las personas no lo ven ni lo completan
+    turnstile_token: str = ""
+
+
+_contact_hits: dict[str, list[float]] = {}
+
+
+@app.post("/contact")
+def contact(body: ContactIn, request: Request, db: Session = Depends(get_db)):
+    import time
+    ip = _client_ip(request)
+    if body.website.strip():
+        return {"ok": True}  # robot: se hace como que salio bien
+    t = time.time()
+    hits = [h for h in _contact_hits.get(ip, []) if t - h < 3600]
+    if len(hits) >= 5:
+        raise HTTPException(429, "Enviaste varios mensajes seguidos. Probá de nuevo en un rato.")
+    if not mail.verify_turnstile(body.turnstile_token, ip):
+        raise HTTPException(400, "No pudimos verificar que no sos un robot. Marcá la casilla e intentá de nuevo.")
+    email = body.email.strip().lower()
+    if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+        raise HTTPException(422, "Revisá el email")
+    hits.append(t)
+    _contact_hits[ip] = hits
+    m = ContactMessage(name=body.name.strip(), email=email, band=body.band.strip(), message=body.message.strip())
+    db.add(m)
+    db.commit()
+    m.emailed = mail.send_mail(
+        f"[Diablo Master Mix] Mensaje de {m.name}" + (f" ({m.band})" if m.band else ""),
+        f"Nombre: {m.name}\nEmail: {m.email}\nBanda: {m.band or '-'}\n\n{m.message}", reply_to=m.email)
+    db.commit()
+    return {"ok": True}
+
+
+class ChatIn(BaseModel):
+    message: str = Field(max_length=2000)
+    history: list[dict] = Field(default_factory=list, max_length=40)
+
+
+@app.post("/chat")
+def chat_endpoint(body: ChatIn, request: Request, db: Session = Depends(get_db)):
+    if not CHAT_ENABLED:
+        raise HTTPException(404, "Chat desactivado")
+    limit = chat.rate_ok(_client_ip(request))
+    if limit:
+        return {"reply": limit, "limited": True}
+    plans = db.query(Plan).filter_by(active=True).order_by(Plan.sort).all()
+    return {"reply": chat.reply(body.message, body.history, plans)}
 
 
 # ---------------------------------------------------------------- front (al final)

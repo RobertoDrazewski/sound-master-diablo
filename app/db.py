@@ -53,6 +53,68 @@ class Band(Base):
     name: Mapped[str] = mapped_column(String(120), unique=True)
     photo: Mapped[str | None] = mapped_column(String(20), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+    # suscripcion: el estado se calcula (ver app/billing.py), aca solo van los datos
+    exempt: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")        # no paga (la decide el super admin)
+    blocked: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")       # corte manual
+    plan_id: Mapped[int | None] = mapped_column(ForeignKey("plans.id", ondelete="SET NULL"), nullable=True)
+    pending_plan_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    trial_ends_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    paid_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    mp_preapproval_id: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
+    mp_status: Mapped[str | None] = mapped_column(String(20), nullable=True)               # pending | authorized | paused | cancelled
+    mp_payer_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+
+class Plan(Base):
+    """Plan de suscripcion mensual (se cobra por banda, no por musico)."""
+    __tablename__ = "plans"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    slug: Mapped[str] = mapped_column(String(30), unique=True)
+    name: Mapped[str] = mapped_column(String(60))
+    tagline: Mapped[str] = mapped_column(String(160), default="")
+    price_ars: Mapped[int] = mapped_column(Integer)
+    quota_gb: Mapped[float] = mapped_column(Float, default=5)
+    masters_month: Mapped[int] = mapped_column(Integer, default=12)
+    ai_covers_month: Mapped[int] = mapped_column(Integer, default=3)
+    ai_notes_day: Mapped[int] = mapped_column(Integer, default=10)
+    max_members: Mapped[int] = mapped_column(Integer, default=8)
+    sort: Mapped[int] = mapped_column(Integer, default=0)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    highlight: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class Payment(Base):
+    __tablename__ = "payments"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    band_id: Mapped[int | None] = mapped_column(ForeignKey("bands.id", ondelete="SET NULL"), nullable=True, index=True)
+    band_name: Mapped[str] = mapped_column(String(120), default="")
+    mp_id: Mapped[str | None] = mapped_column(String(80), unique=True, nullable=True)
+    amount: Mapped[float] = mapped_column(Float, default=0)
+    currency: Mapped[str] = mapped_column(String(5), default="ARS")
+    status: Mapped[str] = mapped_column(String(20), default="approved")
+    kind: Mapped[str] = mapped_column(String(12), default="mp")           # mp | manual
+    paid_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
+class UsageEvent(Base):
+    """Consumos con costo (tapas con IA, notas del asistente) para aplicar los limites del plan."""
+    __tablename__ = "usage_events"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    band_id: Mapped[int] = mapped_column(Integer, index=True)
+    kind: Mapped[str] = mapped_column(String(12), index=True)             # cover | note
+    at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
+
+
+class ContactMessage(Base):
+    __tablename__ = "contact_messages"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(120))
+    email: Mapped[str] = mapped_column(String(255))
+    band: Mapped[str] = mapped_column(String(120), default="")
+    message: Mapped[str] = mapped_column(Text)
+    emailed: Mapped[bool] = mapped_column(Boolean, default=False)
+    handled: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
 
 class Album(Base):
@@ -109,6 +171,7 @@ class Genre(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(60), unique=True)
     target_lufs: Mapped[float] = mapped_column(Float, default=-14.0)
+    family: Mapped[str] = mapped_column(String(40), default="", server_default="")
 
 
 class Reference(Base):
@@ -120,6 +183,7 @@ class Reference(Base):
     name: Mapped[str] = mapped_column(String(160))
     path: Mapped[str] = mapped_column(Text)
     size_bytes: Mapped[int] = mapped_column(Integer, default=0)
+    lufs: Mapped[float | None] = mapped_column(Float, nullable=True)
     uploaded_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
@@ -211,9 +275,9 @@ def _migrate_sqlite():
     from sqlalchemy import text
 
     def add(conn, table, col, ddl):
-        cols = {r[1] for r in conn.execute(text(f"PRAGMA table_info({table})"))}
+        cols = {r[1] for r in conn.execute(text(f"PRAGMA table_info(\"{table}\")"))}
         if col not in cols:
-            conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}"))
+            conn.execute(text(f"ALTER TABLE \"{table}\" ADD COLUMN {col} {ddl}"))
             return True
         return False
 
@@ -231,3 +295,16 @@ def _migrate_sqlite():
         add(conn, "invites", "invited_by", "INTEGER REFERENCES users(id) ON DELETE SET NULL")
         add(conn, "users", "photo", "VARCHAR(20)")
         add(conn, "bands", "photo", "VARCHAR(20)")
+        add(conn, "genres", "family", "VARCHAR(40) NOT NULL DEFAULT ''")
+        add(conn, "references", "lufs", "FLOAT")
+        # suscripciones: las bandas que ya existian (las de prueba) quedan exentas de pago
+        if add(conn, "bands", "exempt", "BOOLEAN NOT NULL DEFAULT 0"):
+            conn.execute(text("UPDATE bands SET exempt=1"))
+        add(conn, "bands", "blocked", "BOOLEAN NOT NULL DEFAULT 0")
+        add(conn, "bands", "plan_id", "INTEGER REFERENCES plans(id) ON DELETE SET NULL")
+        add(conn, "bands", "pending_plan_id", "INTEGER")
+        add(conn, "bands", "trial_ends_at", "DATETIME")
+        add(conn, "bands", "paid_until", "DATETIME")
+        add(conn, "bands", "mp_preapproval_id", "VARCHAR(80)")
+        add(conn, "bands", "mp_status", "VARCHAR(20)")
+        add(conn, "bands", "mp_payer_email", "VARCHAR(255)")

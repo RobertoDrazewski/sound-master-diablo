@@ -3,15 +3,15 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Diablo Master</title>
+  <title>Diablo Master Mix</title>
   <meta name="theme-color" content="#0a0908">
   <meta name="description" content="Grabá tus ensayos, masterizalos y compartilos con tu banda.">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-title" content="Diablo Master">
+  <meta name="apple-mobile-web-app-title" content="Diablo Master Mix">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="format-detection" content="telephone=no">
-  <meta property="og:title" content="Diablo Master">
+  <meta property="og:title" content="Diablo Master Mix">
   <meta property="og:description" content="Grabá tus ensayos, masterizalos y compartilos con tu banda.">
   <meta property="og:type" content="website">
   <meta property="og:image" content="/compartir.jpg">
@@ -20,7 +20,8 @@
   <link rel="icon" href="/favicon.png" type="image/png">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <link rel="preload" href="/fonts/big-shoulders-display-latin-800-normal.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="/style.css?v=20261104b">
+  <link rel="stylesheet" href="/style.css?v=20261111a">
+  <link rel="stylesheet" href="/extra.css?v=20261111a">
 </head>
 <body class="public">
   <header id="topbar" class="topbar" hidden></header>
@@ -33,17 +34,17 @@
   <div id="scrim" class="scrim"></div>
   <div id="notif" class="notif" hidden></div>
 
-  <div id="player" class="player" hidden>
-    <div class="player-info">
-      <span class="player-title" id="player-title"></span>
-      <button class="icon-btn" id="player-close" aria-label="Cerrar reproductor">✕</button>
-    </div>
-    <audio id="audio" controls preload="none"></audio>
-  </div>
+  <div id="player" class="player" hidden></div>
 
   <dialog id="modal" class="modal"></dialog>
   <div id="toasts" class="toasts" aria-live="assertive"></div>
 
-  <script src="/app.js?v=20261104b"></script>
+  <script src="/player.js?v=20261111a"></script>
+  <script src="/studio.js?v=20261111a"></script>
+  <script src="/landing.js?v=20261111a"></script>
+  <script src="/chat.js?v=20261111a"></script>
+  <script src="/billing.js?v=20261111a"></script>
+  <script src="/admin.js?v=20261111a"></script>
+  <script src="/app.js?v=20261111a"></script>
 </body>
 </html>

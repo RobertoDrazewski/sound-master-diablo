@@ -105,3 +105,12 @@ El super admin ve todo en Admin: bandas (renombrar, borrar con confirmación, ro
 ### Instalar como app
 
 En Android (Chrome) y iPhone (Safari: Compartir > Agregar a inicio) se instala con ícono propio. En celular hay menú inferior con las herramientas.
+
+## Master v2, suscripciones, contacto y chat
+
+- **Master**: motor propio en `app/engine.py` (EQ de fase lineal, compresión multibanda, saturación, ancho estéreo, equilibrio batería/bajo/voces y limitador de true peak, medido en LUFS BS.1770). Más de 70 estilos en `app/genres.py` o master por referencia. Cada master guarda un informe (`/versions/{id}/master-report`).
+- **Planes**: 3 planes por banda (Garage, Estudio, Pro), editables desde Administración > Planes. Cobro mensual con Mercado Pago (`app/billing.py`, webhook en `/billing/webhook`). Las bandas existentes quedan "sin cargo"; el super admin decide al crear una banda si paga o no. Sin pago, la banda queda en solo lectura (puede escuchar y bajar), nunca se borra su material.
+- **Super admin**: solo ve herramientas de administración (resumen, bandas, cobros, planes, personas, referencias globales, estilos, mensajes).
+- **Contacto**: `/contact` con Cloudflare Turnstile, honeypot y límite por IP. Los mensajes quedan siempre en Administración > Mensajes y salen por mail si hay SMTP o Resend.
+- **Chat**: `/chat`, ingeniero de audio con defensas contra inyección de prompts (`app/chat.py`) y topes de uso.
+- Variables nuevas: ver `.env.example`.

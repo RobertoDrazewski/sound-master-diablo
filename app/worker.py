@@ -10,7 +10,7 @@ from pathlib import Path
 import numpy as np
 import soundfile as sf
 
-from . import audio
+from . import audio, masterjob
 from .config import DATA_DIR
 from .notify import notify_band
 from .db import Genre, Job, Reference, SessionLocal, Track, Version, now
@@ -65,30 +65,27 @@ def process_ingest(db, job: Job):
 def _queue_master_after(db, version: Version, then: dict):
     """Encola el master apenas termina de procesarse el audio (opcion 'subir y masterizar')."""
     track = db.get(Track, version.track_id)
-    lufs, label, ref_id = -14.0, "master", then.get("reference_id")
-    if then.get("genre_id"):
-        g = db.get(Genre, then["genre_id"])
-        if g:
-            lufs, label = g.target_lufs, f"master {g.name}"
-    if ref_id:
-        ref = db.get(Reference, ref_id)
-        if ref and ref.band_id in (None, track.band_id):
-            label = f"master ref: {ref.name}"
-        else:
-            ref_id = None
-    v = Version(track_id=track.id, kind="master", label=label, status="processing", created_by=version.created_by)
+    opts = masterjob.normalize(then)
+    if opts["reference_id"]:
+        ref = db.get(Reference, opts["reference_id"])
+        if not ref or ref.band_id not in (None, track.band_id):
+            opts["reference_id"] = None
+    v = Version(track_id=track.id, kind="master", label=masterjob.label_for(db, opts), status="processing",
+                created_by=version.created_by)
     db.add(v)
     db.flush()
-    db.add(Job(kind="master", version_id=v.id, created_by=version.created_by,
-               payload=json.dumps({"reference_id": ref_id, "lufs": lufs, "separate_stems": False})))
+    db.add(Job(kind="master", version_id=v.id, created_by=version.created_by, payload=json.dumps(opts)))
     db.commit()
 
 
-def _sum_stems(stems: list[Version], dst: Path):
+def _sum_stems(stems: list[Version], dst: Path, gains: dict | None = None):
     mix = None
     sr = None
     for v in stems:
         data, rate = sf.read(v.flac_path, always_2d=True)
+        g = (gains or {}).get(str(v.id), 0.0)
+        if g:
+            data = data * (10 ** (g / 20))
         sr = sr or rate
         if mix is None:
             mix = data
@@ -107,7 +104,7 @@ def _sum_stems(stems: list[Version], dst: Path):
     sf.write(dst, mix, sr, subtype="PCM_24")
 
 
-def _pick_source(track: Track, tmp: Path) -> Path:
+def _pick_source(track: Track, tmp: Path, gains: dict | None = None) -> Path:
     ready = [v for v in track.versions if v.status == "ready"]
     mixes = [v for v in ready if v.kind == "mix"]
     if mixes:
@@ -115,7 +112,7 @@ def _pick_source(track: Track, tmp: Path) -> Path:
     stems = [v for v in ready if v.kind == "stem"]
     if stems:
         dst = tmp / "suma_stems.wav"
-        _sum_stems(stems, dst)
+        _sum_stems(stems, dst, gains)
         return dst
     raws = [v for v in ready if v.kind == "raw"]
     if raws:
@@ -124,30 +121,34 @@ def _pick_source(track: Track, tmp: Path) -> Path:
 
 
 def process_master(db, job: Job):
-    from .mastering import masterizar  # import tardio: pedalboard/matchering son pesados
+    from . import engine  # import tardio: scipy/pedalboard son pesados
 
-    payload = json.loads(job.payload)
+    opts = masterjob.normalize(json.loads(job.payload))
     version = db.get(Version, job.version_id)
     track = db.get(Track, version.track_id)
 
     with tempfile.TemporaryDirectory(dir=DATA_DIR / "tmp") as tmpdir:
         tmp = Path(tmpdir)
-        source = _pick_source(track, tmp)
+        source = _pick_source(track, tmp, opts["stem_gains"])
 
         reference = None
-        if payload.get("reference_id"):
-            ref = db.get(Reference, payload["reference_id"])
+        ref_name = None
+        if opts["reference_id"]:
+            ref = db.get(Reference, opts["reference_id"])
             if ref is None:
                 raise RuntimeError("La referencia ya no existe")
-            reference = Path(ref.path)
+            reference, ref_name = Path(ref.path), ref.name
 
+        settings, gname = masterjob.build_settings(db, opts, reference)
         out = tmp / "master.wav"
-        try:
-            masterizar(source, out, reference, bool(payload.get("separate_stems")),
-                       float(payload.get("lufs", -14.0)))
-        except SystemExit as e:  # master_ensayo usa sys.exit para reportar errores
-            raise RuntimeError(str(e)) from None
+        report = engine.master(source, out, settings)
+        report["reference"] = ref_name
+        report["genre"] = gname or None
+        report["options"] = opts
         _finish_version(db, version, out)
+        rep = DATA_DIR / "analysis" / f"{version.id}.master.json"
+        rep.parent.mkdir(parents=True, exist_ok=True)
+        rep.write_text(json.dumps(report, ensure_ascii=False))
         notify_band(db, track.band_id, f'El master de "{track.title}" está listo',
                     kind="master", link=f"#/band/{track.band_id}/{track.section}")
         db.commit()
@@ -230,6 +231,12 @@ class Worker(threading.Thread):
                     cleanup_expired()
                 except Exception:  # noqa: BLE001
                     log.exception("limpieza fallo")
+                try:  # por si se perdio un aviso de Mercado Pago: se pregunta el estado de las suscripciones por vencer
+                    from . import billing
+                    with SessionLocal() as bdb:
+                        billing.reconcile_all(bdb)
+                except Exception:  # noqa: BLE001
+                    log.exception("reconciliacion de cobros fallo")
                 last_cleanup = time.time()
             with SessionLocal() as db:
                 job = claim_job(db)
