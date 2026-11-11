@@ -431,3 +431,16 @@ html:has(.l2-page) { scroll-behavior: smooth; }
 @media (min-width: 960px) { .l2-promo { grid-column: span 2; } .l2-promo .l2-body { padding: 2rem; } .l2-promo h3 { font-size: 2.4rem; } }
 .l2-promo .l2-body { flex: 0 0 auto; }
 @media (min-width: 960px) { .l2-promo .l2-list li { font-size: 1.05rem; } .l2-promo .l2-list { gap: .8rem; margin: .4rem 0 1.4rem; } .l2-promo .l2-lead { font-size: 1.15rem; } }
+/* planes de la landing: ocupan todo el ancho y quedan centrados */
+#l2-planes .l2-h, #l2-planes .l2-sub { text-align: center; margin-left: auto; margin-right: auto; }
+#l2-planes .l2-sub { max-width: 66ch; }
+.l2-plans { grid-template-columns: minmax(0, 1fr); max-width: 1180px; margin: 0 auto; }
+.l2-plans-note { text-align: center; max-width: 80ch; margin: .6rem auto 0; }
+@media (min-width: 860px) {
+  .l2-plans { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.3rem; }
+  .l2-plans .plan { padding: 1.6rem 1.5rem; }
+  .l2-plans .plan h3 { font-size: 2.3rem; }
+  .l2-plans .plan-price b { font-size: 2.9rem; }
+  .l2-plans .plan ul { font-size: .98rem; gap: .5rem; }
+}
+@media (min-width: 860px) { .l2-plans .plan-tag-line { min-height: 2.9em; } }
