@@ -5,6 +5,7 @@
 -- Usa el ultimo formato de render que hayas configurado en Reaper (recomendado: WAV 24 bit).
 
 local SEC = "DiabloMaster"
+local VERSION = "2026-11-12 d"
 local WIN = reaper.GetOS():find("Win") ~= nil
 local SEP = WIN and "\\" or "/"
 
@@ -126,7 +127,7 @@ local function main()
   end
   local def_what = with_audio > 1 and "pistas" or "cancion"
 
-  local ok, vals = reaper.GetUserInputs("Diablo Master - subir a " .. get("band_name"), 4,
+  local ok, vals = reaper.GetUserInputs("Diablo Master - subir a " .. get("band_name") .. " (v" .. VERSION .. ")", 4,
     "Nombre del tema o ensayo,Que subir (cancion / pistas),Donde (ensayo / produccion / master),Cambiar (no / banda / conexion),extrawidth=220",
     pname .. "," .. def_what .. "," .. (get("section") ~= "" and get("section") or "ensayo") .. ",no")
   if not ok then return end
@@ -173,18 +174,38 @@ local function main()
     end
   end
 
+  local function count_audio()
+    local n, k = 0, 0
+    while true do
+      local f = reaper.EnumerateFiles(dir, k)
+      if not f then break end
+      k = k + 1
+      local ext = (f:match("%.([%w]+)$") or ""):lower()
+      if ({ wav = 1, flac = 1, mp3 = 1, aif = 1, aiff = 1, ogg = 1, m4a = 1 })[ext] then n = n + 1 end
+    end
+    return n
+  end
+
   reaper.GetSetProjectInfo_String(proj, "RENDER_FILE", dir, true)
+  local ts_start, ts_end = reaper.GetSet_LoopTimeRange(false, false, 0, 0, false)
+  reaper.GetSetProjectInfo(proj, "RENDER_BOUNDSFLAG", (ts_end > ts_start) and 2 or 1, true)
+  local tried = {}
   if mode == "stems" then
     reaper.GetSetProjectInfo_String(proj, "RENDER_PATTERN", "$track", true)
-    reaper.GetSetProjectInfo(proj, "RENDER_SETTINGS", 2, true)      -- solo pistas (stems)
+    -- "Stems (selected tracks)" es 3 en Reaper 7; si no saliera, se prueba con 2
+    for _, st in ipairs({ 3, 2 }) do
+      reaper.GetSetProjectInfo(proj, "RENDER_SETTINGS", st, true)
+      reaper.Main_OnCommand(42230, 0) -- Render con los ultimos ajustes, cierra solo
+      local n = count_audio()
+      tried[#tried + 1] = st .. "=" .. n
+      if n >= 2 or with_audio < 2 then break end
+      clear_dir(dir)
+    end
   else
     reaper.GetSetProjectInfo_String(proj, "RENDER_PATTERN", "cancion", true)
     reaper.GetSetProjectInfo(proj, "RENDER_SETTINGS", 0, true)      -- mezcla master
+    reaper.Main_OnCommand(42230, 0)
   end
-  local ts_start, ts_end = reaper.GetSet_LoopTimeRange(false, false, 0, 0, false)
-  reaper.GetSetProjectInfo(proj, "RENDER_BOUNDSFLAG", (ts_end > ts_start) and 2 or 1, true)
-
-  reaper.Main_OnCommand(42230, 0) -- Render con los ultimos ajustes, cierra solo
 
   reaper.GetSetProjectInfo_String(proj, "RENDER_FILE", old_file, true)
   reaper.GetSetProjectInfo_String(proj, "RENDER_PATTERN", old_pat, true)
@@ -207,6 +228,16 @@ local function main()
       if safe ~= f then os.rename(dir .. SEP .. f, dir .. SEP .. safe) end
       files[#files + 1] = dir .. SEP .. safe
     end
+  end
+  if mode == "stems" and #files < 2 and with_audio >= 2 then
+    local names = {}
+    for _, f in ipairs(files) do names[#names + 1] = f:match("[^/\\]+$") or f end
+    clear_dir(dir)
+    msg("No se subio nada: se esperaban " .. with_audio .. " pistas y Reaper genero " .. #files ..
+        " archivo(s) (" .. table.concat(names, ", ") .. ").\n\nVersion del script: " .. VERSION ..
+        "\nPruebas (ajuste=archivos): " .. table.concat(tried, ", ") ..
+        "\n\nMandame este mensaje y lo resuelvo. Mientras tanto subi las pistas a mano desde la web.")
+    return
   end
   if #files == 0 then
     local seen, k = {}, 0
