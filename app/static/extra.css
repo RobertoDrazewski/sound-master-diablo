@@ -504,3 +504,11 @@ form.steps { padding-left: 0; grid-template-columns: minmax(0, 1fr); gap: 0; }
 .l2-by { margin: .2rem 0 .5rem; }
 .l2-by a { color: var(--amber, #f59a3c); font-weight: 600; text-decoration: none; }
 .l2-by a:hover { text-decoration: underline; }
+
+/* avisos en el celular: ícono a la izquierda, texto a la derecha */
+.push-row { flex-wrap: nowrap; align-items: flex-start; gap: .9rem; }
+.push-row .ico-lg { flex: none; }
+.push-row .grow { min-width: 0; }
+.push-row .row { flex-wrap: wrap; }
+.push-row .ico-lg { width: 52px; height: 52px; border-radius: 14px; background: var(--surface-2); display: inline-flex; align-items: center; justify-content: center; color: var(--ember); }
+.push-row .ico-lg .i { width: 28px; height: 28px; }

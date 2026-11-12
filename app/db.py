@@ -315,6 +315,7 @@ class Event(Base):
     notes: Mapped[str] = mapped_column(Text, default="")
     created_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+    reminded_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class Notification(Base):
@@ -326,6 +327,17 @@ class Notification(Base):
     text: Mapped[str] = mapped_column(String(300))
     link: Mapped[str] = mapped_column(String(200), default="")
     read: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
+class PushSubscription(Base):
+    """Celular o navegador de una persona que activó los avisos (Web Push)."""
+    __tablename__ = "push_subscriptions"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    endpoint: Mapped[str] = mapped_column(String(900), unique=True)
+    p256dh: Mapped[str] = mapped_column(String(200))
+    auth: Mapped[str] = mapped_column(String(100))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
 
@@ -373,6 +385,9 @@ def _migrate_sqlite():
         if add(conn, "bands", "exempt", "BOOLEAN NOT NULL DEFAULT 0"):
             conn.execute(text("UPDATE bands SET exempt=1"))
         add(conn, "bands", "blocked", "BOOLEAN NOT NULL DEFAULT 0")
+        # eventos que ya avisaron "falta una hora": las filas viejas quedan como ya avisadas
+        if add(conn, "events", "reminded_at", "DATETIME"):
+            conn.execute(text("UPDATE events SET reminded_at=CURRENT_TIMESTAMP"))
         add(conn, "bands", "plan_id", "INTEGER REFERENCES plans(id) ON DELETE SET NULL")
         add(conn, "bands", "pending_plan_id", "INTEGER")
         add(conn, "bands", "trial_ends_at", "DATETIME")

@@ -17,3 +17,26 @@ self.addEventListener("fetch", (e) => {
     return res;
   }).catch(() => caches.match(req)));
 });
+
+/* Avisos en el celular: llegan aunque la app esté cerrada y ponen el número en el ícono */
+self.addEventListener("push", (e) => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch { d = { body: e.data ? e.data.text() : "" }; }
+  const tareas = [self.registration.showNotification(d.title || "Diablo Master Mix", {
+    body: d.body || "", icon: "/icon-192.png", badge: "/favicon-96.png", tag: d.tag || undefined, data: { link: d.link || "" },
+  })];
+  const nav = self.navigator;
+  if (typeof d.badge === "number" && nav && nav.setAppBadge) {
+    tareas.push((d.badge > 0 ? nav.setAppBadge(d.badge) : nav.clearAppBadge()).catch(() => {}));
+  }
+  e.waitUntil(Promise.all(tareas));
+});
+self.addEventListener("notificationclick", (e) => {
+  e.notification.close();
+  const link = (e.notification.data && e.notification.data.link) || "";
+  e.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((cs) => {
+    const c = cs[0];
+    if (c) { if (link) c.postMessage({ type: "go", link }); return c.focus(); }
+    return self.clients.openWindow("/" + (link.startsWith("#") ? link : ""));
+  }));
+});

@@ -198,6 +198,8 @@ async function sendTrack(bandId, { title, mode, section, session, files }, onPro
   return uploadWithProgress(`/bands/${bandId}/tracks/chunked`, fd, () => {});
 }
 function logout(expired = false) {
+  pushDetach();
+  setIconBadge(0);
   session.token = null;
   state.me = null; state.genres = null; state.notif = null;
   clearInterval(state.notifTimer); state.notifTimer = null;
@@ -349,7 +351,11 @@ function renderShell(active) {
 async function loadNotif() {
   try { state.notif = await api("/notifications"); updateBadge(); } catch { /* sin red: se reintenta */ }
 }
+function setIconBadge(n) {
+  try { if (navigator.setAppBadge) (n > 0 ? navigator.setAppBadge(n) : navigator.clearAppBadge()).catch(() => {}); } catch { /* sin soporte */ }
+}
 function updateBadge() {
+  setIconBadge(state.notif ? state.notif.unread : 0);
   const b = $("#bell");
   if (!b) return;
   const old = $(".badge-n", b);
@@ -360,6 +366,7 @@ function updateBadge() {
 function startNotifPolling() {
   clearInterval(state.notifTimer);
   loadNotif();
+  pushSync();
   state.notifTimer = setInterval(() => { if (!document.hidden) loadNotif(); }, 60000);
 }
 function closeNotif() { const p = $("#notif"); if (p) { p.hidden = true; p.innerHTML = ""; } const b = $("#bell"); if (b) b.setAttribute("aria-expanded", "false"); }
@@ -568,6 +575,83 @@ function wireInstall() {
     try { await e.userChoice; } catch { /* sin respuesta */ }
     state.installEvt = null;
     router();
+  });
+}
+
+/* ===================== avisos en el celular ===================== */
+const pushOk = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+const isIOS = () => /iPhone|iPad|iPod/i.test(navigator.userAgent || "");
+function b64ToU8(b) {
+  const p = "=".repeat((4 - (b.length % 4)) % 4), r = atob((b + p).replace(/-/g, "+").replace(/_/g, "/"));
+  return Uint8Array.from(r, (c) => c.charCodeAt(0));
+}
+async function pushSub() {
+  const reg = await navigator.serviceWorker.ready;
+  return reg.pushManager.getSubscription();
+}
+async function pushDetach() {          // al cerrar sesión, este celular deja de recibir avisos de esa cuenta
+  try {
+    if (!pushOk()) return;
+    const reg = await navigator.serviceWorker.getRegistration();
+    const sub = reg && (await reg.pushManager.getSubscription());
+    if (!sub) return;
+    api("/push/unsubscribe", { method: "POST", json: { endpoint: sub.endpoint } }).catch(() => {});
+    await sub.unsubscribe();
+  } catch { /* sin suscripción */ }
+}
+async function pushSync() {            // si ya había permiso, deja el celular asociado a quien entró
+  try {
+    if (!pushOk() || Notification.permission !== "granted") return;
+    const sub = await pushSub();
+    if (sub) await api("/push/subscribe", { method: "POST", json: sub.toJSON() });
+  } catch { /* se reintenta en la próxima entrada */ }
+}
+function pushCard() {
+  return `<section class="card" id="push-card"><div class="row push-row"><span class="ico-lg">${ic("bell")}</span>
+    <div class="grow"><h3 style="margin:0">Avisos en el celular</h3><div id="push-body"><p class="muted small" style="margin:.15rem 0 0">Cargando…</p></div></div></div></section>`;
+}
+async function wirePush() {
+  const box = $("#push-body");
+  if (!box) return;
+  const say = (txt, btns = "") => { box.innerHTML = `<p class="muted small" style="margin:.15rem 0 .6rem">${txt}</p>${btns}`; };
+  if (isIOS() && !isStandalone()) {
+    say("En iPhone los avisos funcionan desde la app instalada. En Safari tocá <strong>Compartir</strong>, después <strong>Agregar a inicio</strong>, y abrí Diablo Master Mix desde el ícono nuevo.");
+    return;
+  }
+  if (!pushOk()) { say("Este navegador no permite avisos. Probá desde Chrome, o desde la app instalada en iPhone (iOS 16.4 o más)."); return; }
+  if (Notification.permission === "denied") {
+    say("Bloqueaste los avisos de este sitio. Para activarlos, permití las notificaciones de Diablo Master Mix en los ajustes del teléfono o del navegador."); return;
+  }
+  let sub = null;
+  try { sub = await pushSub(); } catch { /* sin service worker */ }
+  if (sub && Notification.permission === "granted") {
+    say("Activados. Te avisamos de ensayos nuevos, masters listos, eventos y invitaciones, y el ícono muestra cuántos tenés sin ver.",
+      `<div class="row"><button class="btn" id="push-test">Enviar aviso de prueba</button><button class="btn" id="push-off">Desactivar</button></div>`);
+    $("#push-test").addEventListener("click", (ev) => withBusy(ev.currentTarget, async () => {
+      try { await api("/push/test", { method: "POST" }); toast("Aviso enviado", "ok"); } catch (e) { toast(e.message, "err"); }
+    }));
+    $("#push-off").addEventListener("click", (ev) => withBusy(ev.currentTarget, async () => {
+      await pushDetach(); setIconBadge(0); toast("Avisos desactivados", "ok"); wirePush();
+    }));
+    return;
+  }
+  say("Recibí un aviso aunque la app esté cerrada, y mirá en el ícono cuántas novedades tenés.",
+    `<button class="btn primary" id="push-on">Activar avisos</button>`);
+  $("#push-on").addEventListener("click", async (ev) => {
+    const btn = ev.currentTarget;
+    let perm;
+    try { perm = await Notification.requestPermission(); } catch { perm = "denied"; }   // debe ir primero: iOS exige el toque
+    if (perm !== "granted") { wirePush(); return; }
+    await withBusy(btn, async () => {
+      try {
+        const { key } = await api("/push/key");
+        const reg = await navigator.serviceWorker.ready;
+        const nuevo = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToU8(key) });
+        await api("/push/subscribe", { method: "POST", json: nuevo.toJSON() });
+        toast("Avisos activados", "ok");
+      } catch (e) { toast("No se pudieron activar los avisos. Probá de nuevo.", "err"); }
+    });
+    wirePush();
   });
 }
 
@@ -1894,6 +1978,7 @@ async function viewAccount(nav) {
       <p class="muted small" style="margin-bottom:0">¿La olvidaste? Pedile una nueva a quien administra la app.</p>
     </section>
     ${installCard()}
+    ${pushCard()}
     <section class="card"><h2>Conexión con Reaper</h2>
       <p class="muted">Para subir tus renders directo desde Reaper hace falta un token personal. Es como una contraseña: no se lo des a nadie.</p>
       <div id="newtok" class="hidden stack" style="margin-bottom:1rem"></div>
@@ -1906,6 +1991,7 @@ async function viewAccount(nav) {
   $("#out").addEventListener("click", () => logout(false));
   wireMusicProfile(mp);
   wireInstall();
+  wirePush();
   $("#pf").addEventListener("submit", async (ev) => {
     ev.preventDefault();
     try {
@@ -1946,6 +2032,10 @@ async function viewAccount(nav) {
 window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); state.installEvt = e; if (state.me && /^#\/(account)?$/.test(location.hash || "#/")) router(); });
 window.addEventListener("appinstalled", () => { state.installEvt = null; });
 if ("serviceWorker" in navigator) window.addEventListener("load", () => { navigator.serviceWorker.register("/sw.js").catch(() => {}); });
+if ("serviceWorker" in navigator) navigator.serviceWorker.addEventListener("message", (e) => {
+  if (e.data && e.data.type === "go" && typeof e.data.link === "string" && e.data.link.startsWith("#/")) location.hash = e.data.link;
+});
+document.addEventListener("visibilitychange", () => { if (!document.hidden && state.me) loadNotif(); });
 $("#scrim").addEventListener("click", closeDrawer);
 $("#modal").addEventListener("click", (e) => { if (e.target === $("#modal")) closeModal(); });
 $("#modal").addEventListener("close", () => { $("#modal").innerHTML = ""; });

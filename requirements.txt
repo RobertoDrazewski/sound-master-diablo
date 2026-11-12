@@ -11,3 +11,4 @@ soundfile
 numpy
 # demucs   # solo si vas a usar separacion de stems
 pillow
+pywebpush>=2.0

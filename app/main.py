@@ -14,13 +14,13 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from . import analysis, assistant, audio, billing, chat, covers, genres, mail, masterjob, purge, release
+from . import analysis, assistant, audio, billing, chat, covers, genres, mail, masterjob, purge, push, release
 from .config import (ASSISTANT_DAILY_LIMIT, COVER_AI_DAILY_LIMIT, PUBLIC_URL, BAND_QUOTA_GB, CORS_ORIGINS, DATA_DIR,
                      INVITE_TTL_DAYS, MAX_UPLOAD_MB, RAW_RETENTION_DAYS,
                      REFERENCE_SECONDS, SUPERADMIN_EMAIL, SUPERADMIN_PASSWORD, CHAT_ENABLED, TRIAL_DAYS,
                      TURNSTILE_SITE_KEY, PURGE_HOURS)
 from .db import (Album, ApiToken, Band, Cancellation, ContactMessage, Event, Genre, Invite, Job, Membership, MusicianRequest,
-                 Notification, Payment, Plan, Reference, SessionLocal, Signup, Track, User, Version, init_db, now)
+                 Notification, Payment, Plan, PushSubscription, Reference, SessionLocal, Signup, Track, User, Version, init_db, now)
 from .notify import notify_band
 from .security import (create_media_token, create_session_jwt,
                        decode_media_token, decode_session_jwt, hash_password,
@@ -58,6 +58,7 @@ async def lifespan(_: FastAPI):
                         password_hash=hash_password(SUPERADMIN_PASSWORD)))
         db.commit()
     worker.start()
+    push.start()
     yield
     worker.stop()
 
@@ -1642,6 +1643,63 @@ def notifications_read(user: User = Depends(current_user), db: Session = Depends
     db.query(Notification).filter_by(user_id=user.id, read=False).update({"read": True})
     db.commit()
     return {"ok": True}
+
+
+# ------------------------------------------------------------- avisos en el celular (push)
+
+class PushKeysIn(BaseModel):
+    p256dh: str = Field(min_length=10, max_length=200)
+    auth: str = Field(min_length=6, max_length=100)
+
+
+class PushSubIn(BaseModel):
+    endpoint: str = Field(min_length=20, max_length=900)
+    keys: PushKeysIn
+
+
+class PushEndpointIn(BaseModel):
+    endpoint: str = Field(min_length=20, max_length=900)
+
+
+@app.get("/push/key")
+def push_key(user: User = Depends(current_user)):
+    return {"key": push.public_key()}
+
+
+@app.post("/push/subscribe")
+def push_subscribe(body: PushSubIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    if not body.endpoint.startswith("https://"):
+        raise HTTPException(400, "Dirección de avisos no válida")
+    sub = db.query(PushSubscription).filter_by(endpoint=body.endpoint).first()
+    if sub:      # el mismo celular puede pasar de una cuenta a otra
+        sub.user_id, sub.p256dh, sub.auth = user.id, body.keys.p256dh, body.keys.auth
+    else:
+        db.add(PushSubscription(user_id=user.id, endpoint=body.endpoint, p256dh=body.keys.p256dh, auth=body.keys.auth))
+    db.flush()
+    extra = (db.query(PushSubscription).filter_by(user_id=user.id)
+             .order_by(PushSubscription.id.desc()).offset(10).all())   # tope de 10 dispositivos por persona
+    for e in extra:
+        db.delete(e)
+    db.commit()
+    return {"ok": True}
+
+
+@app.post("/push/unsubscribe")
+def push_unsubscribe(body: PushEndpointIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    db.query(PushSubscription).filter_by(endpoint=body.endpoint, user_id=user.id).delete()
+    db.commit()
+    return {"ok": True}
+
+
+@app.post("/push/test")
+def push_test(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    if not db.query(PushSubscription).filter_by(user_id=user.id).count():
+        raise HTTPException(409, "No hay ningún celular con avisos activados en tu cuenta")
+    n = push.send_to_user(db, user.id, "Diablo Master Mix", "Los avisos funcionan: te vamos a avisar cuando haya novedades.",
+                          "#/", tag="prueba")
+    if not n:
+        raise HTTPException(502, "No pudimos enviar el aviso. Desactivá y volvé a activar los avisos, y probá de nuevo.")
+    return {"sent": n}
 
 
 # --------------------------------------------------------- bandas: foto y ficha
