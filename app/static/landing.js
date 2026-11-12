@@ -219,7 +219,8 @@ const fmtMoney = (n, cur) => String(cur || "ARS").toUpperCase() === "USD" ? fmtU
 /* Argentina paga en pesos con Mercado Pago; el resto del mundo en dólares con Polar. Si se puede elegir, hay selector. */
 function payMethod(cfg) {
   if (state.pay === "mp" && cfg.mp_enabled || state.pay === "polar" && cfg.polar_enabled) return state.pay;
-  const ar = cfg.country === "AR" || (!cfg.country && I18N.lang === "es");
+  // en español y desde Argentina: pesos con Mercado Pago. En inglés o portugués, o desde otro pais: dolares.
+  const ar = I18N.lang === "es" && (cfg.country === "AR" || !cfg.country);
   let m = ar ? "mp" : "polar";
   if (m === "polar" && !cfg.polar_enabled) m = "mp";
   if (m === "mp" && !cfg.mp_enabled && cfg.polar_enabled) m = "polar";
