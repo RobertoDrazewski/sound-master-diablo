@@ -141,6 +141,7 @@ function viewLanding() {
           <p>Del ensayo al master, en una sola plataforma.</p>
           <p class="l2-by">Un producto de <a href="https://www.puma-code.com" target="_blank" rel="noopener">Puma Code</a></p>
           <nav class="l2-flinks" aria-label="Accesos"><button type="button" data-go="l2-planes">Planes</button><button type="button" data-go="l2-contacto">Contacto</button><a href="#/login">Ingresar</a></nav>
+          <a class="l2-fmail" href="mailto:diablomastermix@gmail.com">diablomastermix@gmail.com</a>
           <nav class="l2-flinks l2-flang" aria-label="Idioma">${I18N.inline()}</nav>
           <small class="l2-trade">Compatible con REAPER. REAPER es una marca de Cockos Incorporated; Diablo Master Mix no está afiliado ni respaldado por Cockos.</small>
           <small>© ${new Date().getFullYear()} Diablo Master Mix. Todos los derechos reservados.</small>
