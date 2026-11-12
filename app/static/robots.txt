@@ -1,0 +1,22 @@
+User-agent: *
+Disallow: /admin
+Disallow: /albums
+Disallow: /auth
+Disallow: /bands
+Disallow: /billing
+Disallow: /chat
+Disallow: /contact
+Disallow: /cover-options
+Disallow: /events
+Disallow: /jobs
+Disallow: /me
+Disallow: /musician-requests
+Disallow: /musicians
+Disallow: /notifications
+Disallow: /references
+Disallow: /tracks
+Disallow: /uploads
+Disallow: /versions
+Disallow: /reaper/
+
+Sitemap: https://diablomastermix.com.ar/sitemap.xml

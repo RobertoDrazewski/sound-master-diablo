@@ -490,3 +490,9 @@ form.steps { padding-left: 0; grid-template-columns: minmax(0, 1fr); gap: 0; }
   .dest-item summary strong { flex: 1 1 calc(100% - 50px); min-width: 0; }
   .dest-go { flex: 1 0 100%; padding-left: calc(34px + .7rem); }
 }
+
+/* texto de la portada que ve el buscador antes de que cargue la app; app.js lo reemplaza */
+.seo-intro { max-width: 62ch; margin: 0 auto; padding: 2.5rem 1rem; color: var(--muted); line-height: 1.55; }
+.seo-intro h1 { font-family: var(--display); font-size: 1.9rem; line-height: 1.1; color: var(--text, #f3ebe3); margin: 0 0 1rem; }
+.seo-intro ul { padding-left: 1.1rem; }
+.l2-trade { display: block; margin: .3rem 0; opacity: .75; }
