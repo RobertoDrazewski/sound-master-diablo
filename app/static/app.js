@@ -72,6 +72,7 @@ const ICONS = {
   down: '<path d="M12 5v14M6 13l6 6 6-6"/>',
   x: '<path d="M6 6l12 12M18 6L6 18"/>',
   headphones: '<path d="M4 15v-3a8 8 0 0 1 16 0v3"/><rect x="3" y="14" width="4" height="7" rx="1.5"/><rect x="17" y="14" width="4" height="7" rx="1.5"/>',
+  metronome: '<path d="M8 21h8l-2.2-15h-3.6z"/><path d="M12 15 16 7"/><circle cx="16" cy="7" r="1"/>',
   pause: '<path d="M8 5v14M16 5v14"/>',
   music: '<path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/>',
   menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',

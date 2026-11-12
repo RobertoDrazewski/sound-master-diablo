@@ -121,13 +121,34 @@ async function mxMesa(m, track, stems, plan) {
       s.gain.gain.setTargetAtTime(on ? s.vol : 0, ctx.currentTime, 0.01);
     });
   }
+  // metrónomo: los clics se agendan un poco antes sobre el reloj del audio; la grilla parte del segundo 0 del tema
+  let metOn = false, bpm = 100, nBeat = 0, metTimer = 0;
+  try { const b = Number(localStorage.getItem("mx_bpm")); if (b >= 30 && b <= 300) bpm = Math.round(b); } catch { /* sin almacenamiento */ }
+  const metGain = ctx.createGain(); metGain.gain.value = 0.7; metGain.connect(ctx.destination);
+  const metSync = () => { nBeat = Math.ceil((here() * bpm) / 60 - 1e-6); };
+  function click(at, accent) {
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.frequency.value = accent ? 1600 : 1000;
+    g.gain.setValueAtTime(0.0001, at); g.gain.exponentialRampToValueAtTime(accent ? 1 : 0.7, at + 0.002); g.gain.exponentialRampToValueAtTime(0.0001, at + 0.05);
+    o.connect(g); g.connect(metGain); o.start(at); o.stop(at + 0.06);
+  }
+  function metTick() {
+    if (!playing || !metOn) return;
+    for (let guard = 0; guard < 50; guard++) {
+      const at = t0 + (nBeat * 60) / bpm;
+      if (at > ctx.currentTime + 0.15) break;
+      if (at >= ctx.currentTime - 0.01) click(Math.max(at, ctx.currentTime), nBeat % 4 === 0);
+      nBeat++;
+    }
+  }
+  metTimer = setInterval(metTick, 25);
   function halt() { srcs.forEach((x) => { try { x.stop(); } catch { /* ya parada */ } x.disconnect(); }); srcs = []; }
   function start(at) {
     halt();
     at = Math.max(0, Math.min(at, total - 0.05));
     const when = ctx.currentTime + 0.05;                // todas arrancan en el mismo instante
     S.forEach((s) => { const x = ctx.createBufferSource(); x.buffer = s.buf; x.connect(s.gain); x.start(when, at); srcs.push(x); });
-    t0 = when - at; playing = true; levels(); paint();
+    t0 = when - at; playing = true; metSync(); levels(); paint();
   }
   function pause() { pos = here(); halt(); playing = false; paint(); }
   function seek(t) { pos = Math.max(0, Math.min(t, total)); if (playing) start(pos); else paint(); }
@@ -138,6 +159,15 @@ async function mxMesa(m, track, stems, plan) {
       <button type="button" class="btn primary" id="mx-play"></button>
       <button type="button" class="btn" id="mx-rew" aria-label="Volver al principio"><span>Inicio</span></button>
       <span class="mx-time"><span id="mx-cur">0:00</span> / ${mxFmt(total)}</span>
+    </div>
+    <div class="mx-met">
+      <button type="button" class="pl-chip" id="mx-met" aria-pressed="false" title="Activar o desactivar el metrónomo">${ic("metronome")}<span>Metrónomo</span></button>
+      <div class="mx-bpm">
+        <button type="button" class="mx-btn" id="mx-bpm-dn" aria-label="Bajar un BPM">−</button>
+        <input type="number" id="mx-bpm" inputmode="numeric" min="30" max="300" step="1" value="${bpm}" aria-label="Tempo en BPM">
+        <button type="button" class="mx-btn" id="mx-bpm-up" aria-label="Subir un BPM">+</button>
+        <span class="muted small">BPM</span>
+      </div>
     </div>
     <input type="range" id="mx-seek" class="mx-seek" min="0" max="1000" step="1" value="0" aria-label="Posición del tema">
     <div class="mx-loop">
@@ -249,8 +279,25 @@ async function mxMesa(m, track, stems, plan) {
     $$("[data-v]", m).forEach((r) => { r.value = "1"; });
     levels(); paint();
   });
+  function setBpm(v) {
+    v = Math.round(Number(v));
+    if (!Number.isFinite(v)) v = bpm;
+    bpm = Math.max(30, Math.min(300, v));
+    $("#mx-bpm", m).value = String(bpm);
+    try { localStorage.setItem("mx_bpm", String(bpm)); } catch { /* sin almacenamiento */ }
+    metSync();
+  }
+  $("#mx-met", m).addEventListener("click", async () => {
+    metOn = !metOn;
+    try { if (ctx.state !== "running") await ctx.resume(); } catch { /* iOS */ }
+    metSync(); $("#mx-met", m).classList.toggle("on", metOn); $("#mx-met", m).setAttribute("aria-pressed", String(metOn));
+  });
+  $("#mx-bpm-dn", m).addEventListener("click", () => setBpm(bpm - 1));
+  $("#mx-bpm-up", m).addEventListener("click", () => setBpm(bpm + 1));
+  $("#mx-bpm", m).addEventListener("change", (e) => setBpm(e.target.value));
+  $("#mx-bpm", m).addEventListener("keydown", (e) => { if (e.key === "Enter") { setBpm(e.target.value); e.target.blur(); } });
   paint();
   raf = requestAnimationFrame(frame);
 
-  return () => { closed = true; cancelAnimationFrame(raf); if (ro) ro.disconnect(); halt(); try { ctx.close(); } catch { /* ya cerrado */ } };
+  return () => { closed = true; clearInterval(metTimer); cancelAnimationFrame(raf); if (ro) ro.disconnect(); halt(); try { ctx.close(); } catch { /* ya cerrado */ } };
 }
