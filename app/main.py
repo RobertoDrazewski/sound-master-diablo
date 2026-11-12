@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from . import align, analysis, assistant, audio, billing, chat, covers, genres, mail, masterjob, purge, push, release
+from . import align, config, analysis, assistant, audio, billing, chat, covers, genres, mail, masterjob, purge, push, release
 from .config import (ASSISTANT_DAILY_LIMIT, COVER_AI_DAILY_LIMIT, PUBLIC_URL, BAND_QUOTA_GB, CORS_ORIGINS, DATA_DIR,
                      INVITE_TTL_DAYS, MAX_UPLOAD_MB, RAW_RETENTION_DAYS,
                      REFERENCE_SECONDS, SUPERADMIN_EMAIL, SUPERADMIN_PASSWORD, CHAT_ENABLED, TRIAL_DAYS,
@@ -2477,6 +2477,8 @@ SECURITY_HEADERS = {
 
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
+    lg = request.headers.get("x-lang", "es")[:2]
+    config.REQ_LANG.set(lg if lg in config.LANG_NAMES else "es")
     resp = await call_next(request)
     for k, v in SECURITY_HEADERS.items():
         resp.headers.setdefault(k, v)

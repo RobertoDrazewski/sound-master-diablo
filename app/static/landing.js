@@ -39,6 +39,7 @@ function landLogoBar() {
     <nav class="l2-nav" aria-label="Secciones">
       <button type="button" class="l2-link l2-opt" data-go="l2-planes">Planes</button>
       <button type="button" class="l2-link l2-opt" data-go="l2-contacto">Contacto</button>
+      ${I18N.switcher("lang-top")}
       <a class="btn" href="#/login">Ingresar</a>
       <button type="button" class="btn primary l2-reg" data-reg>Registra tu banda</button>
     </nav></header>`;
@@ -140,6 +141,7 @@ function viewLanding() {
           <p>Del ensayo al master, en una sola plataforma.</p>
           <p class="l2-by">Un producto de <a href="https://www.puma-code.com" target="_blank" rel="noopener">Puma Code</a></p>
           <nav class="l2-flinks" aria-label="Accesos"><button type="button" data-go="l2-planes">Planes</button><button type="button" data-go="l2-contacto">Contacto</button><a href="#/login">Ingresar</a></nav>
+          <nav class="l2-flinks l2-flang" aria-label="Idioma">${I18N.inline()}</nav>
           <small class="l2-trade">Compatible con REAPER. REAPER es una marca de Cockos Incorporated; Diablo Master Mix no está afiliado ni respaldado por Cockos.</small>
           <small>© ${new Date().getFullYear()} Diablo Master Mix. Todos los derechos reservados.</small>
         </div>
@@ -204,7 +206,7 @@ async function landPlans() {
 }
 
 /* ---------------------------------------------------------------- planes */
-const fmtARS = (n) => "$" + Number(n).toLocaleString("es-AR");
+const fmtARS = (n) => "$" + Number(n).toLocaleString(I18N.loc);
 
 async function loadPublicConfig() {
   if (!state.pub) { try { state.pub = await api("/public-config"); } catch { state.pub = { plans: [], trial_days: 14, turnstile_site_key: "", chat: false }; } }

@@ -23,9 +23,9 @@ const state = {
 
 const parseDate = (iso) => new Date(/[zZ]$|[+-]\d\d:\d\d$/.test(iso) ? iso : iso + "Z");
 const fmtDate = (iso) =>
-  parseDate(iso).toLocaleString("es-AR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
-const fmtDay = (iso) => parseDate(iso).toLocaleDateString("es-AR", { day: "numeric", month: "long" });
-const fmtTime = (iso) => parseDate(iso).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
+  parseDate(iso).toLocaleString(I18N.loc, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+const fmtDay = (iso) => parseDate(iso).toLocaleDateString(I18N.loc, { day: "numeric", month: "long" });
+const fmtTime = (iso) => parseDate(iso).toLocaleTimeString(I18N.loc, { hour: "2-digit", minute: "2-digit" });
 const pad2 = (n) => String(n).padStart(2, "0");
 const dayKey = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 function fmtDur(s) {
@@ -117,7 +117,7 @@ function errText(data, fallback) {
   return fallback;
 }
 async function api(path, { method = "GET", json, form } = {}) {
-  const headers = {};
+  const headers = { "X-Lang": I18N.lang };
   if (session.token) headers.Authorization = "Bearer " + session.token;
   let body;
   if (json !== undefined) { headers["Content-Type"] = "application/json"; body = JSON.stringify(json); }
@@ -308,6 +308,7 @@ function renderShell(active) {
     <button class="icon-btn menu-btn" id="menu" aria-label="Menú" aria-expanded="false">${ic("menu")}</button>
     <a class="brand" href="#/"><img src="/logo-login.png" alt=""><span class="brand-name">diablomastermix.com.ar</span></a>
     <div class="top-actions">
+      ${I18N.switcher("lang-top")}
       <button class="bell" id="bell" aria-label="Avisos" aria-expanded="false">${ic("bell")}${unread ? `<span class="badge-n">${unread > 9 ? "9+" : unread}</span>` : ""}</button>
       <a class="me-chip" href="#/account" aria-label="Tu cuenta">${avatar(me.photo, me.name || me.email)}<span class="me-name">${esc(me.name || me.email)}</span></a>
     </div>`;
@@ -481,6 +482,7 @@ function viewLogin() {
       <button class="btn primary block big">Entrar</button>
       <p class="muted small" style="margin-top:1rem">¿Todavía no tenés cuenta? Pedile el link de invitación a quien administra la banda.</p>
       <p class="small"><a href="#/">← Volver al inicio</a></p>
+      <p class="small lang-auth">${I18N.inline()}</p>
     </form>`, "Tu banda, tus temas, un solo lugar."));
   $("#f").addEventListener("submit", async (ev) => {
     ev.preventDefault();
@@ -692,7 +694,7 @@ async function viewHome(nav) {
   if (up.length) {
     html += `<section class="card"><h2>Próximos eventos</h2><ul class="upcoming">${up.map((e) => {
       const d = parseDate(e.starts_at);
-      return `<li><div class="date-chip"><b>${d.getDate()}</b><span>${d.toLocaleDateString("es-AR", { month: "short" })}</span></div>
+      return `<li><div class="date-chip"><b>${d.getDate()}</b><span>${d.toLocaleDateString(I18N.loc, { month: "short" })}</span></div>
         <div class="grow"><strong>${esc(e.title)}</strong><div class="muted small">${esc(e.band_name)} · ${fmtTime(e.starts_at)}${e.place ? " · " + esc(e.place) : ""}</div></div>
         <a class="btn small" href="#/band/${e.band_id}/calendario">Ver</a></li>`;
     }).join("")}</ul></section>`;
@@ -1644,10 +1646,10 @@ async function viewCalendar(band, nav) {
     let cells = "";
     for (let i = 0; i < 42; i++) {
       const d = new Date(y, m, 1 - offset + i), k = dayKey(d), evs = map.get(k) || [];
-      cells += `<button type="button" class="day ${d.getMonth() !== m ? "out" : ""} ${k === dayKey(today) ? "today" : ""}" data-day="${k}" aria-label="${d.toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" })}${evs.length ? ", " + evs.length + " evento(s)" : ""}">
+      cells += `<button type="button" class="day ${d.getMonth() !== m ? "out" : ""} ${k === dayKey(today) ? "today" : ""}" data-day="${k}" aria-label="${d.toLocaleDateString(I18N.loc, { weekday: "long", day: "numeric", month: "long" })}${evs.length ? ", " + evs.length + " evento(s)" : ""}">
         <span class="dn">${d.getDate()}</span>${evs.slice(0, 2).map((e) => `<span class="ev">${fmtTime(e.starts_at)} ${esc(e.title)}</span>`).join("")}${evs.length > 2 ? `<span class="small muted">+${evs.length - 2} más</span>` : ""}</button>`;
     }
-    $("#cal").innerHTML = `<div class="cal-head"><h2>${new Date(y, m, 1).toLocaleDateString("es-AR", { month: "long", year: "numeric" }).replace(/^./, (c) => c.toUpperCase())}</h2>
+    $("#cal").innerHTML = `<div class="cal-head"><h2>${new Date(y, m, 1).toLocaleDateString(I18N.loc, { month: "long", year: "numeric" }).replace(/^./, (c) => c.toUpperCase())}</h2>
       <button class="icon-btn" id="prev" aria-label="Mes anterior">${ic("left")}</button>
       <button class="icon-btn" id="nextm" aria-label="Mes siguiente">${ic("right")}</button>
       <button class="btn small ghost" id="hoy">Hoy</button></div>
@@ -1655,7 +1657,7 @@ async function viewCalendar(band, nav) {
     const nxt = events.filter((e) => parseDate(e.starts_at) >= new Date(Date.now() - 3 * 3600e3)).slice(0, 8);
     $("#next").innerHTML = nxt.length ? `<ul class="upcoming">${nxt.map((e) => {
       const d = parseDate(e.starts_at);
-      return `<li><div class="date-chip"><b>${d.getDate()}</b><span>${d.toLocaleDateString("es-AR", { month: "short" })}</span></div>
+      return `<li><div class="date-chip"><b>${d.getDate()}</b><span>${d.toLocaleDateString(I18N.loc, { month: "short" })}</span></div>
         <div class="grow"><strong>${esc(e.title)}</strong><div class="muted small">${fmtTime(e.starts_at)}${e.place ? " · " + esc(e.place) : ""} · ${esc(e.created_by || "")}</div>${e.notes ? `<div class="small">${esc(e.notes)}</div>` : ""}</div>
         <button class="icon-btn" data-del="${e.id}" aria-label="Borrar ${esc(e.title)}" title="Borrar">${ic("trash")}</button></li>`;
     }).join("")}</ul>` : `<p class="muted">No hay nada agendado. Tocá un día del calendario para sumar algo.</p>`;
@@ -1665,7 +1667,7 @@ async function viewCalendar(band, nav) {
 
   function dayModal(key) {
     const evs = byDay().get(key) || [];
-    const label = new Date(key + "T12:00:00").toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" });
+    const label = new Date(key + "T12:00:00").toLocaleDateString(I18N.loc, { weekday: "long", day: "numeric", month: "long" });
     openModal(`
       <div class="stack"><h2 style="text-transform:capitalize">${esc(label)}</h2>
         ${evs.length ? `<ul class="upcoming">${evs.map((e) => `<li><div class="grow"><strong>${esc(e.title)}</strong><div class="muted small">${fmtTime(e.starts_at)}${e.place ? " · " + esc(e.place) : ""}</div>${e.notes ? `<div class="small">${esc(e.notes)}</div>` : ""}</div>

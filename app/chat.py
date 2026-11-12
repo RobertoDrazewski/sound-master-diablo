@@ -191,7 +191,7 @@ def reply(message: str, history, plans: list[Plan]) -> str:
         return REFUSAL_OFFTOPIC
     if not config.OPENAI_API_KEY:
         return "El chat no está disponible en este momento. Escribinos desde Contacto y te respondemos."
-    msgs = [{"role": "system", "content": system_prompt(plans)}]
+    msgs = [{"role": "system", "content": system_prompt(plans) + config.lang_rule()}]
     msgs += clean_history(history)
     msgs.append({"role": "user", "content": f"<mensaje_usuario>\n{msg}\n</mensaje_usuario>"})
     try:

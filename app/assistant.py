@@ -3,7 +3,7 @@ import json
 import urllib.error
 import urllib.request
 
-from .config import OPENAI_API_KEY, OPENAI_MODEL
+from .config import OPENAI_API_KEY, OPENAI_MODEL, lang_rule
 
 SYSTEM = (
     "Sos el Asistente Diablo, ayudás a músicos de bandas que saben tocar y grabarse pero no son ingenieros de audio. "
@@ -23,7 +23,7 @@ def summarize(analysis: dict, title: str, style: str | None = None) -> str:
                "metricas": analysis["metrics"], "consejos_del_analisis": analysis["tips"]}
     body = json.dumps({
         "model": OPENAI_MODEL, "temperature": 0.4, "max_tokens": 350,
-        "messages": [{"role": "system", "content": SYSTEM},
+        "messages": [{"role": "system", "content": SYSTEM + lang_rule()},
                      {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}],
     }).encode()
     req = urllib.request.Request("https://api.openai.com/v1/chat/completions", data=body, method="POST",

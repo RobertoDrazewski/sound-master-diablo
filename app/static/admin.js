@@ -9,7 +9,7 @@ const AD_STATE = {
   exempt: ["Sin cargo", "ok"], trial: ["En prueba", "warn"], active: ["Pagando", "ok"], past_due: ["Pago atrasado", "warn"], suspended: ["Servicio cortado", "err"], closing: ["De baja", "err"],
 };
 const adChip = (st) => { const [l, k] = AD_STATE[st] || [st, ""]; return `<span class="chip-st ${k}">${l}</span>`; };
-const adDay = (iso) => (iso ? parseDate(iso).toLocaleDateString("es-AR", { day: "numeric", month: "short", year: "numeric" }) : "—");
+const adDay = (iso) => (iso ? parseDate(iso).toLocaleDateString(I18N.loc, { day: "numeric", month: "short", year: "numeric" }) : "—");
 const adGuard = (fn) => async (...a) => { try { await fn(...a); } catch (e) { toast(e.message, "err"); } };
 
 async function viewAdmin(nav, tab) {
@@ -28,7 +28,7 @@ async function viewAdmin(nav, tab) {
   }).catch(() => {});
 }
 
-const adMoney = (n) => "$" + Math.round(n).toLocaleString("es-AR");
+const adMoney = (n) => "$" + Math.round(n).toLocaleString(I18N.loc);
 
 async function adResumen(body, nav) {
   const [ov, s] = await Promise.all([api("/admin/overview"), api("/admin/billing/summary")]);

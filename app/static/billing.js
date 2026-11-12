@@ -3,8 +3,8 @@
 
 const BL_STATE = { exempt: ["Sin cargo", "ok"], trial: ["Prueba gratis", "warn"], active: ["Activa", "ok"], past_due: ["Pago atrasado", "warn"], suspended: ["Servicio suspendido", "err"], closing: ["Baja en curso", "err"] };
 
-const fmtLong = (iso) => parseDate(iso).toLocaleString("es-AR", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
-const fmtShort = (iso) => parseDate(iso).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" });
+const fmtLong = (iso) => parseDate(iso).toLocaleString(I18N.loc, { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
+const fmtShort = (iso) => parseDate(iso).toLocaleDateString(I18N.loc, { day: "2-digit", month: "2-digit", year: "numeric" });
 
 function billingBanner(band) {
   const b = band && band.billing;

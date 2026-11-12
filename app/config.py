@@ -84,3 +84,14 @@ CHAT_MODEL = os.getenv("CHAT_MODEL", "") or OPENAI_MODEL
 CHAT_ENABLED = os.getenv("CHAT_ENABLED", "1") not in ("0", "false", "no")
 CHAT_DAILY_LIMIT = int(os.getenv("CHAT_DAILY_LIMIT", "400"))      # mensajes por dia en total (tope de gasto)
 CHAT_IP_HOURLY = int(os.getenv("CHAT_IP_HOURLY", "20"))           # mensajes por hora por visitante
+
+
+# idioma elegido en la web (X-Lang); lo usan las respuestas de IA
+import contextvars
+REQ_LANG = contextvars.ContextVar("req_lang", default="es")
+LANG_NAMES = {"es": "español rioplatense (voseo)", "pt": "português do Brasil", "en": "English"}
+
+
+def lang_rule() -> str:
+    l = REQ_LANG.get()
+    return "" if l == "es" else f" IMPORTANT: write the whole answer in {LANG_NAMES.get(l, l)}, whatever language the input is in."
