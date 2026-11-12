@@ -20,7 +20,7 @@ function billingBanner(band) {
 }
 
 async function viewPlan(band, nav, query = "") {
-  const back = /mp=back/.test(query);
+  const back = /(mp|polar)=back/.test(query);
   let d = await api(`/bands/${band.id}/billing`);
   if (back && d.is_admin && d.has_subscription) {
     try { await api(`/bands/${band.id}/billing/sync`, { method: "POST" }); d = await api(`/bands/${band.id}/billing`); } catch { /* el aviso de MP llega solo */ }
@@ -37,9 +37,10 @@ async function viewPlan(band, nav, query = "") {
   const when = st.state === "active" || st.state === "past_due" ? `Pagado hasta el <b>${fmtDay(st.paid_until)}</b>${d.status.mp_status === "cancelled" ? " · no se renueva" : ""}`
     : st.state === "trial" ? `La prueba termina el <b>${fmtDay(st.trial_ends_at)}</b> (${st.days_left} días)` : "";
   const cur = st.plan;
+  const pm = d.has_subscription ? (d.provider === "polar" ? "polar" : "mp") : payMethod(d);
   setApp(`
     ${bandHead(band, "Plan", "La suscripción es de la banda: la paga el admin y la usan todos los integrantes.")}
-    ${back ? `<div class="callout" style="margin-bottom:1rem">Volviste de Mercado Pago. Si ya autorizaste el pago, en unos segundos tu plan queda activo.</div>` : ""}
+    ${back ? `<div class="callout" style="margin-bottom:1rem">${pm === "polar" ? "Volviste del pago. Si ya se confirmó, en unos segundos tu plan queda activo." : "Volviste de Mercado Pago. Si ya autorizaste el pago, en unos segundos tu plan queda activo."}</div>` : ""}
     <section class="card"><div class="row between" style="flex-wrap:wrap;gap:.6rem"><div><span class="chip-st ${kind}">${label}</span>
       <h2 style="margin:.5rem 0 .2rem">${st.state === "exempt" ? "Tu banda no paga" : st.plan_name ? "Plan " + esc(st.plan_name) : "Sin plan elegido"}</h2>
       <p class="muted" style="margin:0">${st.state === "exempt" ? "Tienen el servicio sin cargo, cortesía de Diablo Master Mix." : when || (st.state === "suspended" ? "Elegí un plan para volver a subir y masterizar." : "")}</p></div>
@@ -52,37 +53,40 @@ async function viewPlan(band, nav, query = "") {
     ${st.state === "exempt" || st.state === "closing" ? "" : `
     <h2 style="margin-top:1.4rem">${d.is_admin ? "Elegí el plan de tu banda" : "Planes"}</h2>
     ${d.is_admin ? "" : `<p class="muted">Solo el admin de la banda puede cambiar el plan o pagar.</p>`}
+    ${d.is_admin && !d.has_subscription ? payToggle(d) : ""}
     <div class="plans">${d.plans.map((p) => `
       <article class="plan ${p.highlight ? "hl" : ""} ${cur === p.slug && st.state === "active" ? "mine" : ""}">
         ${p.highlight ? `<span class="plan-tag">El más elegido</span>` : ""}
         <h3>${esc(p.name)}</h3><p class="plan-tag-line">${esc(p.tagline)}</p>
-        <p class="plan-price"><b>${fmtARS(p.price_ars)}</b><span>por mes</span></p>
+        <p class="plan-price"><b>${priceOf(p, pm)}</b><span>por mes</span></p>
         <ul>${planFeatures(p).map((f) => `<li>${f}</li>`).join("")}</ul>
-        ${mpBadge()}
+        ${mpBadge(pm)}
         ${d.is_admin ? `<button class="btn ${p.highlight ? "primary" : ""}" data-pick="${p.id}" ${cur === p.slug && st.mp_status === "authorized" ? "disabled" : ""}>${cur === p.slug && st.mp_status === "authorized" ? "Tu plan actual" : d.has_subscription && st.mp_status === "authorized" ? "Cambiar a este plan" : st.state === "trial" ? "Elegir y pagar al terminar la prueba" : "Suscribirme"}</button>` : ""}
       </article>`).join("")}</div>
-    <p class="small muted">El cobro es mensual y automático con Mercado Pago. Si un mes no se puede cobrar, tenés unos días de gracia antes de que el servicio pase a solo lectura. Si te das de baja, Mercado Pago deja de cobrarte y <b>todos los datos de la banda se eliminan a las ${d.purge_hours} horas</b>.</p>`}
+    <p class="small muted">El cobro es mensual y automático ${pm === "polar" ? "con tarjeta, a través de Polar" : "con Mercado Pago"}. Si un mes no se puede cobrar, tenés unos días de gracia antes de que el servicio pase a solo lectura. Si te das de baja, ${pm === "polar" ? "se deja de cobrar" : "Mercado Pago deja de cobrarte"} y <b>todos los datos de la banda se eliminan a las ${d.purge_hours} horas</b>.</p>`}
     ${st.state === "exempt" ? "" : `<section class="card" id="bl-hist"><div class="row between" style="flex-wrap:wrap;gap:.4rem"><h2 style="margin:0">Historial de pagos</h2>
-      ${d.payments.length ? `<span class="muted small">Total pagado <b>${fmtARS(d.total_paid)}</b></span>` : ""}</div>
-      ${d.payments.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Fecha</th><th class="hide-sm">Concepto</th><th>Monto</th><th>Estado</th></tr></thead><tbody>${d.payments.map((p) => `<tr><td>${fmtShort(p.paid_at)}</td><td class="hide-sm">${p.kind === "manual" ? "Pago registrado" : "Suscripción mensual"}</td><td>${p.amount ? fmtARS(p.amount) : "—"}</td><td>${p.status === "approved" ? `<span class="chip-st ok">Aprobado</span>` : `<span class="chip-st err">Rechazado</span>`}</td></tr>`).join("")}</tbody></table></div>`
-        : `<p class="muted" style="margin:.7rem 0 0">Todavía no hay pagos registrados. Cuando Mercado Pago cobre cada mes, lo vas a ver acá.</p>`}</section>`}`);
+      ${d.payments.length ? `<span class="muted small">Total pagado <b>${fmtMoney(d.total_paid, d.payments[0]?.currency)}</b></span>` : ""}</div>
+      ${d.payments.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Fecha</th><th class="hide-sm">Concepto</th><th>Monto</th><th>Estado</th></tr></thead><tbody>${d.payments.map((p) => `<tr><td>${fmtShort(p.paid_at)}</td><td class="hide-sm">${p.kind === "manual" ? "Pago registrado" : "Suscripción mensual"}</td><td>${p.amount ? fmtMoney(p.amount, p.currency) : "—"}</td><td>${p.status === "approved" ? `<span class="chip-st ok">Aprobado</span>` : `<span class="chip-st err">Rechazado</span>`}</td></tr>`).join("")}</tbody></table></div>`
+        : `<p class="muted" style="margin:.7rem 0 0">Todavía no hay pagos registrados. Cuando se cobre cada mes, lo vas a ver acá.</p>`}</section>`}`);
   wireBandHead(band);
 
+  wirePay(document, d, () => viewPlan(band, state.nav));
   $$("[data-pick]").forEach((b) => b.addEventListener("click", () => {
     const plan = d.plans.find((p) => p.id === Number(b.dataset.pick));
-    if (!d.mp_enabled) { toast("El cobro online todavía no está activado. Escribinos desde Contacto.", "err"); return openContact(`Quiero suscribir a mi banda "${band.name}" al plan ${plan.name}.`); }
+    if (pm === "polar" ? !d.polar_enabled : !d.mp_enabled) { toast("El cobro online todavía no está activado. Escribinos desde Contacto.", "err"); return openContact(`Quiero suscribir a mi banda "${band.name}" al plan ${plan.name}.`); }
     const changing = d.has_subscription && st.mp_status === "authorized";
     openModal(`<form id="sf" class="stack"><h2>${changing ? "Cambiar" : "Suscribirme al"} plan ${esc(plan.name)}</h2>
-      <p class="muted">${fmtARS(plan.price_ars)} por mes${st.state === "trial" ? `. El primer cobro es cuando termine la prueba (${fmtDay(st.trial_ends_at)}).` : changing ? ". El nuevo precio rige desde el próximo cobro." : d.trial_days ? "." : "."}</p>
-      ${changing ? "" : `<div class="field"><label for="sf-mail">Email de tu cuenta de Mercado Pago</label><input id="sf-mail" type="email" required value="${esc(d.payer_email)}">
+      <p class="muted">${priceOf(plan, pm)} por mes${st.state === "trial" ? `. El primer cobro es cuando termine la prueba (${fmtDay(st.trial_ends_at)}).` : changing ? ". El nuevo precio rige desde el próximo cobro." : d.trial_days ? "." : "."}</p>
+      ${changing ? "" : pm === "polar" ? `<div class="field"><label for="sf-mail">Email para el recibo</label><input id="sf-mail" type="email" required value="${esc(d.payer_email)}">
+      <p class="small muted" style="margin:.3rem 0 0">Vas a pagar con tarjeta en una página segura de Polar. Te enviarán el recibo a este mail.</p></div>` : `<div class="field"><label for="sf-mail">Email de tu cuenta de Mercado Pago</label><input id="sf-mail" type="email" required value="${esc(d.payer_email)}">
       <p class="small muted" style="margin:.3rem 0 0">Tiene que ser el mail con el que entrás a Mercado Pago, porque vas a autorizar el pago ahí. Podés pagar con tarjeta o con tu dinero en cuenta.</p></div>`}
-      <div class="row" style="justify-content:flex-end"><button type="button" class="btn" id="sf-c">Cancelar</button><button class="btn primary" id="sf-go">${changing ? "Cambiar de plan" : "Ir a Mercado Pago"}</button></div></form>`, (m) => {
+      <div class="row" style="justify-content:flex-end"><button type="button" class="btn" id="sf-c">Cancelar</button><button class="btn primary" id="sf-go">${changing ? "Cambiar de plan" : pm === "polar" ? "Ir al pago seguro" : "Ir a Mercado Pago"}</button></div></form>`, (m) => {
       $("#sf-c", m).addEventListener("click", closeModal);
       $("#sf", m).addEventListener("submit", async (ev) => {
         ev.preventDefault();
         await withBusy($("#sf-go", m), async () => {
           try {
-            const r = await api(`/bands/${band.id}/billing/subscribe`, { method: "POST", json: { plan_id: plan.id, payer_email: changing ? d.payer_email : $("#sf-mail", m).value.trim() } });
+            const r = await api(`/bands/${band.id}/billing/subscribe`, { method: "POST", json: { plan_id: plan.id, payer_email: changing ? d.payer_email : $("#sf-mail", m).value.trim(), method: pm } });
             if (r.init_point) { location.href = r.init_point; return; }
             closeModal(); toast("Plan cambiado", "ok"); viewPlan(band, nav);
           } catch (e) { toast(e.message, "err"); }

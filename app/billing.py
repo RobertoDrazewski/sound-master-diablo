@@ -38,11 +38,18 @@ PLANS_SEED = [
 ]
 
 
+USD_PRICES = {"garage": 10, "estudio": 15, "pro": 30}      # fuera de Argentina (Polar)
+
+
 def seed_plans(db: Session):
     if db.query(Plan).count() == 0:
         for p in PLANS_SEED:
             db.add(Plan(**p))
         db.commit()
+    for p in db.query(Plan).filter(Plan.price_usd.is_(None)).all():
+        if p.slug in USD_PRICES:
+            p.price_usd = USD_PRICES[p.slug]
+    db.commit()
 
 
 def month_start(t: datetime | None = None) -> datetime:
@@ -319,10 +326,22 @@ def reconcile_all(db: Session):
         if su.created_at < t - timedelta(days=3):
             su.status = "expired"
             db.commit()
-        elif su.mp_preapproval_id and mp_enabled():
+        elif su.provider != "polar" and su.mp_preapproval_id and mp_enabled():
             try:
                 sync_signup(db, su)
             except MPError:
+                continue
+    from . import polar
+    for su in db.query(Signup).filter_by(status="pending", provider="polar").all():
+        try:
+            polar.sync_signup(db, su)
+        except Exception:  # noqa: BLE001
+            continue
+    for b in db.query(Band).filter(Band.polar_subscription_id.isnot(None), Band.exempt.is_(False)).all():
+        if not b.paid_until or b.paid_until < t + timedelta(days=2):
+            try:
+                polar.sync_band(db, b)
+            except Exception:  # noqa: BLE001
                 continue
     for b in db.query(Band).filter(Band.mp_preapproval_id.isnot(None), Band.exempt.is_(False)).all():
         if not b.paid_until or b.paid_until < t + timedelta(days=2):
@@ -358,7 +377,18 @@ def request_cancellation(db: Session, band: Band, reasons: list[str], comment: s
         raise ValueError("exempt")
     if band.purge_at:
         raise ValueError("closing")
-    if band.mp_preapproval_id and band.mp_status != "cancelled":
+    if band.polar_subscription_id and band.mp_status != "cancelled":
+        from . import polar
+        try:
+            polar.revoke(band.polar_subscription_id)
+        except polar.PolarError as e:
+            # si ya estaba cancelada del lado de Polar, seguimos; si no, se corta aca
+            try:
+                if polar.get_subscription(band.polar_subscription_id).get("status") not in ("canceled", "incomplete_expired"):
+                    raise MPError(str(e), e.status) from None
+            except polar.PolarError:
+                raise MPError(str(e), e.status) from None
+    elif band.mp_preapproval_id and band.mp_status != "cancelled":
         try:
             cancel_preapproval(band.mp_preapproval_id)
         except MPError:
@@ -383,7 +413,7 @@ def request_cancellation(db: Session, band: Band, reasons: list[str], comment: s
                 + (f"\nComentario: {rec.comment}\n" if rec.comment else ""), "#/admin/cobros")
     for em in _admin_emails(db, band.id):
         mail.send_customer(em, "Diablo Master Mix: confirmamos la baja de tu banda",
-                           f"Recibimos la baja de la banda \"{band.name}\" y cancelamos la suscripción en Mercado Pago: "
+                           f"Recibimos la baja de la banda \"{band.name}\" y cancelamos la suscripción en {_proc(band)}: "
                            "no se te va a cobrar más.\n\n"
                            f"Diablo Master Mix necesita su espacio en el servidor, por eso no guardamos información de las bandas que se dan de baja. "
                            f"A partir del {_fecha_hora(band.purge_at)} se eliminan para siempre los temas, masters, álbumes, tapas, el calendario y las "
@@ -445,8 +475,8 @@ def public_plans(db: Session) -> list[dict]:
 
 def plan_dict(p: Plan) -> dict:
     return {"id": p.id, "slug": p.slug, "name": p.name, "tagline": p.tagline, "price_ars": p.price_ars,
-            "quota_gb": p.quota_gb, "masters_month": p.masters_month, "ai_covers_month": p.ai_covers_month,
-            "ai_notes_day": p.ai_notes_day, "max_members": p.max_members, "highlight": p.highlight,
+            "price_usd": p.price_usd, "quota_gb": p.quota_gb, "masters_month": p.masters_month,
+            "ai_covers_month": p.ai_covers_month, "ai_notes_day": p.ai_notes_day, "max_members": p.max_members, "highlight": p.highlight,
             "sort": p.sort, "active": p.active}
 
 
@@ -454,6 +484,18 @@ def plan_dict(p: Plan) -> dict:
 
 def _ars(n) -> str:
     return "$" + f"{float(n):,.0f}".replace(",", ".")
+
+
+def _usd(n) -> str:
+    return f"US${float(n):,.2f}"
+
+
+def _money(band: Band, n) -> str:
+    return _usd(n) if band.pay_provider == "polar" else _ars(n)
+
+
+def _proc(band: Band) -> str:
+    return "Polar" if band.pay_provider == "polar" else "Mercado Pago"
 
 
 def _fecha(d: datetime | None) -> str:
@@ -485,23 +527,23 @@ def _after_payment(db: Session, band: Band, amount: float, approved: bool):
     plan = band_plan(db, band)
     pname = plan.name if plan else "-"
     if approved:
-        _tell_owner(db, f"Pago recibido: {band.name} ({_ars(amount)})",
-                    f"Banda: {band.name}\nPlan: {pname}\nMonto: {_ars(amount)}\nServicio activo hasta: {_fecha(band.paid_until)}")
+        _tell_owner(db, f"Pago recibido: {band.name} ({_money(band, amount)})",
+                    f"Banda: {band.name}\nPlan: {pname}\nMonto: {_money(band, amount)}\nServicio activo hasta: {_fecha(band.paid_until)}")
         for em in _admin_emails(db, band.id):
             mail.send_customer(em, "Diablo Master Mix: recibimos tu pago",
                                f"Recibimos el pago de la suscripción del plan {pname} de la banda \"{band.name}\".\n\n"
-                               f"Monto: {_ars(amount)}\nServicio activo hasta: {_fecha(band.paid_until)}\n\n"
-                               "El cobro se repite todos los meses de forma automática con Mercado Pago. "
+                               f"Monto: {_money(band, amount)}\nServicio activo hasta: {_fecha(band.paid_until)}\n\n"
+                               f"El cobro se repite todos los meses de forma automática con {_proc(band)}. "
                                "Podés cancelar cuando quieras desde la sección Plan de tu banda.\n\nDiablo Master Mix")
     else:
         _tell_owner(db, f"Pago rechazado: {band.name}",
-                    f"Mercado Pago no pudo cobrar a la banda \"{band.name}\" (plan {pname}, {_ars(amount)}).\n"
-                    f"Mercado Pago reintenta solo. Si no se regulariza, el servicio queda en solo lectura.")
+                    f"{_proc(band)} no pudo cobrar a la banda \"{band.name}\" (plan {pname}, {_money(band, amount)}).\n"
+                    f"{_proc(band)} reintenta solo. Si no se regulariza, el servicio queda en solo lectura.")
         for em in _admin_emails(db, band.id):
             mail.send_customer(em, "Diablo Master Mix: no pudimos cobrar tu suscripción",
                                f"No pudimos cobrar la suscripción del plan {pname} de la banda \"{band.name}\".\n\n"
-                               "Mercado Pago va a reintentar automáticamente. Revisá que el medio de pago de tu cuenta de "
-                               "Mercado Pago tenga fondos o esté vigente. Mientras tanto la banda puede seguir usando la plataforma unos días; "
+                               f"{_proc(band)} va a reintentar automáticamente. Revisá que el medio de pago "
+                               "tenga fondos o esté vigente. Mientras tanto la banda puede seguir usando la plataforma unos días; "
                                "si no se regulariza, queda en modo solo lectura (tu material no se borra).\n\nDiablo Master Mix")
 
 
@@ -623,4 +665,56 @@ def complete_signup(db: Session, su: Signup, data: dict) -> Band | None:
     _tell_owner(db, f"Nueva banda suscripta: {name} (plan {plan.name})",
                 f"Banda: {name}\nPlan: {plan.name} ({_ars(plan.price_ars)}/mes)\nAdmin: {su.admin_name} <{email}>\n"
                 f"Email de Mercado Pago: {band.mp_payer_email}\n{cobro}")
+    return band
+
+
+def complete_signup_polar(db: Session, su: Signup, sub: dict) -> Band | None:
+    """Polar confirmo la suscripcion: se crea la cuenta y la banda, y se manda el mail con el acceso (precios en dolares)."""
+    if su.status == "done":
+        return db.get(Band, su.band_id) if su.band_id else None
+    from . import polar
+    plan = polar.plan_of_product(db, sub.get("product_id")) or db.get(Plan, su.plan_id)
+    if not plan:
+        return None
+    name = su.band_name.strip()
+    n = 2
+    while db.query(Band).filter(func.lower(Band.name) == name.lower()).first():
+        name, n = f"{su.band_name.strip()} ({n})", n + 1
+    email = su.email.strip().lower()
+    user = db.query(User).filter(func.lower(User.email) == email).first()
+    password = None
+    if not user:
+        password = gen_password()
+        user = User(email=email, name=su.admin_name.strip(), password_hash=hash_password(password))
+        db.add(user)
+        db.flush()
+    band = Band(name=name, plan_id=plan.id, pay_provider="polar", polar_subscription_id=sub.get("id"),
+                mp_status="pending", mp_payer_email=(sub.get("customer") or {}).get("email") or su.payer_email or email)
+    db.add(band)
+    db.flush()
+    db.add(Membership(user_id=user.id, band_id=band.id, role="admin", kind="musico"))
+    su.status, su.band_id, su.completed_at = "done", band.id, now()
+    db.commit()
+    polar.apply_subscription(db, {**sub, "metadata": {"ref": f"band:{band.id}"}})     # fechas de prueba / proximo cobro
+    if not band.trial_ends_at and not band.paid_until:
+        band.trial_ends_at = now() + timedelta(days=1)   # margen hasta que llegue el aviso del pago
+        db.commit()
+
+    site = _site(su.base_url)
+    trial = band.trial_ends_at if band.trial_ends_at and band.trial_ends_at > now() + timedelta(days=2) else None
+    price = _usd(plan.price_usd or 0)
+    cobro = (f"The first {config.TRIAL_DAYS} days are free: the first charge of {price} is on {_fecha(trial)}."
+             if trial else f"Your subscription is billed {price} per month.")
+    acceso = (f"Your login details\n  Site:      {site}\n  User:      {email}\n  Password:  {password}\n\n"
+              "Sign in and change the password whenever you like from your profile."
+              if password else
+              f"You already had an account with this email: the band was added to it. Sign in with your usual password at {site}.")
+    mail.send_customer(email, "Diablo Master Mix: subscription confirmed",
+                       f"Hello {su.admin_name.strip() or ''},\n\n"
+                       f"Your {plan.name} plan subscription for the band \"{name}\" is confirmed. {cobro}\n"
+                       "It renews automatically every month and you can cancel at any time from the Plan section of your band.\n\n"
+                       f"{acceso}\n\n"
+                       "From there you can invite your band, upload rehearsals and master them.\n\nDiablo Master Mix")
+    _tell_owner(db, f"Nueva banda suscripta (Polar): {name} (plan {plan.name})",
+                f"Banda: {name}\nPlan: {plan.name} ({price}/mes)\nAdmin: {su.admin_name} <{email}>\n{cobro}")
     return band

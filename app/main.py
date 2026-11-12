@@ -1,3 +1,4 @@
+import logging
 import io
 import json
 import re
@@ -16,7 +17,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from . import align, config, analysis, assistant, audio, billing, chat, covers, genres, mail, masterjob, purge, push, release
+log = logging.getLogger("uvicorn.error")
+from . import align, config, analysis, assistant, audio, billing, chat, covers, genres, mail, masterjob, polar, purge, push, release
 from .config import (ASSISTANT_DAILY_LIMIT, COVER_AI_DAILY_LIMIT, PUBLIC_URL, BAND_QUOTA_GB, CORS_ORIGINS, DATA_DIR,
                      INVITE_TTL_DAYS, MAX_UPLOAD_MB, RAW_RETENTION_DAYS,
                      REFERENCE_SECONDS, SUPERADMIN_EMAIL, SUPERADMIN_PASSWORD, CHAT_ENABLED, TRIAL_DAYS,
@@ -2024,14 +2026,20 @@ def _band_admin(db: Session, user: User, band_id: int) -> Band:
     return band
 
 
+def _country(request: Request) -> str:
+    """Pais del visitante segun Cloudflare (vacio si no se sabe)."""
+    return (request.headers.get("cf-ipcountry") or "").strip().upper()[:2]
+
+
 @app.get("/public-config")
-def public_config(db: Session = Depends(get_db)):
+def public_config(request: Request, db: Session = Depends(get_db)):
     return {"turnstile_site_key": TURNSTILE_SITE_KEY, "chat": CHAT_ENABLED, "trial_days": TRIAL_DAYS,
-            "plans": billing.public_plans(db)}
+            "plans": billing.public_plans(db), "country": _country(request),
+            "polar_enabled": polar.enabled(), "mp_enabled": billing.mp_enabled()}
 
 
 @app.get("/bands/{band_id}/billing")
-def band_billing(band_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+def band_billing(band_id: int, request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)):
     need_member(db, user, band_id)
     band = db.get(Band, band_id)
     pays = db.query(Payment).filter_by(band_id=band_id).order_by(Payment.paid_at.desc()).limit(120).all()
@@ -2041,11 +2049,13 @@ def band_billing(band_id: int, user: User = Depends(current_user), db: Session =
         "limits": lim, "usage": {**billing.usage(db, band_id), "used_gb": round(band_used_bytes(db, band_id) / 1e9, 2),
                                  "members": db.query(Membership).filter_by(band_id=band_id).count()},
         "plans": billing.public_plans(db), "mp_enabled": billing.mp_enabled(), "trial_days": TRIAL_DAYS,
-        "payer_email": band.mp_payer_email or user.email, "has_subscription": bool(band.mp_preapproval_id),
+        "polar_enabled": polar.enabled(), "country": _country(request), "provider": band.pay_provider or "mp",
+        "payer_email": band.mp_payer_email or user.email,
+        "has_subscription": bool(band.mp_preapproval_id or band.polar_subscription_id),
         "payments": [{"amount": p.amount, "currency": p.currency, "status": p.status, "paid_at": p.paid_at, "kind": p.kind} for p in pays],
         "total_paid": float(sum(p.amount for p in pays if p.status == "approved")),
         "can_cancel": band_role(db, user, band_id) == "admin" and not band.exempt and not band.purge_at
-                      and (bool(band.mp_preapproval_id) or band.mp_status is not None),
+                      and (bool(band.mp_preapproval_id or band.polar_subscription_id) or band.mp_status is not None),
         "cancel_reasons": [{"key": k, "label": v} for k, v in billing.CANCEL_REASONS.items()],
         "purge_hours": PURGE_HOURS,
     }
@@ -2054,6 +2064,7 @@ def band_billing(band_id: int, user: User = Depends(current_user), db: Session =
 class SubscribeIn(BaseModel):
     plan_id: int
     payer_email: str = Field(min_length=5, max_length=255)
+    method: str = Field("mp", pattern="^(mp|polar)$")
 
 
 @app.post("/bands/{band_id}/billing/subscribe")
@@ -2067,6 +2078,10 @@ def band_subscribe(band_id: int, body: SubscribeIn, request: Request, user: User
         raise HTTPException(404, "Plan inexistente")
     if "@" not in body.payer_email:
         raise HTTPException(422, "Poné el email de tu cuenta de Mercado Pago")
+    if body.method == "polar":
+        return _subscribe_polar(db, band, plan, body.payer_email.strip(), request)
+    if band.polar_subscription_id and band.mp_status == "authorized":
+        raise HTTPException(409, "Esta banda ya paga en dólares con tarjeta. Cambiá de plan desde ahí.")
     if not billing.mp_enabled():
         raise HTTPException(503, "El cobro con Mercado Pago todavía no está activado. Escribinos desde Contacto.")
     base = PUBLIC_URL or str(request.base_url).rstrip("/")
@@ -2092,13 +2107,41 @@ def band_subscribe(band_id: int, body: SubscribeIn, request: Request, user: User
     return {"init_point": res["init_point"]}
 
 
+def _subscribe_polar(db: Session, band: Band, plan: Plan, email: str, request: Request):
+    """Pago en dolares con Polar: cambio de plan sobre la suscripcion vigente, o checkout nuevo."""
+    if not polar.enabled():
+        raise HTTPException(503, "El cobro en dólares todavía no está activado. Escribinos desde Contacto.")
+    if band.mp_preapproval_id and band.mp_status == "authorized":
+        raise HTTPException(409, "Esta banda ya paga con Mercado Pago. Para pasar a dólares cancelá esa suscripción primero.")
+    base = PUBLIC_URL or str(request.base_url).rstrip("/")
+    try:
+        if band.polar_subscription_id and band.mp_status == "authorized":
+            polar.change_plan(band.polar_subscription_id, plan)
+            band.plan_id, band.pending_plan_id = plan.id, None
+            db.commit()
+            return {"changed": True}
+        co = polar.create_checkout(plan, email, f"band:{band.id}", f"band-{band.id}",
+                                   f"{base}/#/band/{band.id}/plan?polar=back", f"{base}/#/band/{band.id}/plan")
+    except polar.PolarError as e:
+        raise HTTPException(424, str(e)) from None
+    band.pending_plan_id = plan.id
+    if not band.plan_id:
+        band.plan_id = plan.id
+    band.pay_provider, band.mp_payer_email = "polar", email
+    db.commit()
+    return {"init_point": co["url"]}
+
+
 @app.post("/bands/{band_id}/billing/sync")
 def band_billing_sync(band_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
-    """Despues de volver de Mercado Pago: pregunta el estado real (por si el aviso tarda)."""
+    """Despues de volver del pago: pregunta el estado real (por si el aviso tarda)."""
     band = _band_admin(db, user, band_id)
     try:
-        billing.sync_band(db, band)
-    except billing.MPError as e:
+        if band.polar_subscription_id:
+            polar.sync_band(db, band)
+        else:
+            billing.sync_band(db, band)
+    except (billing.MPError, polar.PolarError) as e:
         raise HTTPException(424, str(e)) from None
     return {"status": billing.status(db, band)}
 
@@ -2127,6 +2170,24 @@ def band_cancel(band_id: int, body: CancelIn, user: User = Depends(current_user)
     except billing.MPError as e:
         raise HTTPException(424, "No pudimos cancelar el cobro en Mercado Pago, así que no se dio de baja nada. Probá de nuevo en un rato. " + str(e)) from None
     return {"status": billing.status(db, band)}
+
+
+@app.post("/billing/polar/webhook")
+async def polar_webhook(request: Request, db: Session = Depends(get_db)):
+    """Avisos de Polar firmados (Standard Webhooks). Sin firma valida no se procesa nada."""
+    raw = await request.body()
+    if not polar.verify_webhook(request.headers, raw):
+        raise HTTPException(403, "Firma inválida")
+    try:
+        event = json.loads(raw)
+    except ValueError:
+        raise HTTPException(400, "Cuerpo inválido") from None
+    try:
+        polar.handle_event(db, event)
+    except Exception:  # noqa: BLE001
+        log.exception("webhook Polar: error procesando %s", event.get("type"))
+        raise HTTPException(500, "Error procesando el aviso") from None     # Polar reintenta
+    return {"ok": True}
 
 
 @app.post("/billing/webhook")
@@ -2353,6 +2414,7 @@ class SignupIn(BaseModel):
     name: str = Field(min_length=2, max_length=120)
     email: str = Field(max_length=255)
     payer_email: str = Field("", max_length=255)      # solo si la cuenta de Mercado Pago usa otro mail
+    method: str = Field("mp", pattern="^(mp|polar)$")
     website: str = ""                                  # trampa para robots
     turnstile_token: str = ""
 
@@ -2388,7 +2450,10 @@ def public_signup(body: SignupIn, request: Request, db: Session = Depends(get_db
     plan = db.get(Plan, body.plan_id)
     if not plan or not plan.active:
         raise HTTPException(404, "Ese plan no está disponible")
-    if not billing.mp_enabled():
+    if body.method == "polar":
+        if not polar.enabled():
+            raise HTTPException(503, "El cobro en dólares todavía no está activado. Escribinos desde Contacto y te ayudamos.")
+    elif not billing.mp_enabled():
         raise HTTPException(503, "El cobro online todavía no está activado. Escribinos desde Contacto y te ayudamos.")
     band_name = " ".join(body.band_name.split())
     if db.query(User).filter(func.lower(User.email) == email).first():
@@ -2396,6 +2461,12 @@ def public_signup(body: SignupIn, request: Request, db: Session = Depends(get_db
     if db.query(Band).filter(func.lower(Band.name) == band_name.lower()).first():
         raise HTTPException(409, "Ya existe una banda con ese nombre. Probá con otro.")
     base = PUBLIC_URL or str(request.base_url).rstrip("/")
+    if body.method == "polar":
+        try:
+            return {"init_point": polar.start_signup(db, plan, band_name, " ".join(body.name.split()), email, base)}
+        except polar.PolarError as e:
+            log.warning("signup Polar: %s", e)
+            raise HTTPException(424, "No pudimos iniciar el pago. Probá de nuevo en unos minutos.") from None
     try:
         link = billing.start_signup(db, plan, band_name, " ".join(body.name.split()), email, payer, base)
     except billing.MPError:
@@ -2417,8 +2488,11 @@ def public_signup_sync(body: SignupSyncIn, request: Request, db: Session = Depen
         raise HTTPException(404, "No encontramos ese pedido")
     if su.status == "pending":
         try:
-            billing.sync_signup(db, su)
-        except billing.MPError:
+            if su.provider == "polar":
+                polar.sync_signup(db, su)
+            else:
+                billing.sync_signup(db, su)
+        except (billing.MPError, polar.PolarError):
             pass
     return {"status": su.status}
 

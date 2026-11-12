@@ -182,7 +182,8 @@ function viewLanding() {
 
 /* sello de cobro: logo de Mercado Pago a la izquierda y el texto a la derecha */
 const MP_LOGO = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAHAAAABwCAIAAABJgmMcAAAglElEQVR42u18d3xVRfr+MzPn3JrkphFIJyFACL2DooB0LIBtFXR1ZV2RIirYd7+i7q6uiOtacEVFQcBKEVCKdBARpPeEhJACIb3d3HLOzPz+ODeXiEpuKOr+Pvf9I/nc5Nw5M8+87ztvHSKlRJAuH9EgBEFAg4AGAQ1SENAgoEFAgxQENAhoENAgBQENAhoENAhokIKABgENAhqkIKBBQIOABikI6K9Lyu9xUhKy4YfziZz7RX53cye/YRpZSjR8OyGEkEsdhxBc5Cj/u4BKKYWQnEtFoZSev3i3l+u6dLl1TeNut1ZV7XK7NCEBgBJYrKojzGqxmKw2RWXUZKIm5XytxbnkXDBGKCW/Pri/HqAGH53HQRUVNWUVdadO1uTnV5zKKc48WrRjW8HpIqcOTcIrIQH+Y6knACNgBIoFlrbpEV16tGjVNiapZUxyy4iExLCoSGtoqM3/tBASwE+37X8YUCmllD9akrPOvWP7yc1bcvNzK44dOVNSVFZYWOeGhN0KewhaRJIwC+xmabXAbCJWBpX4dKUENCldHB4vcbnh1GSlE2fLUVsLlzsMLCHVERMX0bZd89j4iBHDW3fsEm81mxqC+ysohCsIKOdCSij1IllcVrdh/eFta3M2b8rNPV1R66oEVLRIQN80JS3eFBupNw+XZpMIs0pVlSqFAjBICrAG55MAEQAHdBBdUE0j1S7q8qKowltUIY8XYMsRVJ0BaHSYo13r5tde17LPwLQB/duE2FRjDE3jjNErx7NXBNCGXFlWVr1jZ+H8d79btnS/DinCwpEYq/RvY0pP1tskihCTpERISA4IH2SQgBCQEhK+nw0lnhDfT0pBAApQgIFSEAKiCVrlZZknvXuz+M4c5JeprhIbrGP/3PcPf+zWq0ei1Wqu59YrwqyXGdCGYnXocMHCBfs3rj38/Z58RESjcwrrkkp7txUtooWFSAF4AAEI+fO2EWnEtMJPjStCQAkYYAIBqFewk4XYesx7LB97s23u2n7Xtb5mQId77+ucEB9hqHVAXl5cLxugQkghpCHgx7OLX//nxmVfHjxdVoZmyepd16B3Oo+PElagDvBICAEQH69dATPWgAqUwEZgA60ULK+EbjvoWbQJzvL0lPg/3N3l/gnXxMeGAdB1wdhlY9fLA6gQ0hDww0eKZr+1Zd7sb52w0gHtLbf09WakcBuTHkCT0Hm9ZP5KDgKEgJAwKVBALFAq3aYD2c6FG7E/Jwzisb8Pv+++vnGxDsMCuSyK9VIB9UtNVXXdKzO3vjd7a1F5rfm6XmJ0L949TRhyzYXPrSFNHvqc+Ps5iABC/kjkG2UuQxETAoXABCagbNgrv9rl3XWsW6eYBx/qf9+felNK/WzxmwHqn8GmjUenP7pq977jSkYH+uAIrXuaJEC1+BEQTYJSSJgYFFAFRIIIQAO4qLfvie/cEoAOaBwEoIHFJYQEBRyU1AjTjiOe2StRmD9yRLeXXxnePiOeC0kuzW69eEANNHVNn/Hs6pmvbPdazLbpN3j7dNJDVdQISAlGL25cqAwhYJVuNa9UO3iSH8zF8WIUVgAeAIAN6dFIb2HKSCbtWupx4TzUBDfg4gBBgFjoAgpFKDGV17GV37pmr4q2KX9/dfQDD/Q1MLlolXqRgAohKKV5p0ofnb588RdHLVGR9IXbXde2kk6gSkA2CFs0Lo/1wisBClgpq3HRb/Zpa3fgUJ4VtHXbyPDIsIhIOwBVVVwuvbK8uqyk8lhuOZgJndJYr3Tav53esrkUQJ1osDjSCKsacmCFZV+W/O86/UDOhCl9/v78sPDwkIsW/4sBVNeFotB9ewvGjl1w9FhpQlxkQakbcWE0PU7t15b37ixtCpeAbljg3Ke/GqpRA0TDRVeYz5akICrUrUfxzmpvdnZKbMz4B3tffU2r1m0iwx1Wu93im7AQNbWusrK6fXvPfvdt1ldLDh7JPQtHtNK/MxvdQ2+TJAgkB3RAlz57tiGyxkdGwQgUEAbKQSsqrO+sqfl6t4Q2cmS7d+fcHhcfYSzzigNq8ObmDTnDhn8ghfjs0zuvvS71m9VHPl+we8u23OJqD6gNw9rbrs4QLWO1+AhhVaUAvAAHuKg3aCgYgRlQwNyC1LpEuRMuzbp5n3PhhtgI+7MvD7t5TNdmUbbzjigpz1eVtU7vlm+zPpz9/dpVx6q8GlLTTHf1oa0S9NgwYbdKBZICGiDqw78qiAR1gzhdalGVOJrr+WovDp+wqPSaa1v16ZPwwj+2dukcsWTJ/SmpURfBp00D1IfmupzRt71vsynz5949aFia/7+ZWWdXLj26Yf2JwwdOnSqqksyMrmnolKK0TSQtY0R4iLSbBQMhIF6QGqeaW6wfyNGP5iP7rMWrK3Wi1lk2+qaOL8+6qXVaMwDC7ybJnwl9SikppX7m+/bb7I/n7/922/F9R04DCtokoF0y4puZwsIQY4eJAARujuIab0UlThbjZCGyiyj0rp3iu3ZJGnVr+5EjO1BGPv9s3913L+jaJXbRJ/ekpEQ3FdMmAMq5YIwePHC631X/VVS5eevEDh1iDR/OkGFDkXOh52SX7t5zZtP64xtXHSsoqKgDRbNIOMJZSiSPsBEu2ZkqvbAC+cWKqG4Z1ywpNXr39xVVWu2ECT1eeWWU3W72u4a/5CNyLiklhPjsNr+nW1RUvn3Hmf27T61ecSg/u7S21l0DACZQgBBwAXgcYKHhtlbtYoaMaN+le2LPnrExzcJ9HrOQlNEvlx4cffMHffokf7ns3mYxjiaZqIECamie0tLqEcPm7DtQunHdA/36p5ynZRo6SwZVVrmOZ5YdPph3eE/elo0FxSUVuhBSEhOjGe1jBwxr1eOqth0zoqdNW/rxwn1PPT3w+edvAIifKYwtBHD2bNWe3QX5BRUKo2lpzbr3SLLbzVIA5NxxzLkAwOpNi9o6T3WNlp9Xeba4urykyuvWGaNmq+qICktKiGjeIsQRqlotJv/MpZTGd41FfTT/h3vuXXjrLe0WLfoTUxQEHqWSAZAQUgjh9Xpvv+0DYOrCBbuklJrGf+FhwbnQ9Z/5r8ulnz1bffpMlUcT9X/jfx7/CTB5xrMr6wPPwv9GKWVBQdlzM75OTnwBmARMBiYBU67q8+/PP9vj+z4XDV9hvJoLEci6fA9z0fBxIaQx+ZdeWgNM/L+/fm0sSgZGCARNXRdSytlvbgYeeuLxlVIKXQ9ozuIcSfGTxUipT560BJj46COLOdeNtTXEaNWqg21avwhMadny+eeeW71g/t758/Y8+cTyyIhngYf+NO6zkpIqKeXPbp6xJRekCwLNhcfjve3WDwimr/vm6C+95WIA5ZxLKbNPnI2Pm9Gr++tej2aI9kWQf5EGZE89uRKYNGXSZ0JwP0sa8+Y6f+WV9cAjNttT/561obyspuE4J3NK/zx+ETCpR49ZBw4USOnb8stIxmTOnK6ICP9bt26vVpTX+qd96RwqhBB/uf9Tgilbt2T+VMoubq6zXt4ITL3ttvdcdW4hBOfcLwoV5TVj75gHTLq6xxuHDhX4uUbTuKadk4y5c7fZbE+GhT7x1YrDUkrOmyCYgSkELqX88IMdwENvvrElwIUjADTloQMFZvMjt98+L8BdahTN3NxSs/rkiOFzXHWe8x7YsjmzW9dXgQcfeXhxZUWtsYzzkOLcN40tm7M6dnhRYdNm/mt9QxQuE5NKIWRNtat7t1kpyS+UlzkDUaYIZP3Tpy1Vlce2bckMXJVceMDs7LMRYY8N6PfmkcNnams8LpfXWes+U1j17F9XMvqEokyf98F3UooLA2SciidzSgcPehOY/PDDX2iadnnF31js++/sBKYsWPD9ZQBUSllT7TJbnhk8+F2vx9OIMm8KpgsX7IiP+z9giiP0yYz0F1s0fxZ4FHhozOh3Dx8qaHjiN7pgl8szccJnwMQxY96tKHdeulL68ckpy0qr09NevKrPfwL5itKoJb9ixT6Pu2740FRFVXVdqCq71IghIQDGjuvds1fymtUnjhw5k59f0YrS5OSwfn3a3n5nB0KZYYo2avsxRjkXFovp9TfHRDWzvfDCujOF770397b27WM5l4xdanCTUiKEjIwKvbZf6pwPdx49erpduzghLhgpbFQrPzJ1sd3+xMmTxVJKnQuvV9c0fumc2pCJdF3TNO85Fm4if/nn8tZb24BHW8Q8v37dcYN/L2WShojU1Xl1XXz++W7Gpv3ntQ0XMMANohcAmlLq9Xr37i0GMR8/VlpUVMEoVJUpCvX7hRcdTjU2X9O5lJIxRVFU/ylPmhqPIARSci4nTrx6w7q/eLzeQYPf/eST3YxRn15ranRbSKMmg1JitaqMkU4dW9isptycqkbLJpQL+5o1tZ6qGo+z1jV6xDttO7RIS41LaBndd0Di0AEp4REh/qF/tiokEEwpZaivTKKUXHSonBBCKYSQAwe13bDhLxMe+PTOOxcWFFRMnz6ooS974by3MQf/KrwaP3q08OsVJ06cKDuReba2FkePl3u9msmkXiAC/Yu+vKFAMzPPDL1uTl5ygrVjYt3nu1BeBBBGrWnx9k5d4q8Z2rJH77ROHePtFsUfKiXknEP965OhOs+crho//qNVq49Me3jIzFmjCKX+sMBP8w6cnzsYJOTZEuf3O05+uy1r2zd52dlFxdV1AEDtAOvWOXrjxvFhjtAL7FAj5Yx1Ls3j9Mj2yZ4Jg5VxQ2i1S8k+pR/Ky9tz6vh3pz9fcZTCGR3abNK0voOHtuvYoVloqB0AF4IS8ptUwTFGdF3ExjmWLr3/gQlLZr22JjOrbMGCsWHhtvNQaCAWDJDZ2SXf7cxfvGjvVyuPaagFQtAsirRvY++exDu1Ee0TvM/Mo2VFAvKS6kMJAQghTo90grsBu83bsx16tiPjoFZUkB9y+fG8ymOnnp2x7qUZ3/S+tmXXrkl33tW1Z4/k+iyDJA1O9oZ5PaOM6/IWIBoYKQoVQpot5vfevTW2heOlf62//ob3Zr99c8eOCUKAQIIYpZMEQEFh2ccLD/2w6+TuXaeyTxXDFmnqlob0BDUjEZ1bCUeIUwF0MAVQmIS8PAW30qISAkBCA7wSkJJSLSICYyLAu6K8znTirLbr+KaFWzZtObpg7g9jbs+494G+fXum0AZIGVBSSjj36fvzciqXISdOiP9FUkqmqC++NDIxMXTS5KWDB3+w6us/duuebESqNSG+3X7io/d2bvomJ+d0CSBpYpr18aF6h1QtJgzRVk0ATsAj4RKQAGPwcFyuCmZSU/Oj0iIQSMAj4JKg4GYb75xCu6co44eoe06UL98+54OD897fPuzGTjNfGRXXIuzjT/a88ca2nKyqAYOSp04dMGRoWwCnC8srKzxhDnOzmBCz2XRe4qep5zIhOHWqbPmX+ydN6k8Z82Oq63LipGvatI4ec8ui/v3f/vzzcd26JX38yd733th2NDufK5HomGIbO5B3T9cTol2MQAN0oFSHJKDEV0EFQAcKq2CnFx9g9sXnD+UPHzCnKCYBb/9FeH9h0f4yAkZgBgHUfVl0+Q/utXtbJTuSUsM3bszud3VyYlLkwf2nDx0pmTqlv+R8yfK9VRVaSCjLyIi+++5+99zb/afFE4FLOiE4c6bqltFzmseGv//+XZFR5zSmcSLv3HHyznELykq1tNSo3ftO0pQEdGvDhmaItmncDHgBLyAEyE/SpRKgRBWadsPfu6eHrt/6gCPsQofSLwJqfOfUqZKhA9/NKnSzJU/oNjt00XhuFhIOBg7zwTzPjEUoKnl11g0TJlxltZnLy2qnPrx0wYJdgLzpxk4jRmSUlTvnzduVlVX4xhtjJ0/u19AcaVIyx5dQKKvt3+/VmGaOxUvvj4yy+TWJkQrLyjx78y0fHTp02vGX4bW39OXhoeCAU0LICxVkCAk7NZ0o9N73Zq+ucRs2j7fbbRcwmxrh4fAIi91hlZpLPXICNkCIxmxLAkpRweGUvFsSq3GNGpn+yKPXWm1mzmVkVMgLz43o0in+q68e/HL5/RMevPqZZ4YePvzE3Xf1mTJlZcukFymdbLM889j0LzMziyklgZvkhIBzGR0Vsnnrwy4Pb99uZlZmiaJQIy9CKdU03rpN8wULbo8ND6kurRNhoSjTUc0NBrwQlwgBM0zfHYJwt0yJsNksF9lWY7wixG5PahlNpODbThAOkMCODoWCElIpuLMyLiESYF6vbqgRm908c+ZNI0dmGDyo60JVlSmT+4faaYtY+6RJw4eNaDN37q4Rw2dv2phJCERjWyilL8PMGOFcREeHLV12X2KybcSIt7Zvz2GMCiGlkIbX37lzUlpijNyUyao9MCmgARRNqozU6KZDZwHSJiOKEGOTyEUASgw12qVLlARhBwpIcTVMFEIG2hpjoQiLys0t5UI3mRTGCGM0pnno4KHthPDlKQ1jOzUtcv7821evGf/mmzcuXfrHrVsnapqc/thyZ62LkEbSiISAEJ/BZMAXGxu+evWEmOa2YcPe3rDhOKWEUEIoYYxWVDpL62qR4pBWE6RovC1HCJgJO55fsyeLUEurlDC/ern4xq/OHVuYbVaal6+s3w8bEKAYSsEZ1HsGrl176PkX1lfXuIXgOTmlK5bv41wYHp5fDiIjQ0ff3CU83K5pnHNktI978aUxB/aV7N1zmnPJufzZ6hUAK5cffGjyZ7ou/LhTSjgXkVGhK5Y/2KlTwqBB//140Q9Op1vzevMKKu69Z3FmdoH5tqs4IwgAT1BCFIiN+7mrxm5Xe/du2agvTy/sdQAYMKBtiGrShMm8fAc7XQULDRBT6ZL8+p4Y2uelGV+NGPD62Ns+HDHs7ZUrD1BKz2M6g8WklKrKACmE7Nol2m4x5eVVKwpVFOqX64ZxACllRofmm7Zk3TVubm2NixBi6AdDuqOiQz/5eFynjoljxy0eNeK9O2/7sFf6P5YvP2AePcjTuyNcMqAiSDMlx0+b1x4QJKR9u+j09PhLAtSwASIi7TfemKaBsbxyZelWmAEpAjomhBRWi3jsD+SJu7YTx6c/lGae8NaUC3+YSkoYKdz6ri9SH+YgtbWa06vNnv3tX59esXH98Xq59vGm3wBITY1Zu2bS+nUnb//DvLKyGkqpPzvPuUhMin7k4d6E0vUnnEt2FJVe2838r/F1j48BF76TvXFPFo53VpkqvZD8j/d08uuWS+r1lBLj7ukioevEKj77zrwrC6EMXAaEqVtIonhG9VJeHa9+Nk29ueuaVcf37StgjArfSfLzDRnbtuXYbXpxad07c76/bvDbN9/y39pat8FSRruYYbgIIVrEhq9eM3HTury77/6wsrKWMWogbuyTs8YrFWl99hZ12ZPyqTs9V7dDrYAgjbOnLhBOTSu+499leakpPsYydEjG5WmeJQT9rk4bODChVrpDPar9tWXkTCVs1Ff+2qgVJQRqhO5hmq7I0X2rpJj4ly927spnlBCCDetP7NmT/1P3sW/f1DVrJmdmPr7/wLRp0wYuXZL10JQvuNCFkHNm76ysdBpoUkp1XXTvEf/VV/etXXvqzjs/LC2tMhBXVZadU/ruf3dY46I9KYma1yRcgFMEVEitC4QzuucUm7OOqTaXqB1+Y3pqaqQQslG9y2bMmHFh75hzYTIpjjDzsqUHJbHysnJaXKL37wjCwAPQRKS+OcErRYswU0ps7uffLp7/w4EfCpZ8duDZ59d06dy8W7cknXNCzgUuExMj4hPChZBhYdahQ9PNKma9ujE1KbZr97jHpy1fsHDHDddnhIRaDdNdCJmaFpWWFv3yy5u3bMmz20llpXPJZ/sfm7ricFap+eFRnvQE1HGwwNokhICVsdIq+txCWljNmRoZrb7+n5vi4sMD8TUar20yHuC6PnLk/G/WnXCoIbpWy0d0dD89FhqgCQQeFZYCdqbmlohV2/nXWfAK1JZOntjrjbdu9T+iaToBpYxASsqoIbkerx4e9vi4sb3nfniH2+O9edScU6cq166bEh/vMKrGOBeKQp55ZsU//7nVRKjJjFqPjuTmpgdGeq/pAJcItHGZS1gp3F7r0+/R3QVMsVfrNVMm9Xn9zVGcy0DivIGIPJESiqr+85+DIhxmt+4lxMZWHTC/uphAgzkw2feNRVErtPhmcuIoumQ6W/u47a6Bb87e/PDUxZmZZ10u9+YtJx6c8PHZ4irDePSH0K1m1Wpx1Hk8UsJiNn04/26L1TRk8BtHjxQxRqQ08nHEEW4DpHp7r7pJI9WZ99G5j3uv7YC6pqBpp8TpsrywgO7Op9Tm1N1prUKfeOpaKQPNJgRefScJIS+99M1TT61zsFBdCogaPrKr+9FbYTLBxQPtGThXOwuohAidvbtS/3RrcvOQxOSw/ftKvZLu3jO5fYc4XeeUUsP+r3N6QkKnT5066LXXRrtcmtWq5uWVDR70thRs6fJ7OrSPE8CSxfumjP+0LiG25o2JMlyBC3BJcBmQABl2WQhjBcWmWUvpzlxCrVJCKNr8haNuva1H4IGFJpQzSik1TbvjjnnLlmU7lBBdSvBa0bOl9vgdenwEqrmvka1JfUQUxExMxws92w+jpFKNsMtle+69pdW7c8c2fHDWvzdOf3TJc8+P/tvfrvNrwX178q8b8j7xelKaR1RVaXkVpUhMJP+4yxMfA6cORgLtmuASFAijyv4889OLUFYFalMVWumtnPpQn9f+c0uTwjRNKLg1mLSwoPT6Gz7cv7/cwayaAJMuJT6k8qGb5OAOqAa8oomYShACC6EURECGQJ35lWfRikmThjw48armMfbyCteij3b//YW1qhoSJrSht7W9bminxITQ0grPss/3LP7ioLy6Pa8VoELtlyau78etJnhEoLFVCQgJG6UUZNk28+x1tE5IpiogVbxq9Oi2Hy+6y2Q2Nymn0NSScEkpOXqk6MYb557MqQtlZl0SLlywMvTv7Jk4XEbbUQdwDkKb0OblL6BXCeUeNnet9vGm2AhbQpLj7JnqvOJa5cY+ZFhXseYQ334IZeUWmNzQYLMqt/ST9w6BaoIENwN1AR+S/lYoE2heMZm92rTtEGBlVGEEVdx1Tb8Wn3xyV1x85BUsCW9YZr/z+1M3XD+vpMwbrlh0LiEF4BRJMdoDQ/R+HSRjqBMQTW9VkgAjxATTkVzPriyU1KC5w5SRpHdvLVQQHWqF05x92lnusoaZtKQYb4tIX0OYUe5NA9hFCXAORUEISK1bXf2DMm8LSqsoCQEko7SKO7t0iVq25L7klMiLyCNcfFvN3j1548Z9cvRYmYOG6JAgBNzLoLuvTuNjB/DOraAA1aJBT03g3EpgJZSBSEgCoQMeCS7AKBQCBYRCSkADNFnf0CADaoiSEpQgnJBqXdl2VP14HTl2FjCBqUQIRmkVrx04MOGD9+9ITmn2S5nnK9L4Zbws+0TxlIe+WLUqLwQ24gvsEV06mUVVrm7nHdHJ3a0DTPUrl7IJnYrnzcr/rV/6+4W7yowoskqggLiFsv57Zf1htjNLQgUxA4IR4hHCA/fYO9q99p8xzWLCDEH8DVoTXS7vpMmLP/pwvxRqmGrRdF0SCiEY6qTJJNoneEf11Lu3RZTd163k5b6uxSuatTeYkQsoFCqFCiJAimqUnfuVZXvIiUKAgtkgJIVUVaXc61IV+cQTV/3fs8NUVbmULtpLap71V7h98cWep59am3WixIowlRAOKSkjXCfQJbgMD9FGdUWPdnpqjGxmBwOq63n2XCb1cl0UUx9DMBGEgdYBRRXsaAF2HDatPAZ4AQKYwQi4YJR6BXejun372FmzRgwb1kEC8tJ6ki+9vdsXfMvLK505c+P8Dw5WO7UQWCmFMARUAhAcNarJpqfHels2UzIStF4Z0uGQJoDBl7mV9Qk+2fCyq0bFuf4+LEqMLjkwgANesLJSse0wOVZoOlmErGJAUNgJiP/eAyHghDvCYfrzA12mPzowprnDt7/kd3ABgV9/b92W+fST33z/XZ4mFBtMJpX5Ip6MgXPAK+FmMPEWDpHSQnSMk4nN9JYJMiaMmBWpMl//rHHgXPhiMQIovtMIEsSryTpOz5QouUXIP2PaWyiLKmRJpQQIzJKojBApBKVEYcytaS5oZpUPHpL67IzhPXsm+a2X39cVGf5o9vIv97399vfr1uXqXFdhtzEmjGA6pSAUnBOpCUgd0gy4qJBms9o6GhkJwhEqo6NERIiMtBFImFQZYhFEgPi8VeqVpM4DIYnLrdZ49Yo6WlmBojL1QJ52qkIX3CapB4YhQCU1+eKHUlIQSohT6DqcFot6003pEx/s3X9AuqG4zqtk+X1d4uIrXeJ8xcpDS5bs37bpdE5eOWC2QyX1aVN5ThtIAnBICU3xST6R1MyjLDp0oqqmEBsnXIAbcUyhAXVecN3k4bYqr8t3TRYFTIBiWE+oz1YZ1UNSQgB18AJ6m1YRAwYl3zymw9BhGYTQpmb/f7NrhhrOMvNY0derj7791vencss9ukpBAGKnqqKw+g4ASCllwztduJQQHJJAMoiGRiwHjGsiGCgI9WW1JSAlgTSKyAmhhBKPV/dA5+AALCrv3K3F+PG9BwxIbd26hT80cSVub7pSF2EZjUOM+crFNI0fPnx69eqDO3cU7T9YnJNTBuiACTApYBYYmbj6PgpANmys/zkVKqUkAAGhxDhniK6LOhi87AW8lNhSW4X36N7immuTBg9Jb5XajDHmb0j1T+x/7Kq2+srmc7EFIeTZovLlXx7PPlmanV2Wk11eWuYsKdQ8sg6ggAIoDMRcf50Y+bmDvV6U4YZm9OEDsBJLXKolKjokNSUyJTWia6e4/gNTo6PCaL23Y+zWla5b/TUvEzz/EjwpeElJTWlpzYns6uLi6ry8stzcsr17i09lubxcl1LUW2X1cySgRu0fqJkoChXp3SM7tG8Wn+homRwTGW5p2y4iOjo0MjLsl+7mwv9/110aPGske3+uQ0d6PLrulboQLrema8Lj0TwezevlxvMOh80oMrVZTZTCbFF+OoiU0DRuPPbr11H/they/ujll+VC1ksZ538e0IBjI/Kn9wUDIOR3OPHfK6AI3hIepCCgQUCDgAYBDVIQ0CCgQUCDFAQ0CGgQ0CAFAQ0CGgQ0SEFAg4AGAQ0CGqQgoEFAg4AGKTD6f++f4Rugf8QKAAAAAElFTkSuQmCC";   // embebido: se ve siempre, aunque falte el archivo en el servidor
-function mpBadge() {
+function mpBadge(pm) {
+  if (pm === "polar") return `<div class="plan-mp"><span class="l2-ibox">${ic("card")}</span><p><b>Suscripción en dólares</b><small>Pago con tarjeta. Cobro mensual automático. Cancelación en cualquier momento.</small></p></div>`;
   return `<div class="plan-mp"><img class="plan-mp-logo" src="${MP_LOGO}" alt="Mercado Pago" width="52" height="52"><p><b>Suscripción de Mercado Pago</b><small>Cobro mensual automático. Cancelación en cualquier momento.</small></p></div>`;
 }
 
@@ -192,21 +193,52 @@ async function landPlans() {
   const cfg = await loadPublicConfig();
   if (!document.getElementById("l2-plans-box")) return;
   if (cfg.trial_days) $("#l2-plans-sub").innerHTML += ` <b>${cfg.trial_days} días gratis</b> para probar.`;
-  box.innerHTML = cfg.plans.map((p) => `
+  const draw = () => {
+    const pm = payMethod(cfg);
+    box.innerHTML = payToggle(cfg) + cfg.plans.map((p) => `
     <article class="plan ${p.highlight ? "hl" : ""}">
       ${p.highlight ? `<span class="plan-tag">El más elegido</span>` : ""}
       <h3>${esc(p.name)}</h3>
       <p class="plan-tag-line">${esc(p.tagline)}</p>
-      <p class="plan-price"><b>${fmtARS(p.price_ars)}</b><span>por mes</span></p>
+      <p class="plan-price"><b>${priceOf(p, pm)}</b><span>por mes</span></p>
       <ul>${planFeatures(p).map((f) => `<li>${f}</li>`).join("")}</ul>
-      ${mpBadge()}
+      ${mpBadge(pm)}
       <button type="button" class="btn ${p.highlight ? "primary" : ""}" data-plan="${p.id}">Elegir ${esc(p.name)}</button>
-    </article>`).join("") + `<p class="small muted l2-plans-note">El pago se realiza con Mercado Pago y, una vez confirmado, el acceso a tu banda llega por correo. Los precios están en pesos argentinos e incluyen todo, sin cargos por canción. Si cancelas la suscripción, los datos de la banda se eliminan a las 48 horas. ¿Consultas? Escríbenos en Contacto.</p>`;
-  $$("[data-plan]", box).forEach((b) => b.addEventListener("click", () => openSignup(cfg.plans.find((p) => String(p.id) === b.dataset.plan))));
+    </article>`).join("") + `<p class="small muted l2-plans-note">${payNote(pm)} ¿Consultas? Escríbenos en Contacto.</p>`;
+    $$("[data-plan]", box).forEach((b) => b.addEventListener("click", () => openSignup(cfg.plans.find((p) => String(p.id) === b.dataset.plan))));
+    wirePay(box, cfg, draw);
+  };
+  draw();
 }
 
 /* ---------------------------------------------------------------- planes */
 const fmtARS = (n) => "$" + Number(n).toLocaleString(I18N.loc);
+const fmtUSD = (n) => "US$" + Number(n).toLocaleString(I18N.loc, { minimumFractionDigits: Number(n) % 1 ? 2 : 0 });
+const fmtMoney = (n, cur) => String(cur || "ARS").toUpperCase() === "USD" ? fmtUSD(n) : fmtARS(n);
+
+/* Argentina paga en pesos con Mercado Pago; el resto del mundo en dólares con Polar. Si se puede elegir, hay selector. */
+function payMethod(cfg) {
+  if (state.pay === "mp" && cfg.mp_enabled || state.pay === "polar" && cfg.polar_enabled) return state.pay;
+  const ar = cfg.country === "AR" || (!cfg.country && I18N.lang === "es");
+  let m = ar ? "mp" : "polar";
+  if (m === "polar" && !cfg.polar_enabled) m = "mp";
+  if (m === "mp" && !cfg.mp_enabled && cfg.polar_enabled) m = "polar";
+  return m;
+}
+const priceOf = (p, pm) => pm === "polar" && p.price_usd ? fmtUSD(p.price_usd) : fmtARS(p.price_ars);
+function payToggle(cfg) {
+  if (!(cfg.polar_enabled && cfg.mp_enabled)) return "";
+  const m = payMethod(cfg);
+  return `<div class="pay-toggle" role="group" aria-label="Forma de pago"><button type="button" data-pay="mp" aria-pressed="${m === "mp"}">Pesos (Mercado Pago)</button><button type="button" data-pay="polar" aria-pressed="${m === "polar"}">Dólares (tarjeta)</button></div>`;
+}
+function wirePay(root, cfg, redraw) {
+  $$("[data-pay]", root).forEach((b) => b.addEventListener("click", () => { state.pay = b.dataset.pay; redraw(); }));
+}
+function payNote(pm) {
+  return pm === "polar"
+    ? "El pago se realiza de forma segura con tarjeta a través de Polar y, una vez confirmado, el acceso a tu banda llega por correo. Los precios están en dólares estadounidenses e incluyen todo, sin cargos por canción (según tu país, el pago puede incluir impuestos locales). Si cancelas la suscripción, los datos de la banda se eliminan a las 48 horas."
+    : "El pago se realiza con Mercado Pago y, una vez confirmado, el acceso a tu banda llega por correo. Los precios están en pesos argentinos e incluyen todo, sin cargos por canción. Si cancelas la suscripción, los datos de la banda se eliminan a las 48 horas.";
+}
 
 async function loadPublicConfig() {
   if (!state.pub) { try { state.pub = await api("/public-config"); } catch { state.pub = { plans: [], trial_days: 14, turnstile_site_key: "", chat: false }; } }
@@ -226,23 +258,25 @@ async function openPlans() {
   openModal(`
     <div class="plans-wrap">
       <div class="st-modal-head"><h2>Un plan por banda, no por músico</h2><button type="button" class="icon-btn" id="pl-x" aria-label="Cerrar">✕</button></div>
-      <p class="muted" style="margin:0 0 1.1rem">Lo paga el administrador de la banda y lo usan todos los integrantes. Cobro mensual con Mercado Pago y cancelación en cualquier momento. ${cfg.trial_days ? `<b>${cfg.trial_days} días gratis</b> para probar.` : ""}</p>
+      <p class="muted" style="margin:0 0 1.1rem">Lo paga el administrador de la banda y lo usan todos los integrantes. Cobro mensual automático y cancelación en cualquier momento. ${cfg.trial_days ? `<b>${cfg.trial_days} días gratis</b> para probar.` : ""}</p>
+      ${payToggle(cfg)}
       <div class="plans">
         ${cfg.plans.map((p) => `
           <article class="plan ${p.highlight ? "hl" : ""}">
             ${p.highlight ? `<span class="plan-tag">El más elegido</span>` : ""}
             <h3>${esc(p.name)}</h3>
             <p class="plan-tag-line">${esc(p.tagline)}</p>
-            <p class="plan-price"><b>${fmtARS(p.price_ars)}</b><span>por mes</span></p>
+            <p class="plan-price"><b>${priceOf(p, payMethod(cfg))}</b><span>por mes</span></p>
             <ul>${planFeatures(p).map((f) => `<li>${f}</li>`).join("")}</ul>
-            ${mpBadge()}
+            ${mpBadge(payMethod(cfg))}
             <button type="button" class="btn ${p.highlight ? "primary" : ""}" data-plan="${p.id}">Elegir ${esc(p.name)}</button>
           </article>`).join("")}
       </div>
-      <p class="small muted" style="margin:1rem 0 0">El pago se realiza con Mercado Pago y, una vez confirmado, el acceso a tu banda llega por correo. Los precios están en pesos argentinos e incluyen todo, sin cargos por canción. Si cancelas la suscripción, los datos de la banda se eliminan a las 48 horas.</p>
+      <p class="small muted" style="margin:1rem 0 0">${payNote(payMethod(cfg))}</p>
     </div>`, (m) => {
     m.classList.add("wide");
     $("#pl-x", m).addEventListener("click", closeModal);
+    wirePay(m, cfg, () => { closeModal(); openPlans(); });
     $$("[data-plan]", m).forEach((b) => b.addEventListener("click", () => openSignup(cfg.plans.find((p) => String(p.id) === b.dataset.plan))));
   });
   $("#modal").addEventListener("close", () => $("#modal").classList.remove("wide"), { once: true });
@@ -359,12 +393,13 @@ async function openSignup(plan) {
   if (!plan) return;
   const cfg = await loadPublicConfig();
   const trial = cfg.trial_days || 0;
+  const pm = payMethod(cfg);
   openModal(`
     <form id="sg" class="stack signup" novalidate>
       <div class="st-modal-head"><h2>Plan ${esc(plan.name)}</h2><button type="button" class="icon-btn" id="sg-x" aria-label="Cerrar">✕</button></div>
       <div class="sg-plan">
         <span class="l2-ibox">${ic("card")}</span>
-        <div class="sg-pt"><b>${fmtARS(plan.price_ars)} <small>por mes</small></b>
+        <div class="sg-pt"><b>${priceOf(plan, pm)} <small>por mes</small></b>
           <span>${trial ? `${trial} días gratis y después cobro mensual.` : "Cobro mensual."} Puedes cancelar en cualquier momento; al hacerlo, los datos de la banda se eliminan a las 48 horas.</span></div>
       </div>
       <ul class="sg-feat">${planFeatures(plan).map((f) => `<li><span class="sg-ck" aria-hidden="true">✓</span><span>${f}</span></li>`).join("")}</ul>
@@ -372,13 +407,13 @@ async function openSignup(plan) {
       <div class="field"><label for="sg-name">Tu nombre</label><input id="sg-name" type="text" maxlength="120" autocomplete="name" required></div>
       <div class="field"><label for="sg-email">Tu email</label><input id="sg-email" type="email" maxlength="255" autocomplete="email" inputmode="email" required>
         <small class="muted">Allí enviaremos la confirmación y tu clave de acceso.</small></div>
-      <details class="sg-other"><summary>Mi cuenta de Mercado Pago usa otro email</summary>
-        <div class="field"><label for="sg-payer">Email de tu cuenta de Mercado Pago</label><input id="sg-payer" type="email" maxlength="255" inputmode="email"></div></details>
+      ${pm === "polar" ? "" : `<details class="sg-other"><summary>Mi cuenta de Mercado Pago usa otro email</summary>
+        <div class="field"><label for="sg-payer">Email de tu cuenta de Mercado Pago</label><input id="sg-payer" type="email" maxlength="255" inputmode="email"></div></details>`}
       <div class="hp" aria-hidden="true"><label>No completar<input id="sg-web" type="text" tabindex="-1" autocomplete="off"></label></div>
       ${cfg.turnstile_site_key ? `<div id="sg-ts" class="ts-box"></div>` : ""}
       <p class="status error hidden" id="sg-err" role="alert"></p>
       <div class="row sg-actions"><button type="button" class="btn" id="sg-cancel">Cancelar</button><button class="btn primary" id="sg-go">Suscribirme y pagar</button></div>
-      <p class="small muted" style="margin:0">El pago se realiza en Mercado Pago, de forma segura. Al confirmarse, tu banda queda creada y recibirás el acceso por correo.</p>
+      <p class="small muted" style="margin:0">${pm === "polar" ? "El pago se realiza con tarjeta, de forma segura, a través de Polar. Al confirmarse, tu banda queda creada y recibirás el acceso por correo." : "El pago se realiza en Mercado Pago, de forma segura. Al confirmarse, tu banda queda creada y recibirás el acceso por correo."}</p>
     </form>`, (m) => {
     m.classList.add("wide");
     let token = "", widget = null;
@@ -394,7 +429,7 @@ async function openSignup(plan) {
       ev.preventDefault();
       const err = $("#sg-err", m); err.classList.add("hidden");
       const body = { plan_id: plan.id, band_name: $("#sg-band", m).value.trim(), name: $("#sg-name", m).value.trim(), email: $("#sg-email", m).value.trim(),
-        payer_email: $("#sg-payer", m).value.trim(), website: $("#sg-web", m).value, turnstile_token: token };
+        payer_email: pm === "polar" ? "" : $("#sg-payer", m).value.trim(), method: pm, website: $("#sg-web", m).value, turnstile_token: token };
       const bad = (t) => { err.textContent = t; err.classList.remove("hidden"); };
       if (body.band_name.length < 2) return bad("Indica el nombre de tu banda.");
       if (body.name.length < 2) return bad("Indica tu nombre.");
@@ -404,7 +439,7 @@ async function openSignup(plan) {
         try {
           const r = await api("/public/signup", { method: "POST", json: body });
           if (!r.init_point) return bad("No se pudo iniciar el pago. Inténtalo de nuevo.");
-          $("#sg-go", m).textContent = "Abriendo Mercado Pago…";
+          $("#sg-go", m).textContent = pm === "polar" ? "Abriendo el pago seguro…" : "Abriendo Mercado Pago…";
           location.href = r.init_point;
           await new Promise(() => {});   // la pagina se va a Mercado Pago
         } catch (e) {

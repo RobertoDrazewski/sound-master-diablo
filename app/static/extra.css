@@ -645,3 +645,12 @@ form.steps { padding-left: 0; grid-template-columns: minmax(0, 1fr); gap: 0; }
 
 .l2-nav .lang-menu { right: auto; left: 0; }
 @media (min-width: 900px) { .l2-nav .lang-menu { right: 0; left: auto; } }
+
+/* selector de moneda: pesos con Mercado Pago o dolares con tarjeta */
+.pay-toggle { display: inline-flex; gap: 2px; padding: 3px; margin: 0 0 1rem; border-radius: 999px; border: 1px solid var(--line, rgba(255,255,255,.14)); background: rgba(255,255,255,.04); max-width: 100%; }
+.pay-toggle button { appearance: none; border: 0; background: transparent; color: var(--muted); font: inherit; font-size: .85rem; padding: .45rem .9rem; border-radius: 999px; cursor: pointer; min-height: 38px; }
+.pay-toggle button[aria-pressed="true"] { background: var(--amber); color: #1a0d05; font-weight: 600; }
+.pay-toggle button:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+#l2-plans-box > .pay-toggle { grid-column: 1 / -1; justify-self: center; }
+.plan-mp .l2-ibox { width: 52px; height: 52px; border-radius: 12px; }
+@media (max-width: 420px) { .pay-toggle button { padding: .45rem .6rem; font-size: .8rem; } }

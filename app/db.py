@@ -94,6 +94,8 @@ class Band(Base):
     mp_status: Mapped[str | None] = mapped_column(String(20), nullable=True)               # pending | authorized | paused | cancelled
     mp_payer_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     purge_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)              # baja pedida: se borra todo en esta fecha
+    pay_provider: Mapped[str | None] = mapped_column(String(8), nullable=True)               # mp | polar
+    polar_subscription_id: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
 
 
 class Plan(Base):
@@ -112,6 +114,7 @@ class Plan(Base):
     sort: Mapped[int] = mapped_column(Integer, default=0)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     highlight: Mapped[bool] = mapped_column(Boolean, default=False)
+    price_usd: Mapped[int | None] = mapped_column(Integer, nullable=True)                    # precio mensual fuera de Argentina (Polar)
 
 
 class Payment(Base):
@@ -155,6 +158,8 @@ class Signup(Base):
     plan_id: Mapped[int] = mapped_column(Integer)
     base_url: Mapped[str] = mapped_column(String(200), default="")
     mp_preapproval_id: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
+    provider: Mapped[str] = mapped_column(String(8), default="mp", server_default="mp")   # mp | polar
+    polar_checkout_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
     status: Mapped[str] = mapped_column(String(12), default="pending", index=True)   # pending | done | expired
     band_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
@@ -396,3 +401,8 @@ def _migrate_sqlite():
         add(conn, "bands", "mp_status", "VARCHAR(20)")
         add(conn, "bands", "mp_payer_email", "VARCHAR(255)")
         add(conn, "bands", "purge_at", "DATETIME")
+        add(conn, "bands", "pay_provider", "VARCHAR(8)")
+        add(conn, "bands", "polar_subscription_id", "VARCHAR(80)")
+        add(conn, "plans", "price_usd", "INTEGER")
+        add(conn, "signups", "provider", "VARCHAR(8) NOT NULL DEFAULT 'mp'")
+        add(conn, "signups", "polar_checkout_id", "VARCHAR(80)")

@@ -67,6 +67,17 @@ PURGE_HOURS = int(os.getenv("PURGE_HOURS", "48"))  # horas entre la baja de una 
 PAST_DUE_GRACE_DAYS = int(os.getenv("PAST_DUE_GRACE_DAYS", "3"))  # dias de gracia despues de un pago vencido
 BILLING_CURRENCY = os.getenv("BILLING_CURRENCY", "ARS")
 
+# ------------------------------------------------------------------ suscripciones fuera de Argentina (Polar)
+# Mercado Pago cobra en pesos a Argentina; el resto del mundo paga en dolares con Polar (merchant of record).
+POLAR_ACCESS_TOKEN = os.getenv("POLAR_ACCESS_TOKEN", "")      # token de acceso de la organizacion (polar_oat_...)
+POLAR_WEBHOOK_SECRET = os.getenv("POLAR_WEBHOOK_SECRET", "")  # secreto del webhook de Polar
+POLAR_SERVER = os.getenv("POLAR_SERVER", "production")        # production | sandbox
+POLAR_API = "https://sandbox-api.polar.sh" if POLAR_SERVER == "sandbox" else "https://api.polar.sh"
+# plan -> id de producto en Polar (no son secretos). Se puede pisar con POLAR_PRODUCTS="garage=ID,estudio=ID,pro=ID"
+_POLAR_DEFAULT = ("garage=332f183c-3943-4e43-b5eb-c7c82c4d1f0f,estudio=c71c77d0-9a4a-4ce8-b016-cc56550d7001,"
+                  "pro=9c20f9ad-7fa0-4074-9eb8-4ca9f1b2bb93")
+POLAR_PRODUCTS = dict(p.split("=", 1) for p in os.getenv("POLAR_PRODUCTS", _POLAR_DEFAULT).split(",") if "=" in p)
+
 # ------------------------------------------------------------ contacto (mail + Cloudflare Turnstile)
 TURNSTILE_SITE_KEY = os.getenv("TURNSTILE_SITE_KEY", "")
 TURNSTILE_SECRET = os.getenv("TURNSTILE_SECRET", "")
