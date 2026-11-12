@@ -501,3 +501,6 @@ form.steps { padding-left: 0; grid-template-columns: minmax(0, 1fr); gap: 0; }
 :root { --l2h: min(100svh, 1000px); }
 .land2 { height: var(--l2h); }
 .l2-stage { height: var(--l2h); margin-bottom: calc(-1 * var(--l2h)); }
+.l2-by { margin: .2rem 0 .5rem; }
+.l2-by a { color: var(--amber, #f59a3c); font-weight: 600; text-decoration: none; }
+.l2-by a:hover { text-decoration: underline; }
