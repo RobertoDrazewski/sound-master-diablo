@@ -807,6 +807,7 @@ function trackCard(t, ctx) {
           <button class="btn primary" data-act="oneclick" data-id="${t.id}" ${hasAudio ? "" : "disabled"}>${ic("sliders")} Master en un clic</button></div>
         <button class="btn" data-act="assist" data-id="${t.id}" ${hasAudio ? "" : "disabled"}>${ic("spark")} Asistente</button>
         <button class="btn small" data-act="master" data-id="${t.id}" ${hasAudio ? "" : "disabled"}>${ic("sliders")} Estudio de master</button>
+        ${t.versions.filter((v) => v.kind === "stem" && v.status === "ready").length >= 2 ? `<button class="btn small" data-act="mixer" data-id="${t.id}" title="Silenciá una pista y tocá encima del resto">${ic("headphones")} Tocar encima</button>` : ""}
         ${albumSel}${moveSel}
       </div>
       <div id="as-${t.id}" hidden></div>
@@ -876,6 +877,7 @@ async function onTrackClick(ev) {
       case "report": return openMasterReport(id, btn.dataset.title);
       case "dl": return download(id, btn.dataset.fmt);
       case "master": return openMasterModal(id);
+      case "mixer": return openMixer(id);
       case "oneclick": return oneClick(id, btn);
       case "assist": return toggleAssist(id);
       case "ai-note": return askAiNote(id, btn);
