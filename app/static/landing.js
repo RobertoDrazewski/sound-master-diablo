@@ -125,7 +125,7 @@ function viewLanding() {
 
         <section class="l2-sec" id="l2-planes" aria-label="Planes">
           <h2 class="l2-h">Un plan por banda, no por músico</h2>
-          <p class="l2-sub" id="l2-plans-sub">Lo paga el administrador de la banda y lo usan todos los integrantes. Cobro mensual con Mercado Pago y cancelación en cualquier momento.</p>
+          <p class="l2-sub" id="l2-plans-sub">Lo paga el administrador de la banda y lo usan todos los integrantes. Cobro mensual automático y cancelación en cualquier momento.</p>
           <div class="plans l2-plans" id="l2-plans-box"><p class="muted">Cargando planes…</p></div>
         </section>
 
@@ -485,7 +485,7 @@ function viewThanks(token) {
       if (/no encontramos/i.test(e.message || "")) { $("#th-h").textContent = "No encontramos tu pedido"; $("#th-p").textContent = "Si ya realizaste el pago, escríbenos desde Contacto y lo resolveremos a la brevedad."; return; }
     }
     if (++tries < 20) setTimeout(poll, 4000);
-    else { $("#th-h").textContent = "Aún no vemos el pago"; $("#th-p").textContent = "Mercado Pago puede demorar unos minutos. Al confirmarse, recibirás por correo tu acceso. Si pasa mucho tiempo, escríbenos desde Contacto."; }
+    else { $("#th-h").textContent = "Aún no vemos el pago"; $("#th-p").textContent = "El procesador de pagos puede demorar unos minutos. Al confirmarse, recibirás por correo tu acceso. Si pasa mucho tiempo, escríbenos desde Contacto."; }
   };
   poll();
 }

@@ -48,8 +48,10 @@ def _call(method: str, path: str, body: dict | None = None) -> dict:
         raise PolarError("El cobro internacional todavía no está configurado (falta POLAR_ACCESS_TOKEN).")
     try:
         return http_json(method, config.POLAR_API + path, body=body,
-                         headers={"Authorization": f"Bearer {config.POLAR_ACCESS_TOKEN}"})
+                         headers={"Authorization": f"Bearer {config.POLAR_ACCESS_TOKEN}", "Accept": "application/json",
+                                  "User-Agent": "DiabloMasterMix/1.0 (+https://diablomastermix.com.ar)"})
     except HTTPFail as e:
+        log.warning("Polar %s %s -> %s %s (servidor %s)", method, path, e.status, e.message, config.POLAR_SERVER)
         raise PolarError(f"Polar respondió {e.status}: {e.message}", e.status) from e
 
 
