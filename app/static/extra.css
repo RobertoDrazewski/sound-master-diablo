@@ -496,3 +496,8 @@ form.steps { padding-left: 0; grid-template-columns: minmax(0, 1fr); gap: 0; }
 .seo-intro h1 { font-family: var(--display); font-size: 1.9rem; line-height: 1.1; color: var(--text, #f3ebe3); margin: 0 0 1rem; }
 .seo-intro ul { padding-left: 1.1rem; }
 .l2-trade { display: block; margin: .3rem 0; opacity: .75; }
+
+/* el buscador renderiza con una ventana altísima: sin tope, la portada de 100svh quedaba con el título a miles de px del tope */
+:root { --l2h: min(100svh, 1000px); }
+.land2 { height: var(--l2h); }
+.l2-stage { height: var(--l2h); margin-bottom: calc(-1 * var(--l2h)); }
