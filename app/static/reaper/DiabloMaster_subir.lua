@@ -154,6 +154,17 @@ local function main()
   local old_set = reaper.GetSetProjectInfo(proj, "RENDER_SETTINGS", 0, false)
   local old_bounds = reaper.GetSetProjectInfo(proj, "RENDER_BOUNDSFLAG", 0, false)
 
+  -- pistas separadas: Reaper solo renderiza las pistas seleccionadas, asi que se eligen solas
+  -- (las que tienen audio) y despues se devuelve la seleccion como estaba
+  local prev_sel = {}
+  if mode == "stems" then
+    for i = 0, reaper.CountTracks(proj) - 1 do
+      local tr = reaper.GetTrack(proj, i)
+      prev_sel[i] = reaper.IsTrackSelected(tr)
+      reaper.SetTrackSelected(tr, reaper.CountTrackMediaItems(tr) > 0)
+    end
+  end
+
   reaper.GetSetProjectInfo_String(proj, "RENDER_FILE", dir, true)
   if mode == "stems" then
     reaper.GetSetProjectInfo_String(proj, "RENDER_PATTERN", "$track", true)
@@ -171,6 +182,10 @@ local function main()
   reaper.GetSetProjectInfo_String(proj, "RENDER_PATTERN", old_pat, true)
   reaper.GetSetProjectInfo(proj, "RENDER_SETTINGS", old_set, true)
   reaper.GetSetProjectInfo(proj, "RENDER_BOUNDSFLAG", old_bounds, true)
+  for i, was in pairs(prev_sel) do
+    local tr = reaper.GetTrack(proj, i)
+    if tr then reaper.SetTrackSelected(tr, was) end
+  end
 
   -- juntar archivos renderizados (nombres seguros para curl)
   local files, i = {}, 0
