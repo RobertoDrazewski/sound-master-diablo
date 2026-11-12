@@ -1,4 +1,7 @@
 User-agent: *
+Allow: /admin.js
+Allow: /billing.js
+Allow: /chat.js
 Disallow: /admin
 Disallow: /albums
 Disallow: /auth
