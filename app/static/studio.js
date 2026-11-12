@@ -114,7 +114,7 @@ const ST_TONE = [
 
 /* Monta el estudio dentro de `box`. Devuelve { options(), valid() }. */
 function studioMount(box, cfg) {
-  const { genres, bandId, stems = [], hint = "" } = cfg;
+  const { genres, bandId, stems = [], hint = "", trackId = null } = cfg;
   const S = {
     how: cfg.reference ? "ref" : "genre",
     genre_id: defaultGenreId(genres),
@@ -125,6 +125,7 @@ function studioMount(box, cfg) {
     tone: { bass: 0, body: 0, presence: 0, air: 0 },
     auto_balance: true, drums_db: 0, bass_db: 0, voice_db: 0,
     gains: {},
+    offsets: {},
     family: null,
   };
   const gen = () => genres.find((g) => g.id === S.genre_id);
@@ -266,6 +267,59 @@ function studioMount(box, cfg) {
     }));
   }
 
+  // alinear pistas: mide si alguna suena corrida respecto de la batería y deja corregir un desfase fijo
+  let alAudio = null, alUrl = null;
+  const alStop = () => { if (alAudio) { alAudio.pause(); alAudio = null; } if (alUrl) { URL.revokeObjectURL(alUrl); alUrl = null; } $$("[data-al-play]", box).forEach((b) => b.classList.remove("on")); };
+  async function alPlay(btn, corrected) {
+    if (btn.classList.contains("on")) { alStop(); return; }
+    alStop();
+    btn.classList.add("on");
+    try {
+      const res = await fetch(`/tracks/${trackId}/stem-align/preview`, {
+        method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + session.token },
+        body: JSON.stringify({ offsets_ms: corrected ? S.offsets : {} }) });
+      if (!res.ok) throw new Error("No se pudo preparar la vista previa");
+      alUrl = URL.createObjectURL(await res.blob());
+      alAudio = new Audio(alUrl);
+      alAudio.addEventListener("ended", alStop);
+      await alAudio.play();
+    } catch (e) { alStop(); toast(e.message || "No se pudo reproducir", "err"); }
+  }
+  const alHow = (it) => {
+    if (it.reference) return "Es la referencia: las demás pistas se miden contra esta.";
+    if (it.confidence < 0.25) return "No se pudo medir con seguridad: no tiene golpes claros en común con la batería.";
+    const ms = Math.abs(it.late_ms);
+    if (ms < 3) return "Está alineada.";
+    return it.late_ms > 0 ? `Suena ${ms.toFixed(0)} ms tarde.` : `Suena ${ms.toFixed(0)} ms adelantada.`;
+  };
+  if (stems.length >= 2 && trackId) {
+    $("#st-stems", box).insertAdjacentHTML("beforeend", `<h5 class="st-sub">Alinear pistas</h5>
+      <p class="st-help">Si el bajo o una guitarra suenan corridos respecto de la batería (por ejemplo, por la latencia al grabar), se mide el desfase y se corrige. No cambia el tempo ni el groove del grupo.</p>
+      <div class="row"><button type="button" class="btn" id="al-measure">Medir desfase</button></div><div id="al-out"></div>`);
+    $("#al-measure", box).addEventListener("click", (ev) => withBusy(ev.currentTarget, async () => {
+      alStop();
+      try {
+        const r = await api(`/tracks/${trackId}/stem-align`);
+        S.offsets = {};
+        r.items.forEach((it) => { if (!it.reference && it.suggest) S.offsets[it.id] = Math.round(-it.late_ms * 10) / 10; });
+        const any = Object.keys(S.offsets).length > 0;
+        $("#al-out", box).innerHTML = `<div class="al-list">` + r.items.map((it) => `<div class="al-row">
+            <div class="al-name"><strong>${esc(it.label)}</strong><span class="muted small">${alHow(it)}</span></div>
+            ${it.reference ? "" : `<label class="al-fix">Corrección<input type="number" step="0.5" min="-150" max="150" data-al="${it.id}" value="${S.offsets[it.id] ?? 0}" aria-label="Corrección en milisegundos de ${esc(it.label)}"><span>ms</span></label>`}
+          </div>`).join("") + `</div>
+          <p class="st-help">${any ? "Ya dejé cargada la corrección sugerida. Podés ajustarla o ponerla en 0 para no tocar esa pista." : "No hace falta corregir nada. Si igual notás algo corrido, escribí a mano cuántos ms mover cada pista."}</p>
+          <div class="row"><button type="button" class="btn" data-al-play="0">Escuchar sin corregir</button><button type="button" class="btn" data-al-play="1">Escuchar corregido</button></div>
+          <p class="st-help">Son 30 segundos del medio del tema, al mismo volumen: se compara solo el tiempo. En el master se aplica la corrección.</p>`;
+        $$("[data-al]", box).forEach((inp) => inp.addEventListener("input", () => {
+          const v = Number(inp.value);
+          if (Number.isFinite(v) && v !== 0) S.offsets[inp.dataset.al] = Math.max(-150, Math.min(150, v)); else delete S.offsets[inp.dataset.al];
+          alStop();
+        }));
+        $$("[data-al-play]", box).forEach((b) => b.addEventListener("click", () => alPlay(b, b.dataset.alPlay === "1")));
+      } catch (e) { toast(e.message, "err"); }
+    }));
+  }
+
   box.addEventListener("click", (ev) => {
     const how = ev.target.closest("[data-how]");
     if (how) { S.how = how.dataset.how; paintHow(); cfg.onChange && cfg.onChange(); return; }
@@ -283,7 +337,7 @@ function studioMount(box, cfg) {
   });
   const reset = () => {
     S.lufsTouched = false; S.strengthTouched = false; S.strength = 0.55; S.power = 1; S.width = 1;
-    S.tone = { bass: 0, body: 0, presence: 0, air: 0 }; S.auto_balance = true; S.drums_db = S.bass_db = S.voice_db = 0; S.gains = {};
+    S.tone = { bass: 0, body: 0, presence: 0, air: 0 }; S.auto_balance = true; S.drums_db = S.bass_db = S.voice_db = 0; S.gains = {}; S.offsets = {}; alStop(); if ($("#al-out", box)) $("#al-out", box).innerHTML = "";
     const set = (id, v, f) => { $s(id).value = v; $s(id + "-o").textContent = f(v); };
     syncLufs(); set("power", 1, fmts.power); set("strength", 0.55, fmts.strength); set("width", 1, fmts.width);
     ST_TONE.forEach(([k]) => set("t-" + k, 0, stDb));
@@ -309,6 +363,7 @@ function studioMount(box, cfg) {
       if (S.how === "ref") o.genre_id = null;
       if (S.strengthTouched) o.strength = S.strength;
       if (Object.keys(S.gains).length) o.stem_gains = { ...S.gains };
+      if (Object.keys(S.offsets).length) o.stem_offsets_ms = { ...S.offsets };
       return o;
     },
   };
@@ -334,7 +389,7 @@ async function openMasterModal(trackId) {
         <button type="button" class="btn primary big" id="st-go">${ic("sliders")} Masterizar</button></div>
     </div>`, (m) => {
     m.classList.add("wide");
-    studio = studioMount($("#st-host", m), { genres, bandId: track.band_id ?? state.bandId, stems,
+    studio = studioMount($("#st-host", m), { genres, bandId: track.band_id ?? state.bandId, stems, trackId,
       onChange: () => { $("#st-go", m).disabled = !studio.valid(); } });
     $("#st-x", m).addEventListener("click", closeModal);
     $("#st-cancel", m).addEventListener("click", closeModal);

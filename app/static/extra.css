@@ -512,3 +512,11 @@ form.steps { padding-left: 0; grid-template-columns: minmax(0, 1fr); gap: 0; }
 .push-row .row { flex-wrap: wrap; }
 .push-row .ico-lg { width: 52px; height: 52px; border-radius: 14px; background: var(--surface-2); display: inline-flex; align-items: center; justify-content: center; color: var(--ember); }
 .push-row .ico-lg .i { width: 28px; height: 28px; }
+
+/* alinear pistas */
+.al-list { display: grid; gap: .6rem; margin: .7rem 0; }
+.al-row { display: flex; align-items: center; justify-content: space-between; gap: .8rem; flex-wrap: wrap; padding: .7rem .8rem; border: 1px solid var(--line-2); border-radius: 12px; }
+.al-name { display: grid; gap: .1rem; min-width: 0; flex: 1 1 180px; }
+.al-fix { display: flex; align-items: center; gap: .4rem; margin: 0; white-space: nowrap; }
+.al-fix input { width: 5.5rem; font-size: 16px; text-align: right; }
+[data-al-play].on { border-color: var(--ember); color: var(--ember); }

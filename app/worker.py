@@ -10,7 +10,7 @@ from pathlib import Path
 import numpy as np
 import soundfile as sf
 
-from . import audio, masterjob
+from . import align, audio, masterjob
 from .config import DATA_DIR
 from .notify import notify_band
 from .db import Genre, Job, Reference, SessionLocal, Track, Version, now
@@ -78,7 +78,7 @@ def _queue_master_after(db, version: Version, then: dict):
     db.commit()
 
 
-def _sum_stems(stems: list[Version], dst: Path, gains: dict | None = None):
+def _sum_stems(stems: list[Version], dst: Path, gains: dict | None = None, offsets_ms: dict | None = None):
     mix = None
     sr = None
     for v in stems:
@@ -87,6 +87,9 @@ def _sum_stems(stems: list[Version], dst: Path, gains: dict | None = None):
         if g:
             data = data * (10 ** (g / 20))
         sr = sr or rate
+        ms = (offsets_ms or {}).get(str(v.id), 0.0)       # corrección de desfase: + atrasa, − adelanta
+        if ms:
+            data = align.shift(data, int(round(ms * rate / 1000.0)))
         if mix is None:
             mix = data
         else:
@@ -104,7 +107,7 @@ def _sum_stems(stems: list[Version], dst: Path, gains: dict | None = None):
     sf.write(dst, mix, sr, subtype="PCM_24")
 
 
-def _pick_source(track: Track, tmp: Path, gains: dict | None = None) -> Path:
+def _pick_source(track: Track, tmp: Path, gains: dict | None = None, offsets_ms: dict | None = None) -> Path:
     ready = [v for v in track.versions if v.status == "ready"]
     mixes = [v for v in ready if v.kind == "mix"]
     if mixes:
@@ -112,7 +115,7 @@ def _pick_source(track: Track, tmp: Path, gains: dict | None = None) -> Path:
     stems = [v for v in ready if v.kind == "stem"]
     if stems:
         dst = tmp / "suma_stems.wav"
-        _sum_stems(stems, dst, gains)
+        _sum_stems(stems, dst, gains, offsets_ms)
         return dst
     raws = [v for v in ready if v.kind == "raw"]
     if raws:
@@ -129,7 +132,7 @@ def process_master(db, job: Job):
 
     with tempfile.TemporaryDirectory(dir=DATA_DIR / "tmp") as tmpdir:
         tmp = Path(tmpdir)
-        source = _pick_source(track, tmp, opts["stem_gains"])
+        source = _pick_source(track, tmp, opts["stem_gains"], opts.get("stem_offsets_ms"))
 
         reference = None
         ref_name = None

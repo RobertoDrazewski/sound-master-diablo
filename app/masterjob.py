@@ -29,6 +29,8 @@ def normalize(opts: dict) -> dict:
         "bass_db": _f(opts.get("bass_db"), -8, 6, 0.0),
         "voice_db": _f(opts.get("voice_db"), -8, 6, 0.0),
         "stem_gains": {str(k): _f(v, -18, 12, 0.0) for k, v in list(gains.items())[:60]},
+        "stem_offsets_ms": {str(k): round(_f(v, -150, 150, 0.0), 1)
+                            for k, v in list((opts.get("stem_offsets_ms") or {}).items())[:60] if _f(v, -150, 150, 0.0)},
     }
 
 

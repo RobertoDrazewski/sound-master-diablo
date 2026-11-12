@@ -2,6 +2,8 @@ import io
 import json
 import re
 import shutil
+import tempfile
+import threading
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
@@ -14,7 +16,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from . import analysis, assistant, audio, billing, chat, covers, genres, mail, masterjob, purge, push, release
+from . import align, analysis, assistant, audio, billing, chat, covers, genres, mail, masterjob, purge, push, release
 from .config import (ASSISTANT_DAILY_LIMIT, COVER_AI_DAILY_LIMIT, PUBLIC_URL, BAND_QUOTA_GB, CORS_ORIGINS, DATA_DIR,
                      INVITE_TTL_DAYS, MAX_UPLOAD_MB, RAW_RETENTION_DAYS,
                      REFERENCE_SECONDS, SUPERADMIN_EMAIL, SUPERADMIN_PASSWORD, CHAT_ENABLED, TRIAL_DAYS,
@@ -206,6 +208,7 @@ class MasterIn(BaseModel):
     drums_db: float | None = Field(default=None, ge=-8, le=6)
     bass_db: float | None = Field(default=None, ge=-8, le=6)
     voice_db: float | None = Field(default=None, ge=-8, le=6)
+    stem_offsets_ms: dict | None = None                            # {version_id: ms} corrección de desfase por pista
     stem_gains: dict | None = None                                 # {version_id: dB} para temas con pistas separadas
     separate_stems: bool = False                                   # ignorado (se conserva por compatibilidad)
 
@@ -1700,6 +1703,80 @@ def push_test(user: User = Depends(current_user), db: Session = Depends(get_db))
     if not n:
         raise HTTPException(502, "No pudimos enviar el aviso. Desactivá y volvé a activar los avisos, y probá de nuevo.")
     return {"sent": n}
+
+
+# ------------------------------------------------------ alinear pistas (desfase)
+
+_align_slots = threading.BoundedSemaphore(2)       # análisis y vistas previas son CPU: de a dos como máximo
+
+
+def _ready_stems(db: Session, user: User, track_id: int) -> list[Version]:
+    track = _track_for(db, user, track_id)
+    stems = [v for v in track.versions if v.kind == "stem" and v.status == "ready" and v.flac_path]
+    if len(stems) < 2:
+        raise HTTPException(422, "Hacen falta al menos dos pistas separadas para alinear")
+    return stems
+
+
+@app.get("/tracks/{track_id}/stem-align")
+def stem_align(track_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    stems = _ready_stems(db, user, track_id)
+    if not _align_slots.acquire(timeout=20):
+        raise HTTPException(429, "Hay otros análisis en curso. Probá en un momento.")
+    try:
+        res = align.measure([(v.id, v.label or f"Pista {v.id}", v.flac_path) for v in stems])
+    except Exception:
+        raise HTTPException(422, "No se pudo medir el desfase de estas pistas") from None
+    finally:
+        _align_slots.release()
+    for it in res["items"]:
+        it["late_ms"] = float(it["late_ms"])
+    return res
+
+
+class AlignPreviewIn(BaseModel):
+    offsets_ms: dict | None = None                   # {version_id: ms}; vacío = sin corregir
+
+
+@app.post("/tracks/{track_id}/stem-align/preview")
+def stem_align_preview(track_id: int, body: AlignPreviewIn, user: User = Depends(current_user),
+                       db: Session = Depends(get_db)):
+    """30 s de la mezcla de las pistas, con o sin la corrección, para comparar de oído."""
+    stems = _ready_stems(db, user, track_id)
+    offs = {str(k): float(min(max(float(v), -150), 150)) for k, v in (body.offsets_ms or {}).items()}
+    if not _align_slots.acquire(timeout=20):
+        raise HTTPException(429, "Hay otros análisis en curso. Probá en un momento.")
+    tmp = Path(tempfile.mkdtemp(dir=DATA_DIR / "tmp"))
+    try:
+        import numpy as np
+        import soundfile as sf
+        mix = None
+        sr = 44100
+        for v in stems:
+            info = sf.info(v.flac_path)
+            n, sr = int(30 * info.samplerate), info.samplerate
+            data, _ = sf.read(v.flac_path, start=max(0, (info.frames - n) // 2), frames=n, always_2d=True)
+            ms = offs.get(str(v.id), 0.0)
+            if ms:
+                data = align.shift(data, int(round(ms * sr / 1000.0)))
+            if data.shape[1] == 1:
+                data = np.repeat(data, 2, axis=1)
+            if mix is None:
+                mix = data
+            else:
+                big = max(len(mix), len(data))
+                mix = np.pad(mix, ((0, big - len(mix)), (0, 0))) + np.pad(data, ((0, big - len(data)), (0, 0)))
+        peak = float(np.max(np.abs(mix))) or 1.0
+        mix = mix * (0.9 / peak)                      # mismo nivel en las dos versiones: se compara el tiempo, no el volumen
+        wav, out = tmp / "p.wav", tmp / "p.mp3"
+        sf.write(wav, mix, sr, subtype="PCM_16")
+        audio.convert(wav, out, "mp3")
+        return Response(out.read_bytes(), media_type="audio/mpeg", headers={"Cache-Control": "no-store"})
+    except audio.AudioError:
+        raise HTTPException(500, "No se pudo preparar la vista previa") from None
+    finally:
+        _align_slots.release()
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 # --------------------------------------------------------- bandas: foto y ficha
