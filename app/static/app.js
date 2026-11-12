@@ -286,6 +286,7 @@ const TOOLS = [
   ["ensayos", "Ensayos", "mic", "Grabá y guardá los ensayos"],
   ["produccion", "Producción", "music", "Trabajá tus temas antes del master"],
   ["master", "Master", "sliders", "Dejá el tema listo para publicar"],
+  ["practica", "Practicá en casa", "headphones", "Silenciá tu instrumento y tocá encima del tema"],
   ["albumes", "Álbumes", "disc", "Armá el disco con su tapa"],
   ["lanzamiento", "Lanzamiento", "rocket", "Todo listo para Spotify, Bandcamp o vinilo"],
   ["calendario", "Calendario", "calendar", "Ensayos y shows con aviso"],
@@ -349,7 +350,7 @@ function renderShell(active) {
   const tb = $("#tabbar");
   if (cb) {
     tb.innerHTML = TOOLS.slice(0, 5).map(([k, l, i]) =>
-      `<a href="#/band/${cb.id}/${k}" class="${active.bandId != null && String(active.bandId) === String(cb.id) && active.tool === k ? "on" : ""}" aria-label="${l}">${ic(i)}<span>${l}</span></a>`).join("");
+      `<a href="#/band/${cb.id}/${k}" class="${active.bandId != null && String(active.bandId) === String(cb.id) && active.tool === k ? "on" : ""}" aria-label="${l}">${ic(i)}<span>${k === "practica" ? "Practicá" : l}</span></a>`).join("");
     tb.hidden = false;
   } else { tb.hidden = true; tb.innerHTML = ""; }
   document.body.classList.toggle("has-tabbar", !!cb);
@@ -717,6 +718,7 @@ async function bandTool(band, tool, query, nav) {
     case "ensayos": return await viewEnsayos(band, nav);
     case "produccion": return await viewProduccion(band, nav);
     case "master": return await viewMaster(band, nav);
+    case "practica": return await viewPractica(band, nav);
     case "albumes": return await viewAlbums(band, nav);
     case "lanzamiento": return await viewRelease(band, nav);
     case "calendario": return await viewCalendar(band, nav);
@@ -815,7 +817,7 @@ function trackCard(t, ctx) {
           <button class="btn primary" data-act="oneclick" data-id="${t.id}" ${hasAudio ? "" : "disabled"}>${ic("sliders")} Master en un clic</button></div>
         <button class="btn" data-act="assist" data-id="${t.id}" ${hasAudio ? "" : "disabled"}>${ic("spark")} Asistente</button>
         <button class="btn small" data-act="master" data-id="${t.id}" ${hasAudio ? "" : "disabled"}>${ic("sliders")} Estudio de master</button>
-        ${t.versions.filter((v) => v.kind === "stem" && v.status === "ready").length >= 2 ? `<button class="btn small" data-act="mixer" data-id="${t.id}" title="Silenciá una pista y tocá encima del resto">${ic("headphones")} Tocar encima</button>` : ""}
+        ${t.versions.filter((v) => v.kind === "stem" && v.status === "ready").length >= 2 ? `<button class="btn small" data-act="mixer" data-id="${t.id}" title="Silenciá tu pista y tocá encima del resto">${ic("headphones")} Practicá en casa</button>` : ""}
         ${albumSel}${moveSel}
       </div>
       <div id="as-${t.id}" hidden></div>
@@ -1288,6 +1290,29 @@ function setupRecorder(band, nav, onSaved, cfg) {
 }
 
 /* ===================== MASTER ===================== */
+/* ---------- Practicá en casa: temas con pistas separadas, para silenciar un instrumento y tocar encima ---------- */
+async function viewPractica(band, nav) {
+  const data = await api(`/bands/${band.id}/tracks`);
+  if (nav !== state.nav) return;
+  const ready = (t) => t.versions.filter((v) => v.kind === "stem" && v.status === "ready");
+  const list = data.tracks.filter((t) => ready(t).length >= 2);
+  state.tracks = new Map(list.map((t) => [t.id, t]));
+  const sec = { ensayo: "Ensayos", produccion: "Producción", master: "Master" };
+  setApp(`
+    ${bandHead(band, "Practicá en casa", "Elegí un tema grabado por pistas, silenciá tu instrumento y tocá encima del resto de la banda.")}
+    ${list.length ? `<div class="stack">${list.map((t) => `
+      <article class="card prac-row">
+        <span class="prac-ico">${ic("headphones")}</span>
+        <div class="grow"><h3 style="margin:0">${esc(t.title)}</h3>
+          <p class="muted small" style="margin:.15rem 0 0">${ready(t).length} pistas · ${esc(sec[t.section] || "")}</p></div>
+        <button class="btn primary" data-prac="${t.id}">Practicar</button>
+      </article>`).join("")}</div>`
+    : `<div class="card empty">${ic("headphones")}Todavía no grabaste ninguna canción con pistas.<br>
+        <span class="small muted">Subí un tema en <a href="#/band/${band.id}/produccion">Producción</a> con la opción “Pistas separadas”, o exportalo desde Reaper, y va a aparecer acá.</span></div>`}`);
+  wireBandHead(band);
+  $$("[data-prac]").forEach((b) => b.addEventListener("click", () => openMixer(Number(b.dataset.prac))));
+}
+
 async function viewMaster(band, nav) {
   const [genres, data, alb] = await Promise.all([
     getGenres(), api(`/bands/${band.id}/tracks?section=master`), api(`/bands/${band.id}/albums`)]);

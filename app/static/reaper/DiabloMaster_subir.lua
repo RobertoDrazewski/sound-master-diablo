@@ -118,9 +118,17 @@ local function main()
     return
   end
 
+  -- si el proyecto tiene varias pistas con audio, sugerir subir por pistas
+  local with_audio = 0
+  for ti = 0, reaper.CountTracks(proj) - 1 do
+    local t0 = reaper.GetTrack(proj, ti)
+    if t0 and reaper.CountTrackMediaItems(t0) > 0 then with_audio = with_audio + 1 end
+  end
+  local def_what = with_audio > 1 and "pistas" or "cancion"
+
   local ok, vals = reaper.GetUserInputs("Diablo Master - subir a " .. get("band_name"), 4,
     "Nombre del tema o ensayo,Que subir (cancion / pistas),Donde (ensayo / produccion / master),Cambiar (no / banda / conexion),extrawidth=220",
-    pname .. ",cancion," .. (get("section") ~= "" and get("section") or "ensayo") .. ",no")
+    pname .. "," .. def_what .. "," .. (get("section") ~= "" and get("section") or "ensayo") .. ",no")
   if not ok then return end
   local title, what, where, reconf = vals:match("^(.-),(.-),(.-),(.*)$")
   title = clean(title)
@@ -154,6 +162,17 @@ local function main()
   local old_set = reaper.GetSetProjectInfo(proj, "RENDER_SETTINGS", 0, false)
   local old_bounds = reaper.GetSetProjectInfo(proj, "RENDER_BOUNDSFLAG", 0, false)
 
+  -- pistas separadas: Reaper solo renderiza las pistas seleccionadas, asi que se eligen solas
+  -- (las que tienen audio) y despues se devuelve la seleccion como estaba
+  local prev_sel = {}
+  if mode == "stems" then
+    for i = 0, reaper.CountTracks(proj) - 1 do
+      local tr = reaper.GetTrack(proj, i)
+      prev_sel[i] = reaper.IsTrackSelected(tr)
+      reaper.SetTrackSelected(tr, reaper.CountTrackMediaItems(tr) > 0)
+    end
+  end
+
   reaper.GetSetProjectInfo_String(proj, "RENDER_FILE", dir, true)
   if mode == "stems" then
     reaper.GetSetProjectInfo_String(proj, "RENDER_PATTERN", "$track", true)
@@ -171,6 +190,10 @@ local function main()
   reaper.GetSetProjectInfo_String(proj, "RENDER_PATTERN", old_pat, true)
   reaper.GetSetProjectInfo(proj, "RENDER_SETTINGS", old_set, true)
   reaper.GetSetProjectInfo(proj, "RENDER_BOUNDSFLAG", old_bounds, true)
+  for i, was in pairs(prev_sel) do
+    local tr = reaper.GetTrack(proj, i)
+    if tr then reaper.SetTrackSelected(tr, was) end
+  end
 
   -- juntar archivos renderizados (nombres seguros para curl)
   local files, i = {}, 0
