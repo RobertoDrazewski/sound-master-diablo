@@ -1,4 +1,4 @@
-/* Tocar encima: mesa con las pistas separadas de un tema. Silenciás (M), dejás sola (S) o bajás cada pista
+/* Practicá en casa: mesa con las pistas separadas de un tema. Silenciás (M), dejás sola (S) o bajás cada pista
    y tocás arriba del resto. Todas las pistas arrancan en el mismo instante, así que no se corren entre sí.
    En el celular es una lista simple; en pantallas grandes cada pista muestra su onda, como en Reaper.
    Define openMixer(trackId). Se carga antes que app.js. */
@@ -61,7 +61,7 @@ async function openMixer(trackId) {
   let stop = () => {};
   openModal(`
     <div class="mx">
-      <div class="st-modal-head"><h2>Tocar encima · ${esc(track.title)}</h2>
+      <div class="st-modal-head"><h2>Practicá en casa · ${esc(track.title)}</h2>
         <button type="button" class="icon-btn" id="mx-x" aria-label="Cerrar">✕</button></div>
       <div id="mx-body"><p class="muted">Preparando las pistas…</p></div>
     </div>`, (m) => {
