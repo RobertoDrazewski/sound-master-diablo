@@ -448,6 +448,7 @@ code { padding: .1rem .35rem; border-radius: 5px; background: var(--surface-2); 
 .upl { padding: .75rem .9rem; border: 1px solid rgba(255, 140, 40, .35); border-radius: 12px; background: rgba(255, 120, 30, .06); }
 .upl-top { display: flex; align-items: center; gap: .55rem; margin-bottom: .5rem; font-size: .9rem; }
 .upl-t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.upl-x { margin-left: .4rem; padding: .25rem .7rem; min-height: 0; }
 .upl-pct { font-weight: 700; color: var(--amber); font-variant-numeric: tabular-nums; }
 .upl .progress { height: 12px; }
 .upl .progress > i { box-shadow: 0 0 12px rgba(255, 110, 20, .8); }

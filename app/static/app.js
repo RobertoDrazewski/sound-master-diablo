@@ -132,9 +132,16 @@ async function api(path, { method = "GET", json, form } = {}) {
   }
   return data;
 }
+// Cancelar subida: corta el envio en curso y no deja seguir con las partes que faltan.
+let upXhr = null, upCancel = false;
+const cancelErr = () => Object.assign(new ApiError("Subida cancelada", 0), { cancelled: true });
+function cancelUpload() { upCancel = true; if (upXhr) upXhr.abort(); }
+document.addEventListener("click", (e) => { if (e.target.closest("[data-upl-cancel]")) cancelUpload(); });
 function uploadWithProgress(url, form, onProgress, method = "POST") {
   return new Promise((resolve, reject) => {
+    if (upCancel) return reject(cancelErr());
     const xhr = new XMLHttpRequest();
+    upXhr = xhr;
     xhr.open(method, url);
     if (session.token) xhr.setRequestHeader("Authorization", "Bearer " + session.token);
     xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded / e.total); };
@@ -148,6 +155,7 @@ function uploadWithProgress(url, form, onProgress, method = "POST") {
       }
     };
     xhr.onerror = () => reject(new ApiError("Se cortó la conexión mientras subía", 0));
+    xhr.onabort = () => reject(cancelErr());
     xhr.send(form);
   });
 }
@@ -161,7 +169,7 @@ async function chunkUpload(file, onProgress) {
     let ok = false, last = null;
     for (let t = 0; t < 3 && !ok; t++) {
       try { await uploadWithProgress(`/uploads/${uid}/${i}`, blob, (p) => onProgress((i + p) / parts), "PUT"); ok = true; }
-      catch (e) { last = e; if (e.status && e.status < 500) throw e; }
+      catch (e) { last = e; if (e.cancelled || (e.status && e.status < 500)) throw e; }
     }
     if (!ok) throw last;
   }
@@ -171,7 +179,7 @@ async function chunkUpload(file, onProgress) {
 const fmtMB = (b) => { const m = b / 1048576; return (m >= 100 ? m.toFixed(0) : m.toFixed(1)).replace(".", ",") + " MB"; };
 function uplHtml(id, extra = "") {
   return `<div class="upl hidden" id="${id}" ${extra} role="progressbar" aria-label="Progreso de la subida" aria-valuemin="0" aria-valuemax="100">
-    <div class="upl-top"><span class="glow-ico">${ic("flame")}</span><span class="upl-t">Preparando…</span><span class="upl-pct">0%</span></div>
+    <div class="upl-top"><span class="glow-ico">${ic("flame")}</span><span class="upl-t">Preparando…</span><span class="upl-pct">0%</span><button type="button" class="btn small upl-x" data-upl-cancel>Cancelar</button></div>
     <div class="progress"><i></i></div></div>`;
 }
 // label: texto corto (ej. "maldita_2"); loaded/total en bytes
@@ -1107,6 +1115,7 @@ async function viewRecordSection(band, nav, cfg) {
     if (mode() === "stems" && !title) { toast("Poné el nombre del tema para agrupar las pistas.", "err"); $("#title").focus(); return; }
     const session = $("#sess").value.trim();
     const prog = $("#prog"), bar = $("i", prog);
+    upCancel = false;
     send.disabled = true; prog.classList.remove("hidden");
     const jobs = multi()
       ? files.map((f, i) => ({ title: ($(`#nm${i}`).value.trim() || baseName(f)), mode: cfg.section === "ensayo" ? "mix" : "mix", files: [f] }))
@@ -1126,7 +1135,8 @@ async function viewRecordSection(band, nav, cfg) {
       send.textContent = "Subir";
       await run();
     } catch (e) {
-      toast(`${done ? `Subí ${done} de ${jobs.length}. ` : ""}${e.message}`, "err");
+      toast(`${done ? `Subí ${done} de ${jobs.length}. ` : ""}${e.message}`, e.cancelled ? "" : "err");
+      send.textContent = "Subir";
       files = files.slice(done); take(files);
       if (done) await run();
     }
@@ -1356,6 +1366,7 @@ async function viewMaster(band, nav) {
     if (mode() === "mix" && $("#auto").checked) fd.append("master_options", JSON.stringify(studio.options()));
     files.forEach((f) => fd.append("files", f));
     const prog = $("#prog"), bar = $("i", prog);
+    upCancel = false;
     send.disabled = true; prog.classList.remove("hidden");
     try {
       const tb = files.reduce((n, f) => n + f.size, 0);
@@ -1364,7 +1375,7 @@ async function viewMaster(band, nav) {
       toast(mode() === "mix" && $("#auto").checked ? "Subido. Se está masterizando, aparece abajo." : "Subido. Aparece abajo.", "ok");
       files = []; $("#file").value = ""; $("#title").value = ""; picked.textContent = ""; sync();
       await run();
-    } catch (e) { toast(e.message, "err"); sync(); }
+    } catch (e) { toast(e.message, e.cancelled ? "" : "err"); sync(); }
     finally { prog.classList.add("hidden"); bar.style.width = "0"; }
   });
 }
