@@ -561,3 +561,57 @@ form.steps { padding-left: 0; grid-template-columns: minmax(0, 1fr); gap: 0; }
 .prac-ico { flex: none; width: 46px; height: 46px; display: grid; place-items: center; border-radius: 12px; background: rgba(255, 120, 30, .1); color: var(--amber); }
 .prac-ico svg { width: 24px; height: 24px; }
 .prac-row .btn { flex: none; }
+
+
+/* ---- portada: 8 herramientas en dos filas de 4, recorrido de 5 pasos y brillo al pasar el mouse ---- */
+.l2-steps li:last-child:nth-child(odd) { grid-column: span 2; }
+@media (min-width: 640px) {
+  .l2-steps { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .l2-steps li:last-child:nth-child(odd) { grid-column: auto; }
+  .l2-steps li { flex-direction: column; align-items: flex-start; }
+}
+#l2-features { max-width: 1380px; }
+@media (min-width: 1100px) { .l2-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1.1rem; } }
+.l2-grid .l2-body { padding: 1rem 1rem 1.1rem; }
+.l2-grid .l2-hd { gap: .7rem; margin-bottom: .8rem; }
+.l2-grid .l2-ibox { width: 44px; height: 44px; border-radius: 13px; } .l2-grid .l2-ibox .i { width: 24px; height: 24px; }
+.l2-grid .l2-body h3 { font-size: 1.75rem; }
+.l2-grid .l2-lead { font-size: .95rem; }
+.l2-grid .l2-list { gap: .4rem; } .l2-grid .l2-list li { font-size: .88rem; }
+/* menos brillo fijo y un efecto claro al pasar el mouse */
+.l2-grid .l2-card.in { border-color: var(--line-2); box-shadow: none; }
+.l2-card { transition: border-color .35s, box-shadow .35s, transform .35s cubic-bezier(.2, .8, .2, 1); }
+.l2-pic { overflow: hidden; }
+.l2-pic { transition: filter .5s; }
+.l2-card:hover { transform: translateY(-6px); border-color: rgba(255, 130, 45, .95);
+  box-shadow: 0 0 0 1px rgba(255, 150, 60, .55), 0 0 34px -4px rgba(255, 100, 30, .75), 0 22px 46px -18px rgba(255, 90, 31, .7); }
+.l2-card:hover::before { background: radial-gradient(320px circle at var(--mx) var(--my), rgba(255, 130, 40, .3), transparent 70%); }
+.l2-card:hover .l2-pic { filter: brightness(1.18) saturate(1.12); }
+.l2-card:hover .l2-ibox { box-shadow: 0 0 30px 0 rgba(255, 110, 30, .95); border-color: rgba(255, 150, 60, .95); }
+.l2-steps li { transition: border-color .3s, box-shadow .3s, transform .3s; }
+.l2-steps li:hover { transform: translateY(-3px); border-color: rgba(255, 130, 45, .9); box-shadow: 0 0 26px -4px rgba(255, 100, 30, .7); }
+@media (prefers-reduced-motion: reduce) { .l2-card:hover, .l2-steps li:hover { transform: none; } }
+
+
+/* ---- simetría: todas las secciones comparten el mismo ancho; el formulario mide lo mismo que los planes ---- */
+.l2-sec, #l2-features { max-width: 1240px; }
+.l2-plans { max-width: none; }
+.l2-contact { max-width: 1240px; }
+.l2-sec .l2-h { text-align: center; margin-left: auto; margin-right: auto; }
+.l2-grid .l2-card .l2-body { flex: 1; }
+.l2-steps li { min-height: 100%; }
+@media (min-width: 640px) { .l2-steps li { padding: 1.1rem 1rem; gap: .7rem; } .l2-st small { min-height: 2.6em; } }
+/* contacto: texto a la izquierda y campos a la derecha, en el mismo ancho que los planes */
+.l2-form { padding: 1.2rem 1.1rem; }
+.l2-cwrap { display: grid; gap: 1.6rem; }
+.l2-cinfo h3 { margin: 0; font: 800 2.2rem/1 var(--display); letter-spacing: .01em; }
+.l2-cpts { list-style: none; margin: 1.3rem 0 0; padding: 0; display: grid; gap: .9rem; }
+.l2-cpts li { display: flex; align-items: center; gap: .85rem; }
+.l2-cpts .l2-ibox { width: 44px; height: 44px; border-radius: 13px; } .l2-cpts .l2-ibox .i { width: 24px; height: 24px; }
+.l2-cpts span:last-child { display: grid; gap: .1rem; min-width: 0; }
+.l2-cpts b { font: 800 1.25rem/1 var(--display); letter-spacing: .02em; } .l2-cpts small { color: var(--muted); font-size: .88rem; line-height: 1.35; }
+@media (min-width: 900px) {
+  .l2-form { padding: 2rem; }
+  .l2-cwrap { grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 2.6rem; align-items: center; }
+  .l2-cinfo { padding-top: .3rem; } .l2-cinfo h3 { font-size: 2.8rem; }
+}
