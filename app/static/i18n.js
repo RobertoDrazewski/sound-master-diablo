@@ -69,7 +69,9 @@
         if (lits < 2) continue;
         const re = new RegExp("^" + parts.map(esc).join("(.+?)") + "$", "s");
         // con pocas letras fijas ("{0} de {1}") solo se aplica si los datos llevan números, para no tocar nombres de bandas o temas
-        pats.push({ re, to: d[k], n: lits, nums: lits < 5 });
+        // los {n} de la clave pueden no ser consecutivos ("Elegir {3}"): se guarda su orden para ubicar cada dato
+        const order = [...k.matchAll(/\{(\d+)\}/g)].map((x) => x[1]);
+        pats.push({ re, to: d[k], n: lits, nums: lits < 5, order });
       } else {
         exact.set(k, d[k]);
         if (k.length >= 5) subs.push(k);
@@ -78,7 +80,10 @@
     pats.sort((a, b) => b.n - a.n);
     subs.sort((a, b) => b.length - a.length);
   }
-  const fill = (to, m) => to.replace(/\{(\d+)\}/g, (_, i) => (m[Number(i) + 1] != null ? tr(m[Number(i) + 1], true) : ""));
+  const fill = (to, m, order = []) => to.replace(/\{(\d+)\}/g, (_, i) => {
+    const pos = order.indexOf(i), v = m[(pos >= 0 ? pos : Number(i)) + 1];
+    return v != null ? tr(v, true) : "";
+  });
   function tr(text, inner) {
     if (!exact || !text) return text;
     const lead = text.match(/^\s*/)[0], tail = text.match(/\s*$/)[0];
@@ -87,7 +92,7 @@
     let r = cache.get(core);
     if (r === undefined) {
       r = exact.get(core);
-      if (r === undefined) for (const p of pats) { const m = core.match(p.re); if (m && (!p.nums || m.slice(1).every((x) => /\d/.test(x)))) { r = fill(p.to, m); break; } }
+      if (r === undefined) for (const p of pats) { const m = core.match(p.re); if (m && (!p.nums || m.slice(1).every((x) => /\d/.test(x)))) { r = fill(p.to, m, p.order); break; } }
       if (r === undefined && !inner) {
         // frases armadas con varias piezas: se traducen las partes conocidas
         let out = core, hit = false;
