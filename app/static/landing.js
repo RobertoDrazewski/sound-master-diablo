@@ -208,7 +208,7 @@ async function landPlans() {
       <ul>${planFeatures(p).map((f) => `<li>${f}</li>`).join("")}</ul>
       ${mpBadge(pm)}
       <button type="button" class="btn ${p.highlight ? "primary" : ""}" data-plan="${p.id}">Elegir ${esc(p.name)}</button>
-    </article>`).join("") + `<p class="small muted l2-plans-note">${payNote(pm)} ¿Consultas? Escríbenos en Contacto.</p>`;
+    </article>`).join("") + `<p class="small muted l2-plans-note">${payNote(pm)} Durante la prueba gratis puedes escuchar y probar todo, pero las descargas se habilitan con la suscripción. ¿Consultas? Escríbenos en Contacto.</p>`;
     $$("[data-plan]", box).forEach((b) => b.addEventListener("click", () => openSignup(cfg.plans.find((p) => String(p.id) === b.dataset.plan))));
     wirePay(box, cfg, draw);
   };
@@ -239,6 +239,9 @@ function payToggle(cfg) {
 function wirePay(root, cfg, redraw) {
   $$("[data-pay]", root).forEach((b) => b.addEventListener("click", () => { state.pay = b.dataset.pay; redraw(); }));
 }
+// idioma del widget anti-robots: sigue el idioma elegido en la web
+const tsLang = () => ({ es: "es", pt: "pt-br", en: "en" }[I18N.lang] || "auto");
+
 function payNote(pm) {
   return pm === "polar"
     ? "El pago se realiza de forma segura con tarjeta a través de Polar y, una vez confirmado, el acceso a tu banda llega por correo. Los precios están en dólares estadounidenses e incluyen todo, sin cargos por canción (según tu país, el pago puede incluir impuestos locales). Si cancelas la suscripción, los datos de la banda se eliminan a las 48 horas."
@@ -318,7 +321,7 @@ function bindContact(root, cfg, sent) {
   let token = "", widget = null;
   if (cfg.turnstile_site_key) {
     loadTurnstile().then(() => {
-      widget = window.turnstile.render("#cf-ts", { sitekey: cfg.turnstile_site_key, theme: "dark", language: "es",
+      widget = window.turnstile.render("#cf-ts", { sitekey: cfg.turnstile_site_key, theme: "dark", language: tsLang(),
         callback: (t) => { token = t; }, "expired-callback": () => { token = ""; }, "error-callback": () => { token = ""; } });
     }).catch(() => { const e = $("#cf-err", root); e.textContent = "No se pudo cargar la verificación anti-robots. Revisa tu conexión."; e.classList.remove("hidden"); });
   }
@@ -428,7 +431,7 @@ async function openSignup(plan) {
     $("#sg-cancel", m).addEventListener("click", closeModal);
     if (cfg.turnstile_site_key) {
       loadTurnstile().then(() => {
-        widget = window.turnstile.render("#sg-ts", { sitekey: cfg.turnstile_site_key, theme: "dark", language: "es",
+        widget = window.turnstile.render("#sg-ts", { sitekey: cfg.turnstile_site_key, theme: "dark", language: tsLang(),
           callback: (t) => { token = t; }, "expired-callback": () => { token = ""; }, "error-callback": () => { token = ""; } });
       }).catch(() => { const e = $("#sg-err", m); e.textContent = "No se pudo cargar la verificación anti-robots. Revisa tu conexión."; e.classList.remove("hidden"); });
     }
