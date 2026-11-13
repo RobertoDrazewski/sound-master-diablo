@@ -405,7 +405,8 @@ async function openSignup(plan) {
       <div class="sg-plan">
         <span class="l2-ibox">${ic("card")}</span>
         <div class="sg-pt"><b>${priceOf(plan, pm)} <small>por mes</small></b>
-          <span>${trial ? `${trial} días gratis y después cobro mensual.` : "Cobro mensual."} Puedes cancelar en cualquier momento; al hacerlo, los datos de la banda se eliminan a las 48 horas.</span></div>
+          <span>${trial ? `${trial} días gratis y después cobro mensual.` : "Cobro mensual."} Puedes cancelar en cualquier momento; al hacerlo, los datos de la banda se eliminan a las 48 horas.</span>
+          <span class="sg-note">Durante la prueba hay topes de uso y las descargas se habilitan con la suscripción. Si no se paga al terminar, los datos se eliminan.</span></div>
       </div>
       <ul class="sg-feat">${planFeatures(plan).map((f) => `<li><span class="sg-ck" aria-hidden="true">✓</span><span>${f}</span></li>`).join("")}</ul>
       <div class="field"><label for="sg-band">Nombre de la banda</label><input id="sg-band" type="text" maxlength="120" autocomplete="organization" required></div>

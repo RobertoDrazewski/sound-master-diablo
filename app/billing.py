@@ -65,6 +65,30 @@ def band_plan(db: Session, band: Band) -> Plan | None:
     return None
 
 
+def in_trial(band: Band) -> bool:
+    """Prueba gratis vigente: todavia no pago nada y no es una banda sin cargo."""
+    return bool(not band.exempt and not band.blocked and not band.purge_at and not band.paid_until
+                and band.trial_ends_at and band.trial_ends_at > now())
+
+
+def downloads_allowed(band: Band) -> bool:
+    """Descargar es de la version paga: en la prueba (o si nunca pago) solo se escucha."""
+    return bool(band.exempt or band.paid_until)
+
+
+def unpaid_purge_at(band: Band):
+    """Cuando se borra todo si la prueba o la suscripcion venció sin pagar. None = no corresponde."""
+    if not config.AUTO_PURGE_UNPAID or band.exempt or band.blocked or band.purge_at:
+        return None
+    if band.mp_status == "authorized":  # el proveedor sigue con la suscripcion viva: el cobro/aviso llega solo
+        return None
+    if band.paid_until:
+        expiry = band.paid_until + timedelta(days=config.PAST_DUE_GRACE_DAYS)
+    else:
+        expiry = band.trial_ends_at
+    return expiry + timedelta(hours=config.PURGE_HOURS) if expiry else None
+
+
 def status(db: Session, band: Band) -> dict:
     t = now()
     plan = band_plan(db, band)
@@ -88,7 +112,9 @@ def status(db: Session, band: Band) -> dict:
     if not band.paid_until and band.trial_ends_at and band.trial_ends_at > t:
         return {**base, "state": "trial", "can_write": True, "label": "Prueba gratis",
                 "days_left": (band.trial_ends_at - t).days}
-    return {**base, "state": "suspended", "can_write": False, "reason": "unpaid",
+    pa = unpaid_purge_at(band)
+    extra = {"purge_at": pa, "hours_left": max(0, int((pa - t).total_seconds() // 3600))} if pa else {}
+    return {**base, "state": "suspended", "can_write": False, "reason": "unpaid", **extra,
             "label": "Suscripción vencida" if band.paid_until or band.trial_ends_at else "Sin suscripción"}
 
 
@@ -99,13 +125,20 @@ def limits(db: Session, band: Band) -> dict:
                 "ai_notes_day": config.ASSISTANT_DAILY_LIMIT, "max_members": None}
     plan = band_plan(db, band) or db.query(Plan).filter_by(slug="estudio").first()
     if not plan:
-        return {"quota_gb": 5, "masters_month": 12, "ai_covers_month": 3, "ai_notes_day": 10, "max_members": 8}
-    return {"quota_gb": plan.quota_gb, "masters_month": plan.masters_month, "ai_covers_month": plan.ai_covers_month,
-            "ai_notes_day": plan.ai_notes_day, "max_members": plan.max_members}
+        lim = {"quota_gb": 5, "masters_month": 12, "ai_covers_month": 3, "ai_notes_day": 10, "max_members": 8}
+    else:
+        lim = {"quota_gb": plan.quota_gb, "masters_month": plan.masters_month, "ai_covers_month": plan.ai_covers_month,
+               "ai_notes_day": plan.ai_notes_day, "max_members": plan.max_members}
+    if in_trial(band):  # la prueba gratis tiene topes propios, mas bajos que los del plan
+        lim["masters_month"] = min(lim["masters_month"], config.TRIAL_MASTERS)
+        lim["ai_covers_month"] = min(lim["ai_covers_month"], config.TRIAL_COVERS)
+    return lim
 
 
 def usage(db: Session, band_id: int) -> dict:
-    ms = month_start()
+    band = db.get(Band, band_id)
+    # en la prueba el consumo se cuenta desde el alta (no por mes calendario)
+    ms = band.created_at if band is not None and in_trial(band) and band.created_at else month_start()
     masters = (db.query(func.count(Version.id)).join(Track, Track.id == Version.track_id)
                .filter(Track.band_id == band_id, Version.kind == "master", Version.created_at >= ms).scalar() or 0)
     covers = db.query(func.count(UsageEvent.id)).filter(
@@ -114,6 +147,20 @@ def usage(db: Session, band_id: int) -> dict:
     notes = db.query(func.count(UsageEvent.id)).filter(
         UsageEvent.band_id == band_id, UsageEvent.kind == "note", UsageEvent.at >= day).scalar() or 0
     return {"masters_month": masters, "ai_covers_month": covers, "ai_notes_day": notes}
+
+
+def over_cap(db: Session, band: Band, kind: str) -> str | None:
+    """Mensaje si la banda llego al tope de masters ('masters_month') o tapas con IA ('ai_covers_month'); None si puede seguir."""
+    cap = limits(db, band)[kind]
+    if cap is None or usage(db, band.id)[kind] < cap:
+        return None
+    what = "masters" if kind == "masters_month" else "tapas con IA"
+    if in_trial(band):
+        return (f"Llegaste al tope de la prueba gratis: {cap} {what}. Esta función sigue en la versión paga: "
+                "elegí un plan para seguir.")
+    if kind == "masters_month":
+        return f"Usaste los {cap} masters de este mes en tu plan. Se renuevan el 1° o podés pasar a un plan mayor."
+    return f"Usaste las {cap} tapas con IA de este mes en tu plan."
 
 
 def record_usage(db: Session, band_id: int, kind: str):
@@ -442,6 +489,28 @@ def purge_due(db: Session) -> int:
         done += 1
         _tell_owner(db, f"Banda eliminada: {name}", f"Pasó el plazo de la baja y se eliminaron todos los datos de \"{name}\" "
                     f"({users} cuentas de integrantes).")
+    return done
+
+
+def expire_unpaid(db: Session) -> int:
+    """Corre cada hora: borra las bandas cuya prueba o suscripcion vencio sin pagar y ya pasó el plazo. Devuelve cuantas."""
+    from .purge import delete_band
+    done = 0
+    for band in db.query(Band).filter(Band.purge_at.is_(None), Band.exempt.is_(False)).all():
+        pa = unpaid_purge_at(band)
+        if not pa or pa > now() or status(db, band)["state"] != "suspended":
+            continue
+        name, bid = band.name, band.id
+        try:
+            users = delete_band(db, band, delete_orphan_users=True)
+        except Exception:  # noqa: BLE001
+            db.rollback()
+            log.exception("no se pudo borrar la banda sin pago %s", bid)
+            continue
+        db.commit()
+        done += 1
+        _tell_owner(db, f"Banda eliminada por falta de pago: {name}",
+                    f"La prueba/suscripción de \"{name}\" venció sin pagar y se eliminaron todos sus datos ({users} cuentas de integrantes).")
     return done
 
 

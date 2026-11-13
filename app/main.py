@@ -293,6 +293,29 @@ def ingest_files(db: Session, user: User, track: Track, mode: str, files: list[U
     worker.wake.set()
 
 
+def paid_error(msg: str, code: str = "paid") -> HTTPException:
+    """402 de 'esto es de la version paga': el front muestra un cartel (con texto propio, traducido) y el boton para ver planes."""
+    return HTTPException(402, msg, headers={"X-Paid-Feature": code})
+
+
+def cap_error(db: Session, band: Band, kind: str) -> HTTPException | None:
+    """Tope de masters / tapas con IA alcanzado (None si puede seguir). En la prueba gratis sale el cartel de version paga."""
+    msg = billing.over_cap(db, band, kind)
+    if not msg:
+        return None
+    if billing.in_trial(band):
+        return paid_error(msg, "masters" if kind == "masters_month" else "covers")
+    return HTTPException(402, msg)
+
+
+def download_gate(db: Session, band_id: int):
+    """Descargar es de la version paga: durante la prueba gratis (o sin haber pagado nunca) solo se escucha."""
+    band = db.get(Band, band_id)
+    if band and not billing.downloads_allowed(band):
+        raise paid_error("Esta función es de la versión paga: descargar tus temas y el paquete de lanzamiento "
+                         "se habilita con una suscripción. Durante la prueba gratis podés escuchar todo.", "download")
+
+
 def write_gate(db: Session, band_id: int) -> Band:
     """Corta lo que cuesta plata (subir, masterizar, IA, lanzar) si la banda no tiene el servicio al dia.
     Ver y descargar sus archivos queda siempre habilitado."""
@@ -301,10 +324,15 @@ def write_gate(db: Session, band_id: int) -> Band:
         raise HTTPException(404, "No encontrado")
     st = billing.status(db, band)
     if not st["can_write"]:
-        msg = ("Esta banda está suspendida. Escribinos desde Contacto." if st.get("reason") == "blocked" else
-               "La suscripción de la banda está vencida. El admin de la banda puede renovarla desde la sección Plan. "
-               "Mientras tanto podés escuchar y descargar todo tu material.")
-        raise HTTPException(402, msg)
+        if st.get("reason") == "blocked":
+            msg = "Esta banda está suspendida. Escribinos desde Contacto."
+        elif st.get("purge_at"):
+            msg = ("La prueba o la suscripción de la banda venció. El admin puede suscribirse desde la sección Plan; "
+                   "si no, todo se elimina el " + st["purge_at"].strftime("%d/%m %H:%M") + " UTC y habrá que darse de alta de nuevo.")
+        else:
+            msg = ("La suscripción de la banda está vencida. El admin de la banda puede renovarla desde la sección Plan. "
+                   "Mientras tanto podés escuchar y descargar todo tu material.")
+        raise paid_error(msg, "expired") if st.get("reason") == "unpaid" else HTTPException(402, msg)
     return band
 
 
@@ -1130,9 +1158,9 @@ def upload_track(band_id: int, title: str = Form(""), mode: str = Form("mix"),
             ref = db.get(Reference, then["reference_id"])
             if not ref or ref.band_id not in (None, band_id):
                 raise HTTPException(404, "Referencia inexistente")
-        cap = billing.limits(db, db.get(Band, band_id))["masters_month"]
-        if cap is not None and billing.usage(db, band_id)["masters_month"] >= cap:
-            raise HTTPException(402, f"Usaste los {cap} masters de este mes en tu plan.")
+        err = cap_error(db, db.get(Band, band_id), "masters_month")
+        if err:
+            raise err
     ingest_files(db, user, track, mode, files, then)
     who = user.name or user.email
     notify_band(db, band_id, f'{who} subió "{name}" a {SECTION_NAMES[section]}',
@@ -1289,9 +1317,9 @@ def master_track(track_id: int, body: MasterIn, user: User = Depends(current_use
         raise HTTPException(409, "El tema todavia no tiene audio listo")
     check_quota(db, track.band_id)
     band = db.get(Band, track.band_id)
-    cap = billing.limits(db, band)["masters_month"]
-    if cap is not None and billing.usage(db, band.id)["masters_month"] >= cap:
-        raise HTTPException(402, f"Usaste los {cap} masters de este mes en tu plan. Se renuevan el 1° o podés pasar a un plan mayor.")
+    err = cap_error(db, band, "masters_month")
+    if err:
+        raise err
 
     if body.genre_id and not db.get(Genre, body.genre_id):
         raise HTTPException(404, "Genero inexistente")
@@ -1357,7 +1385,9 @@ def media_link(version_id: int, fmt: str = "preview", user: User = Depends(curre
     """Devuelve una URL firmada y de corta vida para usar en <audio> o como descarga."""
     if fmt not in FORMATS:
         raise HTTPException(422, "fmt: preview, flac, wav o mp3")
-    _version_for(db, user, version_id)
+    _, track = _version_for(db, user, version_id)
+    if fmt != "preview":
+        download_gate(db, track.band_id)
     token = create_media_token(user.id, version_id, fmt)
     return {"url": f"/versions/{version_id}/media?fmt={fmt}&t={token}"}
 
@@ -1372,6 +1402,8 @@ def media(version_id: int, request: Request, fmt: str = "preview", t: str | None
     if not user or not user.active:
         raise HTTPException(401, "Link invalido o vencido")
     v, track = _version_for(db, user, version_id)  # revalida pertenencia a la banda
+    if fmt != "preview":
+        download_gate(db, track.band_id)
 
     ext = FORMATS[fmt]
     if fmt == "preview":
@@ -1440,6 +1472,7 @@ def list_releases(band_id: int, user: User = Depends(current_user), db: Session 
 def release_build(album_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
     a = _album_for(db, user, album_id)
     write_gate(db, a.band_id)
+    download_gate(db, a.band_id)
     info = _release_out(a, db)
     if not info["tracks"]:
         raise HTTPException(409, "El álbum no tiene temas")
@@ -1462,6 +1495,7 @@ def release_build(album_id: int, user: User = Depends(current_user), db: Session
 @app.get("/albums/{album_id}/release/link")
 def release_link(album_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
     a = _album_for(db, user, album_id)
+    download_gate(db, a.band_id)
     st = release.state(a.id)
     if st["status"] != "ready":
         raise HTTPException(409, "El paquete todavía no está listo")
@@ -1475,6 +1509,7 @@ def release_file(album_id: int, t: str | None = None, db: Session = Depends(get_
     if not user or not user.active:
         raise HTTPException(401, "Link invalido o vencido")
     a = _album_for(db, user, album_id)
+    download_gate(db, a.band_id)
     path = release.zip_path(DATA_DIR, a.id)
     if not path.exists():
         raise HTTPException(404, "Preparalo de nuevo")
@@ -1971,9 +2006,9 @@ def cover_preview(album_id: int, mode: str = Form("style"), style: str = Form("e
             key = (a.band_id, now().strftime("%Y-%m-%d"))
             if _cover_ai_usage.get(key, 0) >= COVER_AI_DAILY_LIMIT:
                 raise HTTPException(429, "Se alcanzó el límite de imágenes con IA de hoy para esta banda. Mañana vuelve.")
-            cap = billing.limits(db, band)["ai_covers_month"]
-            if cap is not None and billing.usage(db, band.id)["ai_covers_month"] >= cap:
-                raise HTTPException(402, f"Usaste las {cap} tapas con IA de este mes en tu plan.")
+            err = cap_error(db, band, "ai_covers_month")
+            if err:
+                raise err
             jpeg, notice = covers.generate_ai(prompt.strip()[:600], src)
             _cover_ai_usage[key] = _cover_ai_usage.get(key, 0) + 1
             billing.record_usage(db, band.id, "cover")
@@ -2120,8 +2155,11 @@ def _subscribe_polar(db: Session, band: Band, plan: Plan, email: str, request: R
             band.plan_id, band.pending_plan_id = plan.id, None
             db.commit()
             return {"changed": True}
+        st = billing.status(db, band)
+        trial_days = st.get("days_left", 0) if st["state"] == "trial" else 0
         co = polar.create_checkout(plan, email, f"band:{band.id}", f"band-{band.id}",
-                                   f"{base}/#/band/{band.id}/plan?polar=back", f"{base}/#/band/{band.id}/plan")
+                                   f"{base}/#/band/{band.id}/plan?polar=back", f"{base}/#/band/{band.id}/plan",
+                                   trial_days=trial_days)
     except polar.PolarError as e:
         raise HTTPException(424, str(e)) from None
     band.pending_plan_id = plan.id

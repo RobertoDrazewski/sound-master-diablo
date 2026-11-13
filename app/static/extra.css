@@ -660,3 +660,8 @@ form.steps { padding-left: 0; grid-template-columns: minmax(0, 1fr); gap: 0; }
 .l2-fcontact { display: inline-flex; align-items: center; gap: .7rem; flex-wrap: wrap; }
 .l2-fig { display: inline-flex; align-items: center; justify-content: center; width: 2.4rem; height: 2.4rem; border-radius: 50%; color: var(--amber); border: 1px solid rgba(255,138,26,.35); text-decoration: none; transition: color .2s, border-color .2s, background .2s; }
 .l2-fig:hover { color: var(--text); border-color: var(--amber); background: rgba(255,138,26,.12); } .l2-fig:focus-visible { outline: 2px solid var(--amber); outline-offset: 3px; }
+
+.paid-notice .paid-ic { display: inline-flex; width: 3.2rem; height: 3.2rem; align-items: center; justify-content: center; border-radius: 50%; color: var(--amber); background: rgba(255,138,26,.12); border: 1px solid rgba(255,138,26,.35); }
+.paid-notice .paid-ic svg { width: 1.5rem; height: 1.5rem; }
+
+.sg-pt .sg-note { color: #a89d90; font-size: .8rem; margin-top: .25rem; }

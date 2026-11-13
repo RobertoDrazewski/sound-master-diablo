@@ -13,7 +13,9 @@ function billingBanner(band) {
   const msg = {
     trial: `Prueba gratis: te quedan <b>${b.days_left ?? 0} ${b.days_left === 1 ? "día" : "días"}</b>.${band.role === "admin" ? " Elegí un plan para seguir sin cortes." : " El admin de la banda elige el plan."}`,
     past_due: `El pago de la banda está <b>atrasado</b>. ${band.role === "admin" ? "Regularizalo" : "Avisale al admin"} para no perder el servicio (te quedan ${b.days_left ?? 0} días).`,
-    suspended: `El servicio está <b>suspendido</b>: podés escuchar y descargar todo, pero no subir ni masterizar.`,
+    suspended: b.purge_at
+      ? `La prueba o la suscripción venció. Si no se suscribe la banda antes del ${fmtLong(b.purge_at)}, se elimina todo y hay que darse de alta de nuevo.`
+      : `El servicio está <b>suspendido</b>: podés escuchar y descargar todo, pero no subir ni masterizar.`,
     closing: `La banda está de baja: <b>todo se elimina el ${fmtLong(b.purge_at)}</b>. Descargá tu material antes.`,
   }[b.state];
   return `<div class="bill-banner ${b.state}" role="status"><span>${msg}</span>${go}</div>`;
@@ -45,10 +47,13 @@ async function viewPlan(band, nav, query = "") {
       <h2 style="margin:.5rem 0 .2rem">${st.state === "exempt" ? "Tu banda no paga" : st.plan_name ? "Plan " + esc(st.plan_name) : "Sin plan elegido"}</h2>
       <p class="muted" style="margin:0">${st.state === "exempt" ? "Tienen el servicio sin cargo, cortesía de Diablo Master Mix." : when || (st.state === "suspended" ? "Elegí un plan para volver a subir y masterizar." : "")}</p></div>
       ${d.can_cancel ? `<button class="btn danger small" id="bl-cancel">Darme de baja</button>` : ""}</div>
+      ${st.state === "trial" ? `<div class="callout" style="margin-top:.8rem">Durante la prueba gratis podés escuchar y probar la plataforma, con un tope de masters y de tapas con IA. Las descargas (WAV, MP3, FLAC y el paquete de lanzamiento) se habilitan con la suscripción.</div>` : ""}
+      ${st.state === "suspended" && st.purge_at ? `<div class="cx-warn">${ic("alert")}<div><p>Si no te suscribís, se eliminan todos los datos de la banda el ${fmtLong(st.purge_at)} (faltan unas ${Math.max(1, st.hours_left)} horas).</p>
+        <p>No se puede subir, masterizar ni descargar. Para recuperar el acceso, elegí un plan abajo. Pasado ese plazo hay que darse de alta de nuevo desde la portada.</p></div></div>` : ""}
       ${st.state === "closing" ? `<div class="cx-warn">${ic("alert")}<div><p><b>Se eliminan todos los datos de la banda el ${fmtLong(st.purge_at)}</b> (faltan unas ${Math.max(1, st.hours_left)} horas).</p>
         <p>Hasta entonces podés entrar, escuchar y descargar todo tu material. No se puede subir ni masterizar. Para volver a usar Diablo Master Mix hay que darse de alta y suscribirse de nuevo desde la portada.</p>
         <a class="btn small" href="#/band/${band.id}">Ir a descargar mi material</a></div></div>` : ""}
-      <div class="bl-uses">${bar(use.masters_month, lim.masters_month, "Masters este mes")}${bar(use.ai_covers_month, lim.ai_covers_month, "Tapas con IA este mes")}
+      <div class="bl-uses">${bar(use.masters_month, lim.masters_month, st.state === "trial" ? "Masters en la prueba" : "Masters este mes")}${bar(use.ai_covers_month, lim.ai_covers_month, st.state === "trial" ? "Tapas con IA en la prueba" : "Tapas con IA este mes")}
         ${bar(use.used_gb, lim.quota_gb, "Espacio (GB)")}${bar(use.members, lim.max_members, "Integrantes")}</div></section>
     ${st.state === "exempt" || st.state === "closing" ? "" : `
     <h2 style="margin-top:1.4rem">${d.is_admin ? "Elegí el plan de tu banda" : "Planes"}</h2>

@@ -89,7 +89,9 @@ function avatar(photo, name, cls = "") {
     : `<span class="avatar ${cls}" aria-hidden="true">${esc((name || "?").trim().charAt(0).toUpperCase())}</span>`;
 }
 
+let paidShown = { msg: "", at: 0 };
 function toast(msg, kind = "") {
+  if (msg && msg === paidShown.msg && Date.now() - paidShown.at < 3000) return;  // ya se mostro en el cartel
   const el = document.createElement("div");
   el.className = "toast " + kind;
   el.setAttribute("role", "status");
@@ -108,7 +110,7 @@ async function withBusy(btn, fn) {
 
 /* ===================== API ===================== */
 class ApiError extends Error {
-  constructor(message, status) { super(message); this.status = status; }
+  constructor(message, status, paid = false) { super(message); this.status = status; this.paid = paid; }
 }
 function errText(data, fallback) {
   const d = data && data.detail;
@@ -129,7 +131,10 @@ async function api(path, { method = "GET", json, form } = {}) {
   try { data = await res.json(); } catch { /* sin cuerpo */ }
   if (!res.ok) {
     if (res.status === 401 && session.token && path !== "/auth/login") logout(true);
-    throw new ApiError(errText(data, `Algo salió mal (${res.status})`), res.status);
+    const paid = res.status === 402 ? res.headers.get("X-Paid-Feature") : null;
+    const err = new ApiError(errText(data, `Algo salió mal (${res.status})`), res.status, !!paid);
+    if (paid) paidNotice(paid, err.message);
+    throw err;
   }
   return data;
 }
@@ -152,7 +157,10 @@ function uploadWithProgress(url, form, onProgress, method = "POST") {
       if (xhr.status >= 200 && xhr.status < 300) resolve(data);
       else {
         if (xhr.status === 401) logout(true);
-        reject(new ApiError(errText(data, `No se pudo subir (${xhr.status})`), xhr.status));
+        const paid = xhr.status === 402 ? xhr.getResponseHeader("X-Paid-Feature") : null;
+        const err = new ApiError(errText(data, `No se pudo subir (${xhr.status})`), xhr.status, !!paid);
+        if (paid) paidNotice(paid, err.message);
+        reject(err);
       }
     };
     xhr.onerror = () => reject(new ApiError("Se cortó la conexión mientras subía", 0));
@@ -280,6 +288,27 @@ function openModal(html, setup) {
   m.innerHTML = html;
   if (setup) setup(m);
   if (!m.open) m.showModal();
+}
+/* Cartel: esta funcion es de la version paga */
+const PAID_TEXT = {
+  download: "Descargar tus temas y el paquete de lanzamiento se habilita con una suscripción. Durante la prueba gratis podés escuchar todo.",
+  masters: "Llegaste al tope de masters de la prueba gratis. Elegí un plan para seguir masterizando.",
+  covers: "Llegaste al tope de tapas con IA de la prueba gratis. Elegí un plan para generar más.",
+  expired: "La prueba o la suscripción de la banda venció. El admin puede suscribirse desde la sección Plan para recuperar el acceso.",
+};
+function paidNotice(code, serverMsg) {
+  const msg = PAID_TEXT[code] || serverMsg;
+  paidShown = { msg: serverMsg, at: Date.now() };
+  const m = location.hash.match(/#\/band\/(\d+)/);
+  const to = m ? `#/band/${m[1]}/plan` : "#/";
+  openModal(`<div class="modal-body paid-notice" style="text-align:center">
+      <div class="paid-ic">${ic("rocket")}</div>
+      <h2 style="margin:.4rem 0">Esta función es de la versión paga</h2>
+      <p class="muted">${esc(msg)}</p>
+      <div class="row" style="justify-content:center;gap:.6rem;flex-wrap:wrap;margin-top:1rem">
+        <a class="btn primary" href="${to}" data-close>Ver planes</a>
+        <button type="button" class="btn" data-close>Ahora no</button></div></div>`,
+    (mm) => mm.querySelectorAll("[data-close]").forEach((b) => b.addEventListener("click", closeModal)));
 }
 function closeModal() { const m = $("#modal"); if (m.open) m.close(); }
 

@@ -56,7 +56,7 @@ def _call(method: str, path: str, body: dict | None = None) -> dict:
 
 
 def create_checkout(plan: Plan, email: str, ref: str, customer_ref: str, success_url: str, return_url: str,
-                    name: str = "") -> dict:
+                    name: str = "", trial_days: int = 0) -> dict:
     """Crea el checkout y devuelve {id, url}. `ref` (signup:ID | band:ID) vuelve en los avisos."""
     pid = product_id(plan)
     if not pid:
@@ -66,6 +66,8 @@ def create_checkout(plan: Plan, email: str, ref: str, customer_ref: str, success
             "allow_discount_codes": False}
     if name:
         body["customer_name"] = name
+    if trial_days > 0:  # prueba gratis: la tarjeta se registra pero el primer cobro es al terminar
+        body["trial_interval"], body["trial_interval_count"] = "day", int(trial_days)
     data = _call("POST", "/v1/checkouts/", body)
     return {"id": data["id"], "url": data["url"]}
 
@@ -277,7 +279,7 @@ def start_signup(db: Session, plan: Plan, band_name: str, admin_name: str, email
     db.commit()
     try:
         co = create_checkout(plan, email, f"signup:{su.id}", f"signup-{su.id}", f"{base}/#/gracias/{su.token}", f"{base}/",
-                             name=admin_name)
+                             name=admin_name, trial_days=config.TRIAL_DAYS)
     except PolarError:
         db.delete(su)
         db.commit()

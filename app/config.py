@@ -64,6 +64,9 @@ MP_ACCESS_TOKEN = os.getenv("MP_ACCESS_TOKEN", "")           # credencial de pro
 MP_WEBHOOK_SECRET = os.getenv("MP_WEBHOOK_SECRET", "")       # clave secreta de la notificacion (opcional, recomendada)
 TRIAL_DAYS = int(os.getenv("TRIAL_DAYS", "14"))              # prueba gratis de las bandas nuevas que pagan
 PURGE_HOURS = int(os.getenv("PURGE_HOURS", "48"))  # horas entre la baja de una banda y el borrado de todos sus datos
+TRIAL_MASTERS = int(os.getenv("TRIAL_MASTERS", "3"))          # masters que se pueden hacer en total durante la prueba gratis
+TRIAL_COVERS = int(os.getenv("TRIAL_COVERS", "1"))            # tapas con IA durante la prueba gratis
+AUTO_PURGE_UNPAID = os.getenv("AUTO_PURGE_UNPAID", "1") == "1"  # borrar todo si la prueba/suscripcion vence sin pagar (a las PURGE_HOURS)
 PAST_DUE_GRACE_DAYS = int(os.getenv("PAST_DUE_GRACE_DAYS", "3"))  # dias de gracia despues de un pago vencido
 BILLING_CURRENCY = os.getenv("BILLING_CURRENCY", "ARS")
 
