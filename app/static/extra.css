@@ -665,3 +665,4 @@ form.steps { padding-left: 0; grid-template-columns: minmax(0, 1fr); gap: 0; }
 .paid-notice .paid-ic svg { width: 1.5rem; height: 1.5rem; }
 
 .sg-pt .sg-note { color: #a89d90; font-size: .8rem; margin-top: .25rem; }
+.sg-trialnote { margin: 0; line-height: 1.35; }

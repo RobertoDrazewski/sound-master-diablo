@@ -418,7 +418,8 @@ async function openSignup(plan) {
       <div class="hp" aria-hidden="true"><label>No completar<input id="sg-web" type="text" tabindex="-1" autocomplete="off"></label></div>
       ${cfg.turnstile_site_key ? `<div id="sg-ts" class="ts-box"></div>` : ""}
       <p class="status error hidden" id="sg-err" role="alert"></p>
-      <div class="row sg-actions"><button type="button" class="btn" id="sg-cancel">Cancelar</button><button class="btn primary" id="sg-go">Suscribirme y pagar</button></div>
+      ${trial ? `<p class="small muted sg-trialnote">${pm === "polar" ? "No se cobra nada hoy: la tarjeta se registra y el primer cobro es cuando termina la prueba." : "En Mercado Pago vas a ver el monto mensual, pero no se cobra nada hoy: el primer cobro es cuando termina la prueba."}</p>` : ""}
+      <div class="row sg-actions"><button type="button" class="btn" id="sg-cancel">Cancelar</button><button class="btn primary" id="sg-go">${trial ? "Empezar prueba gratis" : "Suscribirme y pagar"}</button></div>
       <p class="small muted" style="margin:0">${pm === "polar" ? "El pago se realiza con tarjeta, de forma segura, a través de Polar. Al confirmarse, tu banda queda creada y recibirás el acceso por correo." : "El pago se realiza en Mercado Pago, de forma segura. Al confirmarse, tu banda queda creada y recibirás el acceso por correo."}</p>
     </form>`, (m) => {
     m.classList.add("wide");

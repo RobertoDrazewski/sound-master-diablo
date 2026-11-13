@@ -201,8 +201,12 @@ def create_preapproval(target, plan: Plan, payer_email: str, back_url: str, star
             "currency_id": config.BILLING_CURRENCY}
     if start_in_days > 0:  # prueba gratis: el primer cobro es al terminar el trial
         auto["start_date"] = (datetime.utcnow() + timedelta(days=start_in_days)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    reason = f"Diablo Master Mix · Plan {plan.name}"
+    if start_in_days > 0:  # Mercado Pago muestra este texto en el detalle: que se vea la prueba gratis y cuando es el primer cobro
+        first = (datetime.utcnow() + timedelta(days=start_in_days)).strftime("%d/%m/%Y")
+        reason += f" · {start_in_days} días gratis, primer cobro el {first}"
     data = _mp("POST", "/preapproval", {
-        "reason": f"Diablo Master Mix · Plan {plan.name}",
+        "reason": reason,
         "external_reference": ref,
         "payer_email": payer_email,
         "back_url": back_url,

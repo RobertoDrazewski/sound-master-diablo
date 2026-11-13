@@ -85,6 +85,7 @@ async function viewPlan(band, nav, query = "") {
       ${changing ? "" : pm === "polar" ? `<div class="field"><label for="sf-mail">Email para el recibo</label><input id="sf-mail" type="email" required value="${esc(d.payer_email)}">
       <p class="small muted" style="margin:.3rem 0 0">Vas a pagar con tarjeta en una página segura de Polar. Te enviarán el recibo a este mail.</p></div>` : `<div class="field"><label for="sf-mail">Email de tu cuenta de Mercado Pago</label><input id="sf-mail" type="email" required value="${esc(d.payer_email)}">
       <p class="small muted" style="margin:.3rem 0 0">Tiene que ser el mail con el que entrás a Mercado Pago, porque vas a autorizar el pago ahí. Podés pagar con tarjeta o con tu dinero en cuenta.</p></div>`}
+      ${st.state === "trial" && !changing ? `<p class="small muted" style="margin:0">${pm === "polar" ? "No se cobra nada hasta que termine la prueba gratis." : "En Mercado Pago vas a ver el monto mensual, pero no se cobra nada hasta que termine la prueba gratis."}</p>` : ""}
       <div class="row" style="justify-content:flex-end"><button type="button" class="btn" id="sf-c">Cancelar</button><button class="btn primary" id="sf-go">${changing ? "Cambiar de plan" : pm === "polar" ? "Ir al pago seguro" : "Ir a Mercado Pago"}</button></div></form>`, (m) => {
       $("#sf-c", m).addEventListener("click", closeModal);
       $("#sf", m).addEventListener("submit", async (ev) => {
