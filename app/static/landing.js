@@ -141,7 +141,10 @@ function viewLanding() {
           <p>Del ensayo al master, en una sola plataforma.</p>
           <p class="l2-by">Un producto de <a href="https://www.puma-code.com" target="_blank" rel="noopener">Puma Code</a></p>
           <nav class="l2-flinks" aria-label="Accesos"><button type="button" data-go="l2-planes">Planes</button><button type="button" data-go="l2-contacto">Contacto</button><a href="#/login">Ingresar</a></nav>
-          <a class="l2-fmail" href="mailto:diablomastermix@gmail.com">diablomastermix@gmail.com</a>
+          <div class="l2-fcontact">
+            <a class="l2-fmail" href="mailto:diablomastermix@gmail.com">diablomastermix@gmail.com</a>
+            <a class="l2-fig" href="https://www.instagram.com/diablomastermix/" target="_blank" rel="noopener" aria-label="Instagram @diablomastermix" title="Instagram"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.3" cy="6.7" r="1" fill="currentColor" stroke="none"/></svg></a>
+          </div>
           <nav class="l2-flinks l2-flang" aria-label="Idioma">${I18N.inline()}</nav>
           <small class="l2-trade">Compatible con REAPER. REAPER es una marca de Cockos Incorporated; Diablo Master Mix no está afiliado ni respaldado por Cockos.</small>
           <small>© ${new Date().getFullYear()} Diablo Master Mix. Todos los derechos reservados.</small>

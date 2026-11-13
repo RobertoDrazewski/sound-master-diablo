@@ -656,3 +656,7 @@ form.steps { padding-left: 0; grid-template-columns: minmax(0, 1fr); gap: 0; }
 @media (max-width: 420px) { .pay-toggle button { padding: .45rem .6rem; font-size: .8rem; } }
 
 .l2-fmail { color: var(--amber); font: 600 .95rem var(--font); text-decoration: none; padding: .35rem 0; overflow-wrap: anywhere; } .l2-fmail:hover { color: var(--text); } .l2-fmail:focus-visible { outline: 2px solid var(--amber); outline-offset: 3px; }
+
+.l2-fcontact { display: inline-flex; align-items: center; gap: .7rem; flex-wrap: wrap; }
+.l2-fig { display: inline-flex; align-items: center; justify-content: center; width: 2.4rem; height: 2.4rem; border-radius: 50%; color: var(--amber); border: 1px solid rgba(255,138,26,.35); text-decoration: none; transition: color .2s, border-color .2s, background .2s; }
+.l2-fig:hover { color: var(--text); border-color: var(--amber); background: rgba(255,138,26,.12); } .l2-fig:focus-visible { outline: 2px solid var(--amber); outline-offset: 3px; }
