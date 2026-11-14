@@ -734,3 +734,16 @@ input:hover, textarea:hover, select:hover { border-color: var(--muted); }
 @media (min-width: 640px) {
   .l2-cwrap form#cf > .field:nth-child(1), .l2-cwrap form#cf > .field:nth-child(2) { grid-column: auto; }
 }
+
+/* el cursor del rock: sobre lo clickeable aparece la mano cornuta 🤘 (solo escritorio con mouse;
+   en el celular no hay cursor). El emoji es el dibujo de Noto Emoji, licencia Apache. */
+@media (pointer: fine) {
+  .l2-page a, .l2-page button, .l2-page summary,
+  .auth-wrap a, .auth-wrap button,
+  .modal a, .modal button, .modal summary, .modal .seg label,
+  .chat-fab, .chat-panel button {
+    cursor: url(/cursor-rock.png) 24 1, pointer;
+    cursor: -webkit-image-set(url(/cursor-rock.png) 1x, url(/cursor-rock-2x.png) 2x) 24 1, pointer;
+    cursor: image-set(url(/cursor-rock.png) 1x, url(/cursor-rock-2x.png) 2x) 24 1, pointer;
+  }
+}
