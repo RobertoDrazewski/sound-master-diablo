@@ -666,3 +666,71 @@ form.steps { padding-left: 0; grid-template-columns: minmax(0, 1fr); gap: 0; }
 
 .sg-pt .sg-note { color: #a89d90; font-size: .8rem; margin-top: .25rem; }
 .sg-trialnote { margin: 0; line-height: 1.35; }
+
+/* ===================== repaso visual: portada pro (nov 2026) =====================
+   Solo estética: sin cambios de texto ni de lógica. Mobile first: el celular queda como estaba
+   (cartel centrado); en pantallas grandes la portada aprovecha el ancho. */
+
+/* detalles finos en toda la web */
+::selection { background: rgba(255, 90, 31, .5); color: #fff8f2; }
+html { scrollbar-color: #3a3029 #0c0a09; }
+.btn { transition: border-color .2s, background .2s, box-shadow .2s, filter .2s, transform .12s; }
+.btn:active { transform: translateY(1px); }
+.btn.primary { box-shadow: 0 8px 26px -12px rgba(255, 90, 31, .9); }
+.l2-link { transition: color .2s; } .l2-link:hover { color: var(--amber); }
+input[type=text], input[type=email], input[type=password], textarea, select { transition: border-color .2s; }
+input:hover, textarea:hover, select:hover { border-color: var(--muted); }
+
+/* barra superior: en monitores anchos el contenido no se pega a los bordes */
+@media (min-width: 1560px) { .l2-top { padding-inline: calc((100vw - 1480px) / 2); } }
+
+/* hero en pantallas grandes: texto a la izquierda y logo encendido a la derecha,
+   para aprovechar el espacio; en el celular sigue centrado como un cartel */
+@media (min-width: 980px) {
+  .l2-hero {
+    display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+    /* el espacio sobrante va arriba del título y debajo de los botones: el texto queda compacto y centrado frente al logo */
+    grid-template-rows: minmax(0, 1fr) auto auto minmax(0, 1.15fr);
+    grid-template-areas: "t l" "p l" "s l" "c l";
+    column-gap: clamp(1.5rem, 4vw, 4rem);
+    width: 100%; max-width: 1240px; margin-inline: auto; padding: 0 1.5rem;
+    text-align: left; justify-items: start;
+  }
+  .l2-logo { grid-area: l; align-self: center; justify-self: center; height: clamp(300px, 48vh, 460px); }
+  .l2-word { grid-area: t; align-self: end; margin: 0; font-size: clamp(3.4rem, 5.6vw, 6.6rem); }
+  .l2-pro { grid-area: p; margin: 1rem 0 0; max-width: 44ch; font-size: 1.3rem; }
+  .l2-line { grid-area: s; margin: .5rem 0 1.6rem; max-width: 52ch; font-size: 1.05rem; }
+  .l2-cta { grid-area: c; align-self: start; justify-content: flex-start; }
+  /* la energía del fondo acompaña al logo y el pulso pasa por debajo del texto */
+  .l2-glow { left: 71%; top: 46%; width: min(820px, 58vw); }
+  .l2-pulse { top: auto; bottom: 16%; opacity: .6; }
+}
+
+/* recorrido: los cinco pasos quedan unidos por la señal (es una secuencia real) */
+.l2-steps li::after { content: none; }
+@media (min-width: 640px) {
+  .l2-steps li:not(:first-child)::before {
+    content: ""; position: absolute; left: calc(-.7rem - 1px); top: calc(1.1rem + 22px);
+    width: calc(.7rem + 2px); height: 2px;
+    background: linear-gradient(90deg, rgba(255, 90, 31, .2), rgba(255, 179, 71, .85));
+    box-shadow: 0 0 10px rgba(255, 90, 31, .8);
+  }
+}
+
+/* tarjetas de herramientas: la foto respira al pasar el mouse */
+.l2-pic { transition: filter .5s, transform .6s cubic-bezier(.2, .8, .2, 1); }
+.l2-card:hover .l2-pic { transform: scale(1.045); }
+
+/* planes: el destacado sobresale y el botón ocupa todo el ancho de la tarjeta */
+.plan > .btn { width: 100%; }
+@media (min-width: 860px) {
+  .l2-plans .plan.hl { transform: translateY(-12px); }
+  .l2-plans { padding-top: .8rem; }
+}
+
+/* contacto: nombre y email comparten renglón en pantallas grandes */
+.l2-cwrap form#cf { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .95rem 1rem; }
+.l2-cwrap form#cf > * { grid-column: 1 / -1; margin: 0; }
+@media (min-width: 640px) {
+  .l2-cwrap form#cf > .field:nth-child(1), .l2-cwrap form#cf > .field:nth-child(2) { grid-column: auto; }
+}
