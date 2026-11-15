@@ -59,8 +59,8 @@ async function adBandas(body, nav) {
   const planName = (id) => (plans.find((p) => p.id === id) || {}).name || "—";
   const ago = (iso) => (iso ? fmtDate(iso) : "sin actividad");
   body.innerHTML = `
-    <section class="card"><h2>Alta de banda</h2>
-      <form id="nb" class="stack">
+    <details class="card ad-alta"><summary><h2 style="display:inline">Alta de banda</h2></summary>
+      <form id="nb" class="stack" style="margin-top:1rem">
         <div class="field" style="margin:0"><label for="nbn">Nombre de la banda</label><input id="nbn" type="text" maxlength="120" required></div>
         <div class="seg" role="radiogroup" aria-label="Si la banda paga">
           <label><input type="radio" name="pay" value="free" checked>No paga<span class="hint">Banda de prueba o amiga: sin cargo</span></label>
@@ -74,13 +74,31 @@ async function adBandas(body, nav) {
         <button class="btn primary">Crear banda</button>
       </form>
       <div id="nb-out" class="stack hidden" style="margin-top:1rem"></div>
-    </section>
+    </details>
+    <div class="ad-grid">
     ${bands.map((b) => {
       const pct = Math.min(100, (b.used_gb / b.quota_gb) * 100 || 0), st = b.stats, bl = b.billing;
+      const mx = Math.max(1, st.ensayos, st.produccion, st.master, st.masters_hechos, st.albumes);
+      const kpi = (icon, label, val) => `<div class="kpi"><span class="k-lab">${ic(icon)}${label}</span><span class="k-bar"><i style="width:${Math.round((val / mx) * 100)}%"></i></span><b class="k-val">${val}</b></div>`;
       return `<section class="card admin-band" data-b="${b.id}">
-        <div class="row" style="gap:.7rem">${avatar(b.photo, b.name)}<div class="grow"><h3 style="margin:0">${esc(b.name)}</h3>
-          <div class="small muted">${adChip(bl.state)} ${b.exempt ? "" : `Plan ${esc(planName(b.plan_id))} · `}${bl.state === "active" || bl.state === "past_due" ? `pagado hasta ${adDay(bl.paid_until)}` : bl.state === "trial" ? `prueba hasta ${adDay(bl.trial_ends_at)}` : ""}${b.mp_status ? ` · MP: ${esc(b.mp_status)}` : ""}</div></div></div>
-        <p class="small muted" style="margin:.6rem 0 .3rem">${st.ensayos} ensayos · ${st.produccion} en producción · ${st.master} en master · ${st.masters_hechos} masters hechos · ${st.albumes} álbumes · Este mes: ${b.usage.masters_month} masters · Última actividad: ${ago(st.ultima_actividad)}</p>
+        <button type="button" class="ab-head" data-ab-open aria-expanded="false">
+          ${avatar(b.photo, b.name)}
+          <span class="grow">
+            <span class="ab-name">${esc(b.name)}</span>
+            <span class="small muted ab-sub">${adChip(bl.state)} ${b.exempt ? "" : `Plan ${esc(planName(b.plan_id))} · `}${bl.state === "active" || bl.state === "past_due" ? `pagado hasta ${adDay(bl.paid_until)}` : bl.state === "trial" ? `prueba hasta ${adDay(bl.trial_ends_at)}` : ""}${b.mp_status ? ` · MP: ${esc(b.mp_status)}` : ""}</span>
+            <span class="meter mini ${pct >= 100 ? "full" : pct >= 80 ? "warn" : ""}"><i style="width:${pct}%"></i></span>
+          </span>
+          <span class="ab-chev">${ic("down")}</span>
+        </button>
+        <div class="ab-body" hidden>
+        <div class="ab-kpis">
+          ${kpi("mic", "Ensayos", st.ensayos)}
+          ${kpi("music", "En producción", st.produccion)}
+          ${kpi("sliders", "En master", st.master)}
+          ${kpi("flame", "Masters hechos", st.masters_hechos)}
+          ${kpi("disc", "Álbumes", st.albumes)}
+        </div>
+        <p class="small muted" style="margin:.5rem 0 .3rem">Este mes: ${b.usage.masters_month} masters · Última actividad: ${ago(st.ultima_actividad)}</p>
         <div class="small muted row between"><span>Espacio</span><span>${fmtGB(b.used_gb)} de ${esc(b.quota_gb)} GB</span></div>
         <div class="meter ${pct >= 100 ? "full" : pct >= 80 ? "warn" : ""}"><i style="width:${pct}%"></i></div>
         <div class="ad-actions">
@@ -98,10 +116,27 @@ async function adBandas(body, nav) {
           <td><select class="mini-sel" data-role="${b.id}:${m.user_id}" aria-label="Rol de ${esc(m.name || m.email)}"><option value="member" ${m.role === "member" ? "selected" : ""}>Integrante</option><option value="admin" ${m.role === "admin" ? "selected" : ""}>Admin de banda</option></select></td>
           <td style="text-align:right"><button class="icon-btn" data-rm="${b.id}:${m.user_id}" aria-label="Sacar a ${esc(m.name || m.email)} de ${esc(b.name)}" title="Sacar de la banda">${ic("x")}</button></td></tr>`).join("")}</tbody></table>`
           : `<p class="small muted" style="margin-top:.5rem">Sin integrantes todavía. Invitá a su admin desde Personas.</p>`}
+        </div>
       </section>`;
-    }).join("") || `<div class="card empty">Todavía no hay bandas.</div>`}`;
+    }).join("") || `<div class="card empty">Todavía no hay bandas.</div>`}
+    </div>`;
 
   const reload = () => viewAdmin(nav, "bandas");
+  // ficha expandible: un toque abre la banda con sus KPIs y acciones; se recuerda cuál quedó abierta
+  $$(".admin-band", body).forEach((card) => {
+    const head = $("[data-ab-open]", card), panel = $(".ab-body", card);
+    const setOpen = (open) => {
+      panel.hidden = !open;
+      card.classList.toggle("open", open);
+      head.setAttribute("aria-expanded", open ? "true" : "false");
+    };
+    head.addEventListener("click", () => {
+      const open = panel.hidden;
+      setOpen(open);
+      state._abOpen = open ? card.dataset.b : null;
+    });
+    if (state._abOpen && String(state._abOpen) === String(card.dataset.b)) setOpen(true);
+  });
   $$('input[name="pay"]', body).forEach((r) => r.addEventListener("change", () => { $("#nb-paid", body).hidden = $('input[name="pay"]:checked', body).value !== "paid"; }));
   $("#nb", body).addEventListener("submit", adGuard(async (ev) => {
     ev.preventDefault();

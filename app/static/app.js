@@ -324,7 +324,13 @@ const TOOLS = [
 ];
 function currentBand() {
   const bands = state.me ? state.me.bands : [];
-  return bands.find((b) => String(b.id) === String(state.bandId)) || bands[0] || null;
+  let id = state.bandId;
+  if (id == null) { try { id = localStorage.getItem("dm_band"); } catch { /* sin almacenamiento */ } }
+  return bands.find((b) => String(b.id) === String(id)) || bands[0] || null;
+}
+function setCurrentBand(id) {
+  state.bandId = id;
+  try { localStorage.setItem("dm_band", String(id)); } catch { /* sin almacenamiento */ }
 }
 function closeDrawer() { document.body.classList.remove("drawer-open"); const m = $("#menu"); if (m) m.setAttribute("aria-expanded", "false"); }
 
@@ -709,13 +715,16 @@ async function viewHome(nav) {
     html += `<div class="card empty">${ic("mic")}Todavía no estás en ninguna banda.<br>${
       state.me.is_super ? `Creala desde <a href="#/admin">Administración</a>.` : "Pedile una invitación a quien administra la app."}</div>`;
   }
-  for (const b of bands) {
-    html += `<section class="card band-card">
-      <div class="row" style="gap:1rem">
-        <div class="band-photo" style="width:64px;height:64px">${b.photo ? `<img src="${esc(b.photo)}" alt="">` : `<img src="/img/banda-sin-foto.jpg" alt="">`}</div>
+  // una banda por vez: el home muestra la banda activa; con dos o más aparece el botón para cambiar
+  const b = bands.length ? currentBand() : null;
+  if (b) {
+    html += `<section class="card band-card one-band">
+      <div class="bc-head">
+        <div class="band-photo bc-photo">${b.photo ? `<img src="${esc(b.photo)}" alt="">` : `<img src="/img/banda-sin-foto.jpg" alt="">`}</div>
         <div class="grow"><h2 style="margin:0">${esc(b.name)}</h2><p class="muted small" style="margin:0">${b.role === "admin" ? "Administrás esta banda" : "Integrante"}</p></div>
-        <a class="btn primary big rec-cta" href="#/band/${b.id}/ensayos">${ic("mic")} Grabar ensayo</a>
+        ${bands.length > 1 ? `<button type="button" class="btn small band-switch" id="band-switch">${ic("users")} Cambiar de banda</button>` : ""}
       </div>
+      <a class="btn primary rec-cta" href="#/band/${b.id}/ensayos">${ic("mic")} Grabar ensayo</a>
       <div class="tool-grid">${TOOLS.slice(0, 6).map(([k, l, i, d]) =>
         `<a class="tool-tile" href="#/band/${b.id}/${k}">${ic(i)}<strong>${l}</strong><span>${d}</span></a>`).join("")}</div>
     </section>`;
@@ -731,15 +740,30 @@ async function viewHome(nav) {
   html += installCard();
   setApp(html);
   wireInstall();
+  const sw = $("#band-switch");
+  if (sw) sw.addEventListener("click", () => {
+    openModal(`<div class="modal-body"><h2 style="margin:0 0 .9rem">Elegí tu banda</h2>
+      <div class="band-pick">${bands.map((x) => `
+        <button type="button" class="bp-item ${String(x.id) === String(b.id) ? "on" : ""}" data-pick="${x.id}">
+          <span class="bp-photo">${x.photo ? `<img src="${esc(x.photo)}" alt="">` : `<img src="/img/banda-sin-foto.jpg" alt="">`}</span>
+          <span class="grow"><strong>${esc(x.name)}</strong><span class="small muted">${x.role === "admin" ? "Administrás esta banda" : "Integrante"}</span></span>
+          ${String(x.id) === String(b.id) ? ic("check") : ""}
+        </button>`).join("")}</div></div>`,
+      (m) => $$("[data-pick]", m).forEach((btn) => btn.addEventListener("click", () => {
+        setCurrentBand(btn.dataset.pick);
+        closeModal();
+        router();
+      })));
+  });
 }
 
 /* ===================== banda: estructura común ===================== */
 async function viewBand(id, sub, nav) {
   const band = state.me.bands.find((b) => String(b.id) === String(id));
   const [tool, query] = (sub || "ensayos").split("?");
+  if (band) setCurrentBand(band.id);   // antes de armar la barra: así las pestañas de abajo siempre apuntan a la banda que estás viendo
   renderShell({ key: "band", bandId: id, tool });
   if (!band) return notFound();
-  state.bandId = band.id;
   const out = await bandTool(band, tool, query, nav);
   if (nav === state.nav && tool !== "plan") $("#app").insertAdjacentHTML("afterbegin", billingBanner(band));
   return out;
