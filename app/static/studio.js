@@ -114,7 +114,7 @@ const ST_TONE = [
 
 /* Monta el estudio dentro de `box`. Devuelve { options(), valid() }. */
 function studioMount(box, cfg) {
-  const { genres, bandId, stems = [], hint = "", trackId = null } = cfg;
+  const { genres, bandId, stems = [], hint = "" } = cfg;
   const S = {
     how: cfg.reference ? "ref" : "genre",
     genre_id: defaultGenreId(genres),
@@ -125,7 +125,6 @@ function studioMount(box, cfg) {
     tone: { bass: 0, body: 0, presence: 0, air: 0 },
     auto_balance: true, drums_db: 0, bass_db: 0, voice_db: 0,
     gains: {},
-    offsets: {},
     family: null,
   };
   const gen = () => genres.find((g) => g.id === S.genre_id);
@@ -267,59 +266,6 @@ function studioMount(box, cfg) {
     }));
   }
 
-  // alinear pistas: mide si alguna suena corrida respecto de la batería y deja corregir un desfase fijo
-  let alAudio = null, alUrl = null;
-  const alStop = () => { if (alAudio) { alAudio.pause(); alAudio = null; } if (alUrl) { URL.revokeObjectURL(alUrl); alUrl = null; } $$("[data-al-play]", box).forEach((b) => b.classList.remove("on")); };
-  async function alPlay(btn, corrected) {
-    if (btn.classList.contains("on")) { alStop(); return; }
-    alStop();
-    btn.classList.add("on");
-    try {
-      const res = await fetch(`/tracks/${trackId}/stem-align/preview`, {
-        method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + session.token },
-        body: JSON.stringify({ offsets_ms: corrected ? S.offsets : {} }) });
-      if (!res.ok) throw new Error("No se pudo preparar la vista previa");
-      alUrl = URL.createObjectURL(await res.blob());
-      alAudio = new Audio(alUrl);
-      alAudio.addEventListener("ended", alStop);
-      await alAudio.play();
-    } catch (e) { alStop(); toast(e.message || "No se pudo reproducir", "err"); }
-  }
-  const alHow = (it) => {
-    if (it.reference) return "Es la referencia: las demás pistas se miden contra esta.";
-    if (it.confidence < 0.25) return "No se pudo medir con seguridad: no tiene golpes claros en común con la batería.";
-    const ms = Math.abs(it.late_ms);
-    if (ms < 3) return "Está alineada.";
-    return it.late_ms > 0 ? `Suena ${ms.toFixed(0)} ms tarde.` : `Suena ${ms.toFixed(0)} ms adelantada.`;
-  };
-  if (stems.length >= 2 && trackId) {
-    $("#st-stems", box).insertAdjacentHTML("beforeend", `<h5 class="st-sub">Alinear pistas</h5>
-      <p class="st-help">Si el bajo o una guitarra suenan corridos respecto de la batería (por ejemplo, por la latencia al grabar), se mide el desfase y se corrige. No cambia el tempo ni el groove del grupo.</p>
-      <div class="row"><button type="button" class="btn" id="al-measure">Medir desfase</button></div><div id="al-out"></div>`);
-    $("#al-measure", box).addEventListener("click", (ev) => withBusy(ev.currentTarget, async () => {
-      alStop();
-      try {
-        const r = await api(`/tracks/${trackId}/stem-align`);
-        S.offsets = {};
-        r.items.forEach((it) => { if (!it.reference && it.suggest) S.offsets[it.id] = Math.round(-it.late_ms * 10) / 10; });
-        const any = Object.keys(S.offsets).length > 0;
-        $("#al-out", box).innerHTML = `<div class="al-list">` + r.items.map((it) => `<div class="al-row">
-            <div class="al-name"><strong>${esc(it.label)}</strong><span class="muted small">${alHow(it)}</span></div>
-            ${it.reference ? "" : `<label class="al-fix">Corrección<input type="number" step="0.5" min="-150" max="150" data-al="${it.id}" value="${S.offsets[it.id] ?? 0}" aria-label="Corrección en milisegundos de ${esc(it.label)}"><span>ms</span></label>`}
-          </div>`).join("") + `</div>
-          <p class="st-help">${any ? "Ya dejé cargada la corrección sugerida. Podés ajustarla o ponerla en 0 para no tocar esa pista." : "No hace falta corregir nada. Si igual notás algo corrido, escribí a mano cuántos ms mover cada pista."}</p>
-          <div class="row"><button type="button" class="btn" data-al-play="0">Escuchar sin corregir</button><button type="button" class="btn" data-al-play="1">Escuchar corregido</button></div>
-          <p class="st-help">Son 30 segundos del medio del tema, al mismo volumen: se compara solo el tiempo. En el master se aplica la corrección.</p>`;
-        $$("[data-al]", box).forEach((inp) => inp.addEventListener("input", () => {
-          const v = Number(inp.value);
-          if (Number.isFinite(v) && v !== 0) S.offsets[inp.dataset.al] = Math.max(-150, Math.min(150, v)); else delete S.offsets[inp.dataset.al];
-          alStop();
-        }));
-        $$("[data-al-play]", box).forEach((b) => b.addEventListener("click", () => alPlay(b, b.dataset.alPlay === "1")));
-      } catch (e) { toast(e.message, "err"); }
-    }));
-  }
-
   box.addEventListener("click", (ev) => {
     const how = ev.target.closest("[data-how]");
     if (how) { S.how = how.dataset.how; paintHow(); cfg.onChange && cfg.onChange(); return; }
@@ -337,7 +283,7 @@ function studioMount(box, cfg) {
   });
   const reset = () => {
     S.lufsTouched = false; S.strengthTouched = false; S.strength = 0.55; S.power = 1; S.width = 1;
-    S.tone = { bass: 0, body: 0, presence: 0, air: 0 }; S.auto_balance = true; S.drums_db = S.bass_db = S.voice_db = 0; S.gains = {}; S.offsets = {}; alStop(); if ($("#al-out", box)) $("#al-out", box).innerHTML = "";
+    S.tone = { bass: 0, body: 0, presence: 0, air: 0 }; S.auto_balance = true; S.drums_db = S.bass_db = S.voice_db = 0; S.gains = {};
     const set = (id, v, f) => { $s(id).value = v; $s(id + "-o").textContent = f(v); };
     syncLufs(); set("power", 1, fmts.power); set("strength", 0.55, fmts.strength); set("width", 1, fmts.width);
     ST_TONE.forEach(([k]) => set("t-" + k, 0, stDb));
@@ -363,7 +309,6 @@ function studioMount(box, cfg) {
       if (S.how === "ref") o.genre_id = null;
       if (S.strengthTouched) o.strength = S.strength;
       if (Object.keys(S.gains).length) o.stem_gains = { ...S.gains };
-      if (Object.keys(S.offsets).length) o.stem_offsets_ms = { ...S.offsets };
       return o;
     },
   };
@@ -389,7 +334,7 @@ async function openMasterModal(trackId) {
         <button type="button" class="btn primary big" id="st-go">${ic("sliders")} Masterizar</button></div>
     </div>`, (m) => {
     m.classList.add("wide");
-    studio = studioMount($("#st-host", m), { genres, bandId: track.band_id ?? state.bandId, stems, trackId,
+    studio = studioMount($("#st-host", m), { genres, bandId: track.band_id ?? state.bandId, stems,
       onChange: () => { $("#st-go", m).disabled = !studio.valid(); } });
     $("#st-x", m).addEventListener("click", closeModal);
     $("#st-cancel", m).addEventListener("click", closeModal);
@@ -490,35 +435,104 @@ async function openCompare(trackId, masterId, report) {
         <input type="range" id="cp-seek" min="0" max="1000" value="0" aria-label="Posición">
         <span class="pl-time" id="cp-dur">0:00</span></div>
       <label class="check"><input type="checkbox" id="cp-match" checked> Igualar el volumen (el master es ${stNum(Math.abs(diff))} dB ${diff >= 0 ? "más fuerte" : "más suave"})</label>
+      <p class="small muted" id="cp-load">Preparando los audios para comparar…</p>
       <p class="small muted">Atajos: <kbd>A</kbd> / <kbd>B</kbd> cambian de versión, <kbd>espacio</kbd> reproduce.</p>
-      <audio id="cp-a" preload="auto" src="${esc(urlA)}"></audio><audio id="cp-b" preload="auto" src="${esc(urlB)}"></audio>
     </div>`, (m) => {
     m.classList.add("wide");
-    const A = $("#cp-a", m), B = $("#cp-b", m), seek = $("#cp-seek", m);
-    let cur = "a", seeking = false;
-    const apply = () => {
+    /* Las dos versiones suenan desde el mismo reloj de audio (Web Audio): el cambio A/B es
+       instantáneo y sin cortes. Antes eran dos <audio> sincronizados a mano y en iPhone se
+       escuchaba entrecortado (iOS ignora volume y cada corrección de reloj hace un salto).
+       Si Web Audio falla, queda un plan B con un solo <audio> que cambia de fuente. */
+    const seek = $("#cp-seek", m), loadEl = $("#cp-load", m), playBtn = $("#cp-play", m);
+    let cur = "a", seeking = false, P = null, rafId = 0;
+    const gains = () => {
       const match = $("#cp-match", m).checked;
-      // volume de <audio> solo baja: el más fuerte se atenúa hasta igualar al más suave
-      const gA = match && la > lb ? Math.pow(10, (lb - la) / 20) : 1;
-      const gB = match && lb > la ? Math.pow(10, (la - lb) / 20) : 1;
-      A.volume = cur === "a" ? gA : 0; B.volume = cur === "b" ? gB : 0;
+      // solo se atenúa el más fuerte hasta igualar al más suave
+      return { a: match && la > lb ? Math.pow(10, (lb - la) / 20) : 1, b: match && lb > la ? Math.pow(10, (la - lb) / 20) : 1 };
+    };
+    const show = () => {
+      if (!P) return;
+      const d = P.duration() || 0, c = Math.min(P.time(), d);
+      $("#cp-cur", m).textContent = plFmt(c); $("#cp-dur", m).textContent = plFmt(d);
+      if (!seeking && d) seek.value = (c / d) * 1000;
+      playBtn.innerHTML = plIcon(P.playing() ? "pause" : "play");
+    };
+    const tick = () => { show(); rafId = requestAnimationFrame(tick); };
+
+    let ctx = null;
+    const setupWA = async () => {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) throw new Error("sin WebAudio");
+      const [ra, rb] = await Promise.all([fetch(urlA), fetch(urlB)]);
+      if (!ra.ok || !rb.ok) throw new Error("descarga");
+      const [ba, bb] = await Promise.all([ra.arrayBuffer(), rb.arrayBuffer()]);
+      ctx = new AC();
+      const [bufA, bufB] = await Promise.all([ctx.decodeAudioData(ba), ctx.decodeAudioData(bb)]);
+      const gA = ctx.createGain(), gB = ctx.createGain();
+      gA.connect(ctx.destination); gB.connect(ctx.destination);
+      const dur = Math.min(bufA.duration, bufB.duration);
+      let srcA = null, srcB = null, playing = false, offset = 0, started = 0;
+      const now = () => (playing ? Math.min(offset + ctx.currentTime - started, dur) : offset);
+      const stopSrc = () => {
+        if (srcA) { srcA.onended = null; try { srcA.stop(); } catch { /* ya parado */ } }
+        if (srcB) { try { srcB.stop(); } catch { /* ya parado */ } }
+        srcA = srcB = null;
+      };
+      const startAt = (pos) => {
+        stopSrc();
+        srcA = ctx.createBufferSource(); srcA.buffer = bufA; srcA.connect(gA);
+        srcB = ctx.createBufferSource(); srcB.buffer = bufB; srcB.connect(gB);
+        const t0 = ctx.currentTime + 0.04;
+        srcA.start(t0, pos); srcB.start(t0, pos);
+        started = t0; offset = pos; playing = true;
+        srcA.onended = () => { if (playing) { playing = false; offset = 0; show(); } };
+      };
+      P = {
+        play: async () => { try { await ctx.resume(); } catch { /* sigue */ } startAt(now() >= dur - 0.05 ? 0 : now()); },
+        pause: () => { offset = now(); playing = false; stopSrc(); },
+        seek: (s) => { const was = playing; offset = Math.max(0, Math.min(s, dur)); if (was) startAt(offset); },
+        time: now, duration: () => dur, playing: () => playing,
+        apply: () => { const g = gains(); gA.gain.value = cur === "a" ? g.a : 0; gB.gain.value = cur === "b" ? g.b : 0; },
+        stop: () => { stopSrc(); if (ctx) ctx.close().catch(() => { /* cerrado */ }); },
+      };
+    };
+    const setupEl = () => {
+      const el = new Audio(); el.preload = "auto"; el.src = urlA;
+      const pre = new Audio(); pre.preload = "auto"; pre.src = urlB;   // precarga la otra versión
+      let loaded = "a";
+      P = {
+        play: () => el.play().catch(() => { /* sin permiso */ }),
+        pause: () => el.pause(),
+        seek: (s) => { el.currentTime = s; },
+        time: () => el.currentTime || 0, duration: () => el.duration || 0, playing: () => !el.paused,
+        apply: () => {
+          const g = gains();
+          el.volume = cur === "a" ? g.a : g.b;
+          if (loaded !== cur) {
+            loaded = cur;
+            const pos = el.currentTime || 0, was = !el.paused;
+            el.src = cur === "a" ? urlA : urlB;
+            el.addEventListener("loadedmetadata", () => { el.currentTime = pos; if (was) el.play().catch(() => { /* nada */ }); }, { once: true });
+            el.load();
+          }
+        },
+        stop: () => { el.pause(); el.removeAttribute("src"); pre.removeAttribute("src"); },
+      };
+    };
+    const pick = (v) => {
+      cur = v;
+      if (P) P.apply();
       $$(".cp-btn", m).forEach((b) => b.classList.toggle("on", b.dataset.v === cur));
     };
-    const sync = () => { if (Math.abs(A.currentTime - B.currentTime) > 0.08) (cur === "a" ? B : A).currentTime = (cur === "a" ? A : B).currentTime; };
-    const show = () => {
-      const a = cur === "a" ? A : B, d = a.duration || 0;
-      $("#cp-cur", m).textContent = plFmt(a.currentTime); $("#cp-dur", m).textContent = plFmt(d);
-      if (!seeking && d) seek.value = (a.currentTime / d) * 1000;
-      $("#cp-play", m).innerHTML = plIcon(A.paused ? "play" : "pause");
-    };
-    const toggle = () => { if (A.paused) { sync(); A.play(); B.play(); } else { A.pause(); B.pause(); } show(); };
-    const pick = (v) => { cur = v; apply(); };
-    [A, B].forEach((a) => ["timeupdate", "play", "pause", "loadedmetadata"].forEach((n) => a.addEventListener(n, () => { sync(); show(); })));
-    $("#cp-play", m).addEventListener("click", toggle);
+    const toggle = () => { if (!P) return; (P.playing() ? P.pause() : P.play()); show(); };
+    playBtn.disabled = true;
+    setupWA().catch(() => { if (ctx) { ctx.close().catch(() => { /* nada */ }); ctx = null; } setupEl(); })
+      .then(() => { if (!m.open) { P && P.stop(); return; } P.apply(); loadEl.hidden = true; playBtn.disabled = false; show(); });
+    playBtn.addEventListener("click", toggle);
     $$(".cp-btn", m).forEach((b) => b.addEventListener("click", () => pick(b.dataset.v)));
-    $("#cp-match", m).addEventListener("change", apply);
-    seek.addEventListener("input", () => { seeking = true; const d = A.duration || 0; A.currentTime = B.currentTime = (seek.value / 1000) * d; });
-    seek.addEventListener("change", () => { seeking = false; });
+    $("#cp-match", m).addEventListener("change", () => P && P.apply());
+    seek.addEventListener("input", () => { seeking = true; if (P) $("#cp-cur", m).textContent = plFmt((seek.value / 1000) * (P.duration() || 0)); });
+    seek.addEventListener("change", () => { if (P) P.seek((seek.value / 1000) * (P.duration() || 0)); seeking = false; });
     const key = (ev) => {
       if (!m.open) return document.removeEventListener("keydown", key);
       if (ev.target.tagName === "INPUT" && ev.target.type !== "range" && ev.target.type !== "checkbox") return;
@@ -526,9 +540,10 @@ async function openCompare(trackId, masterId, report) {
       else if (ev.key === " " && ev.target.tagName !== "BUTTON") { ev.preventDefault(); toggle(); }
     };
     document.addEventListener("keydown", key);
-    m.addEventListener("close", () => { A.pause(); B.pause(); document.removeEventListener("keydown", key); }, { once: true });
+    rafId = requestAnimationFrame(tick);
+    m.addEventListener("close", () => { cancelAnimationFrame(rafId); P && P.stop(); document.removeEventListener("keydown", key); }, { once: true });
     $("#cp-x", m).addEventListener("click", closeModal);
-    apply();
+    pick("a");
   });
   $("#modal").addEventListener("close", () => $("#modal").classList.remove("wide"), { once: true });
 }
