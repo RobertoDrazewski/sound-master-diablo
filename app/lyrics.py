@@ -101,6 +101,40 @@ def language_code(value: str | None) -> str | None:
     return v if v in LANGUAGES else None
 
 
+VOCALISE = "(Oh, oh, oh)"
+
+
+def _wordless_vocals(samples, sung: list[tuple[float, float]], min_len: float = 1.2) -> list[float]:
+    """En la pista de voz sola: momentos de canto de 1,2 s o más donde no se reconoció ninguna palabra.
+    Mide el volumen cada 50 ms; devuelve el inicio de cada parte."""
+    import numpy as np
+    hop = 800                                              # 50 ms a 16 kHz
+    n = len(samples) // hop
+    if n < 10:
+        return []
+    rms = np.sqrt(np.mean(samples[: n * hop].reshape(n, hop) ** 2, axis=1))
+    ref = float(np.percentile(rms, 95))
+    if ref <= 1e-4:
+        return []
+    active = rms > max(0.12 * ref, 0.004)
+    for a, b in sung:                                      # lo que ya tiene palabras (con un margen) no cuenta
+        active[max(0, int((a - 0.35) * 20)): int((b + 0.35) * 20) + 1] = False
+    out, i = [], 0
+    while i < n:
+        if not active[i]:
+            i += 1
+            continue
+        j, gap = i, 0
+        while j < n and gap <= 8:                          # tolera respiraciones de hasta 0,4 s
+            gap = 0 if active[j] else gap + 1
+            j += 1
+        end = j - gap
+        if (end - i) / 20 >= min_len:
+            out.append(i / 20)
+        i = j
+    return out
+
+
 def transcribe(audio_path: Path, language: str | None = None, clean_vocals: bool = False,
                on_progress=None) -> tuple[list[dict], str]:
     """Escucha el tema y devuelve (líneas con tiempo, idioma). Si la banda eligió el idioma se usa ese;
@@ -120,12 +154,15 @@ def transcribe(audio_path: Path, language: str | None = None, clean_vocals: bool
     models.mkdir(parents=True, exist_ok=True)
     model = WhisperModel(LYRICS_MODEL, device="cpu", compute_type="int8", download_root=str(models), cpu_threads=4)
     try:
+        # la pista inicial le muestra que en canciones hay vocalizaciones: así escribe los "oh", "ah" en vez de saltearlos
         opts = dict(beam_size=5, condition_on_previous_text=False, word_timestamps=True,
+                    initial_prompt="Oh, oh, oh. Ah, ah, ah. Uoh, oh. Yeah.",
                     language=language_code(language), hallucination_silence_threshold=2.0)
         if clean_vocals:
             opts.update(vad_filter=True, vad_parameters={"threshold": 0.3, "min_silence_duration_ms": 1000})
         segments, info = model.transcribe(samples, **opts)
         lines, cur, start, last_end = [], [], None, None
+        sung = []
         last_report = 0.0
 
         def flush():
@@ -148,12 +185,15 @@ def transcribe(audio_path: Path, language: str | None = None, clean_vocals: bool
                 # línea nueva si hay una pausa; si la línea ya es larga, corta en la primera micro-pausa
                 # (así no quedan palabras sueltas al final) y como máximo a las 14 palabras
                 gap = w.start - (last_end if last_end is not None else w.start)
-                if cur and (gap > 0.7 or (len(cur) >= 9 and gap >= 0.15) or len(cur) >= 14):
+                # una mayúscula en el medio suele ser el comienzo del verso siguiente ("...al pasar Te escuché")
+                verso_nuevo = len(cur) >= 4 and word[:1].isupper() and not cur[-1].endswith((",", "-"))
+                if cur and (gap > 0.7 or (len(cur) >= 9 and gap >= 0.15) or len(cur) >= 14 or verso_nuevo):
                     flush()
                 if start is None:
                     start = w.start
                 cur.append(word)
                 last_end = w.end
+                sung.append((w.start, w.end))
                 if word[-1:] in ".!?":
                     flush()
             if cur:
@@ -163,6 +203,11 @@ def transcribe(audio_path: Path, language: str | None = None, clean_vocals: bool
                 on_progress(list(lines), min(0.99, seg.end / duration))
             if len(lines) >= MAX_LINES:
                 break
+        if clean_vocals:
+            # partes donde el cantante canta sin palabras (coros de "aaa", "ooo"): se marcan para completarlas
+            for t0 in _wordless_vocals(samples, sung):
+                lines.append({"t": round(t0, 2), "text": VOCALISE})
+            lines.sort(key=lambda ln: ln["t"])
         return lines[:MAX_LINES], getattr(info, "language", "") or ""
     finally:
         del model
