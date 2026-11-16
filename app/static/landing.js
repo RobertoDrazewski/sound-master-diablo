@@ -7,7 +7,7 @@ const LAND_BLOCKS = [
     items: ["Graba desde el navegador o sube el archivo", "Ensayos ordenados por fecha y sesión", "Aviso automático a toda la banda"] },
   { k: "produccion", icon: "music", t: "Producción", img: "/img/herramienta-produccion.jpg", lead: "Demos, tomas, mezclas y letras en un solo lugar, antes del master.",
     items: ["Subida desde REAPER con un script incluido", "Pistas separadas o mezcla completa", "Reproductor con loop A–B y control de velocidad",
-      "Letra detectada con inteligencia artificial, editable y sincronizada verso por verso para Spotify y Apple Music"] },
+      "La letra se lee desde tu propia canción: la corriges, la apruebas y queda sincronizada verso por verso para Spotify y Apple Music"] },
   { k: "master", icon: "sliders", t: "Master", img: "/img/herramienta-master.jpg", star: true, lead: "Deja tu mezcla lista para publicar y compara el antes y el después.",
     items: ["Más de 70 estilos, desde rock y metal hasta jazz, cumbia y hip hop", "Master por referencia: tu tema adopta el sonido de otro que elijas",
       "Control de volumen, potencia, tono, ancho estéreo y balance de instrumentos", "Informe paso a paso y comparación A/B a igual volumen"] },
@@ -18,11 +18,16 @@ const LAND_BLOCKS = [
   { k: "albumes", icon: "disc", t: "Álbumes", img: "/img/herramienta-albumes.jpg", lead: "Ordena los temas y diseña la portada del disco.",
     items: ["Orden final de los temas por arrastre", "Portada con tu foto, estilos prediseñados o inteligencia artificial", "Archivo a 3000 px, el tamaño que piden las plataformas"] },
   { k: "lanzamiento", icon: "rocket", t: "Lanzamiento", img: "/img/herramienta-lanzamiento.jpg", lead: "Descarga el álbum listo para cada plataforma.",
-    items: ["WAV 24 bits, MP3 320, portada y letras en un solo paquete", "Spotify, Apple Music y YouTube Music (mediante distribuidora) y Bandcamp", "Guía paso a paso de publicación, también para vinilo y CD"] },
+    items: ["WAV 24 bits, MP3 320, portada y letras en un solo paquete", "Título, artista, álbum, créditos y letra guardados dentro de cada archivo",
+      "Guía paso a paso para publicar con AMA (INAMU), DistroKid o CD Baby, con costos y requisitos de cada una",
+      "Spotify, Apple Music y YouTube Music mediante la distribuidora que elijas, y Bandcamp de forma directa", "También preparado para vinilo y CD"],
+    note: "AMA, INAMU, DistroKid y CD Baby son marcas de sus respectivos titulares; Diablo Master Mix no está afiliado ni respaldado por ellos." },
   { k: "calendario", icon: "calendar", t: "Calendario", img: "/img/herramienta-calendario.jpg", lead: "Ensayos y presentaciones con aviso a toda la banda.",
     items: ["Agenda de ensayos, shows y grabaciones", "Aviso automático a los integrantes", "Próximos eventos visibles en el inicio"] },
-  { k: "musicos", icon: "users", t: "Banco de músicos", img: "/img/herramienta-musicos.jpg", lead: "Encuentra músicos disponibles para completar tu formación.",
-    items: ["Búsqueda por instrumento, estilo y zona", "Contacto directo por WhatsApp o correo", "Visible solo para administradores; cada músico decide si aparece"] },
+  { k: "musicos", icon: "users", t: "Banco de músicos", img: "/img/herramienta-musicos.jpg", lead: "Las bandas encuentran integrantes y los músicos encuentran banda.",
+    items: ["Registro gratis para músicos: crea tu perfil y postúlate a las búsquedas", "La banda publica qué integrante busca y agenda la audición en el calendario",
+      "Si la banda te elige, pasas a ser integrante con todas sus herramientas", "Descuento en el próximo cobro para la banda que suma a un músico del banco"],
+    cta: { href: "#/musico", t: "Regístrate gratis en el banco de músicos" } },
 ];
 const LAND_FLOW = [
   { icon: "mic", t: "Graba", d: "El ensayo, desde el teléfono" },
@@ -118,7 +123,7 @@ function viewLanding() {
           <div class="l2-grid">
             ${rest.map((b) => `<article class="l2-card" data-glow id="f-${b.k}">
               ${landPic(b)}
-              <div class="l2-body">${landHead(b)}${landList(b)}</div></article>`).join("")}
+              <div class="l2-body">${landHead(b)}${landList(b)}${b.note ? `<small class="l2-trade">${b.note}</small>` : ""}${b.cta ? `<div class="l2-cta left"><a class="btn primary" href="${b.cta.href}">${b.cta.t}</a></div>` : ""}</div></article>`).join("")}
           </div>
         </section>
 

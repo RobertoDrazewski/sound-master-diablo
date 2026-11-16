@@ -330,6 +330,7 @@ def apply_payment(db: Session, data: dict) -> Band | None:
             if band.pending_plan_id:
                 band.plan_id, band.pending_plan_id = band.pending_plan_id, None
             db.commit()
+            close_bank_discount(db, band)
             _after_payment(db, band, float(amount), approved=True)
             return band
     elif st in ("rejected", "cancelled") and not pay:
@@ -695,6 +696,64 @@ def courtesy_expire(db: Session) -> int:
                     f"La cuenta sin cargo de \"{b.name}\" venció. Quedó con 7 días de prueba para elegir un plan.",
                     "#/admin/bandas")
     return n
+
+
+# ---------------------------------------------------------------- descuento por sumar un músico del banco
+
+BANK_DISCOUNT_PCT = 20          # sobre el próximo cobro mensual
+BANK_DISCOUNT_EVERY_DAYS = 90   # una banda lo recibe como mucho una vez cada tanto (evita abusos)
+
+
+def bank_discount_available(band: Band) -> bool:
+    if band.exempt or not band.plan_id:
+        return False
+    return not band.bank_discount_at or band.bank_discount_at < now() - timedelta(days=BANK_DISCOUNT_EVERY_DAYS)
+
+
+def grant_bank_discount(db: Session, band: Band, musician: str) -> str:
+    """La banda sumó a un músico del banco: 20% menos en su próximo cobro.
+    'auto' = ya quedó aplicado en Mercado Pago; 'manual' = lo aplica el dueño a mano; '' = no corresponde."""
+    if not bank_discount_available(band):
+        return ""
+    plan = band_plan(db, band)
+    mode = "manual"
+    if plan and band.pay_provider != "polar" and band.mp_preapproval_id and band.mp_status == "authorized":
+        try:
+            reprice_preapproval(band.mp_preapproval_id, int(round(plan.price_ars * (100 - BANK_DISCOUNT_PCT) / 100)))
+            band.bank_discount_open = True
+            mode = "auto"
+        except MPError as e:
+            log.warning("descuento banco de musicos, banda %s: %s", band.id, e)
+    band.bank_discount_at = now()
+    db.commit()
+    if mode == "auto":
+        _tell_owner(db, f"Descuento del banco de músicos: {band.name}",
+                    f"\"{band.name}\" sumó a {musician} desde el banco de músicos.\n"
+                    f"Su próximo cobro en Mercado Pago sale con {BANK_DISCOUNT_PCT}% de descuento y después vuelve solo al precio del plan.",
+                    "#/admin/bandas")
+    else:
+        _tell_owner(db, f"Aplicar descuento a mano: {band.name}",
+                    f"\"{band.name}\" sumó a {musician} desde el banco de músicos y le corresponde {BANK_DISCOUNT_PCT}% "
+                    f"de descuento en su próximo cobro.\nNo se pudo aplicar solo (paga con {_proc(band)} o todavía no tiene "
+                    "la suscripción autorizada): hay que aplicarlo a mano.", "#/admin/bandas")
+    return mode
+
+
+def close_bank_discount(db: Session, band: Band):
+    """Ya se cobró el mes con descuento: la suscripción vuelve al precio del plan."""
+    if not band.bank_discount_open:
+        return
+    plan = band_plan(db, band)
+    try:
+        if plan and band.mp_preapproval_id:
+            reprice_preapproval(band.mp_preapproval_id, plan.price_ars)
+        band.bank_discount_open = False
+        db.commit()
+    except MPError as e:
+        log.warning("volver al precio del plan, banda %s: %s", band.id, e)
+        _tell_owner(db, f"Revisar precio de {band.name}",
+                    f"No se pudo volver al precio del plan después del mes con descuento de \"{band.name}\" ({e}). "
+                    "Se reintenta en el próximo cobro; si sigue, corregilo desde Mercado Pago.", "#/admin/bandas")
 
 
 def public_plans(db: Session) -> list[dict]:

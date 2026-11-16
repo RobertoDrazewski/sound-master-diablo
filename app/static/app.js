@@ -371,14 +371,16 @@ function renderShell(active) {
     h += `<div class="side-sep"></div>`;
   } else {
     h += link("#/", "Inicio", "home", active.key === "home");
-    h += `<div class="side-group"><p class="side-title">${me.bands.length === 1 ? "Tu banda" : "Tus bandas"}</p>`;
+    if (me.bands.length) h += `<div class="side-group"><p class="side-title">${me.bands.length === 1 ? "Tu banda" : "Tus bandas"}</p>`;
     for (const b of me.bands) {
       const cur = String(active.bandId) === String(b.id);
       h += `<a class="nav-link band-link ${cur ? "active-band" : ""}" href="#/band/${b.id}/ensayos">${avatar(b.photo, b.name)}<span>${esc(b.name)}</span></a>`;
       if (cur) h += `<div class="side-tools">${TOOLS.map(([k, l, i]) => link(`#/band/${b.id}/${k}`, l, i, active.tool === k)).join("")}${b.role === "admin" ? link(`#/band/${b.id}/musicos`, "Banco de músicos", "search", active.tool === "musicos") + link(`#/band/${b.id}/plan`, "Plan", "card", active.tool === "plan") : ""}</div>`;
     }
-    h += `</div><div class="side-sep"></div>`;
-    h += link("#/reaper", "Conectar Reaper", "headphones", active.key === "reaper");
+    if (me.bands.length) {
+      h += `</div><div class="side-sep"></div>`;
+      h += link("#/reaper", "Conectar Reaper", "headphones", active.key === "reaper");
+    }
   }
   h += link("#/account", "Tu cuenta", "user", active.key === "account");
   h += `<button type="button" class="nav-link nav-out" id="side-out">${ic("logout")}Cerrar sesión</button>`;
@@ -468,6 +470,8 @@ async function router() {
   try {
     if (name === "invite") { setPublic(true); return viewInvite(arg); }
     if (name === "gracias" && arg) { setPublic(true); return viewThanks(arg); }
+    if (name === "musico" && arg) { setPublic(true); return await viewMusicianConfirm(arg); }
+    if (name === "musico" && !session.token) { setPublic(true); return await viewMusicianSignup(); }
     if (!session.token) {
       setPublic(true);
       if (name === "login") return viewLogin();
@@ -479,11 +483,12 @@ async function router() {
     if (nav !== state.nav) return;
     if (!state.notifTimer) startNotifPolling();
     if (typeof chatMount === "function") { chatMount(); if (typeof chatUpdateVisibility === "function") chatUpdateVisibility(); }
-    if (name === "login") { location.hash = "#/"; return; }
+    if (name === "login" || name === "musico") { location.hash = "#/"; return; }
     switch (name) {
       case "home":
         if (state.me.is_super) { location.hash = "#/admin"; return; }
-        renderShell({ key: "home" }); return await viewHome(nav);
+        renderShell({ key: "home" });
+        return state.me.bands.length ? await viewHome(nav) : await viewMusicianHome(nav);   // sin banda: inicio del banco de músicos
       case "band":
         if (state.me.is_super) { location.hash = "#/admin"; return; }
         return await viewBand(arg, sub, nav);
@@ -518,6 +523,7 @@ function viewLogin() {
       <div class="field"><label for="pw">Contraseña</label><input id="pw" type="password" autocomplete="current-password" required></div>
       <button class="btn primary block big">Entrar</button>
       <p class="muted small" style="margin-top:1rem">¿Todavía no tenés cuenta? Pedile el link de invitación a quien administra la banda.</p>
+      <p class="small">¿Sos músico y buscás banda? <a href="#/musico">Registrate gratis en el banco de músicos</a></p>
       <p class="small"><a href="#/">← Volver al inicio</a></p>
       <p class="small lang-auth">${I18N.inline()}</p>
     </form>`, "Tu banda, tus temas, un solo lugar."));
@@ -2446,7 +2452,9 @@ async function viewAccount(nav) {
       ${tokens.length ? `<table class="table" style="margin-top:.75rem"><tbody>${tokens.map((t) => `
         <tr><td>${esc(t.label)}<div class="small muted">Creado ${fmtDate(t.created_at)}${t.last_used_at ? " · último uso " + fmtDate(t.last_used_at) : " · sin usar"}</div></td>
         <td style="text-align:right"><button class="btn small danger" data-rev="${t.id}">Revocar</button></td></tr>`).join("")}</tbody></table>` : ""}
-    </section>`);
+    </section>
+    ${deleteAccountCard()}`);
+  wireDeleteAccount();
 
   $("#out").addEventListener("click", () => logout(false));
   wireMusicProfile(mp);
@@ -2509,7 +2517,7 @@ const mpPlace = (o) => [o.city, o.country].filter(Boolean).join(", ");
 
 function musicProfileCard(p) {
   return `<section class="card" id="mpcard"><h2>Mi perfil de músico</h2>
-    <p class="muted">Si te tildás como disponible, los admins de otras bandas pueden ver este perfil y tu contacto en el Banco de músicos para invitarte a tocar. Lo desactivás cuando quieras.</p>
+    <p class="muted">Con tu instrumento cargado ya podés postularte a las búsquedas de las bandas. Si además te tildás como disponible, los admins de las bandas ven este perfil y tu contacto en el Banco de músicos para invitarte a tocar. Lo desactivás cuando quieras.</p>
     <form id="mpf" class="stack">
       <label class="check"><input type="checkbox" id="mp-av" ${p.available ? "checked" : ""}> Estoy disponible para tocar en otros proyectos</label>
       <div class="field" style="margin:0"><label for="mp-bio">Sobre mí</label><textarea id="mp-bio" maxlength="800" placeholder="Contá tu recorrido y qué buscás">${esc(p.bio)}</textarea></div>
@@ -2583,13 +2591,14 @@ async function viewMusicians(band, nav) {
   if (band.role !== "admin" && !state.me.is_super) { setApp(`<section class="card"><p>El Banco de músicos es solo para el admin de la banda.</p></section>`); return; }
   const f = state.mpFilter || (state.mpFilter = { instrument: "", country: "", city: "", style: "" });
   const qs = () => new URLSearchParams(Object.fromEntries(Object.entries(f).filter(([, v]) => v.trim()))).toString();
-  const [reqs, mus, mp] = await Promise.all([api("/musician-requests"), api("/musicians?" + qs()), api("/me/music-profile")]);
+  const [reqs, mus, mp, apps] = await Promise.all([api("/musician-requests"), api("/musicians?" + qs()), api("/me/music-profile"), api(`/bands/${band.id}/applications`)]);
   if (nav !== state.nav) return;
   const groups = {};
   for (const m of mus) (groups[m.instruments[0] || "Otros"] ||= []).push(m);
   const mine = reqs.filter((r) => r.band_id === band.id);
   setApp(`
-    ${bandHead(band, "Banco de músicos", "Encontrá músicos disponibles para tocar o publicá qué músico buscás. Lo ven solo los admins de las bandas.")}
+    ${bandHead(band, "Banco de músicos", "Publicá qué músico buscás, recibí postulaciones y agendá la audición. Tus búsquedas las ven los músicos registrados y los admins de otras bandas.")}
+    ${applicationsCard(apps)}
     <section class="card"><h2>Búsquedas de bandas</h2>
       ${reqs.length ? `<ul class="mp-list">${reqs.map((r) => `<li class="mp-li">${ic("search")}<div class="grow"><strong>Busca ${esc(r.instrument)}</strong> <span class="muted small">· ${esc(r.band_name)}${mpPlace(r) ? " · " + esc(mpPlace(r)) : ""}</span>
           ${r.styles.length ? `<div style="margin:.25rem 0">${mpTags(r.styles)}</div>` : ""}${r.description ? `<div class="muted small">${esc(r.description)}</div>` : ""}</div>
@@ -2624,6 +2633,7 @@ async function viewMusicians(band, nav) {
       ${mus.length ? Object.keys(groups).map((g) => `<h3 style="margin:1.1rem 0 .4rem">${esc(g)}</h3><ul class="mp-list">${groups[g].map((m) => mpLi(m, mpContactBtn(mpContactLink(m.contact_kind, m.contact_value, m.name.split(" ")[0], band), m.contact_kind))).join("")}</ul>`).join("")
         : `<p class="muted" style="margin-top:.75rem">No hay músicos disponibles con esos filtros. Cada músico decide si aparece desde Tu cuenta.</p>`}
     </section>`);
+  wireApplications(band, apps);
   $("#mf").addEventListener("submit", (ev) => {
     ev.preventDefault();
     Object.assign(f, { instrument: $("#f-ins").value, style: $("#f-sty").value, country: $("#f-country").value, city: $("#f-city").value });

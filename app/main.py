@@ -23,10 +23,10 @@ from .config import (ASSISTANT_DAILY_LIMIT, COVER_AI_DAILY_LIMIT, LYRICS_DAILY_L
                      INVITE_TTL_DAYS, MAX_UPLOAD_MB, RAW_RETENTION_DAYS,
                      REFERENCE_SECONDS, SUPERADMIN_EMAIL, SUPERADMIN_PASSWORD, CHAT_ENABLED, TRIAL_DAYS,
                      TURNSTILE_SITE_KEY, PURGE_HOURS)
-from .db import (Album, ApiToken, Band, Cancellation, ContactMessage, Event, Genre, Invite, Job, Membership, MusicianRequest,
+from .db import (Album, ApiToken, Application, Band, Cancellation, ContactMessage, Event, Genre, Invite, Job, Membership, MusicianRequest,
                  Notification, Payment, Plan, PushSubscription, Reference, SessionLocal, Signup, Track, User, Version, init_db, now)
 from .notify import notify_band
-from .security import (create_media_token, create_session_jwt,
+from .security import (create_media_token, create_session_jwt, create_signup_token, decode_signup_token,
                        decode_media_token, decode_session_jwt, hash_password,
                        new_secret, sha256, throttle, throttle_ip, verify_password)
 from .worker import _pick_source_info, input_preview_path, remove_version_files, worker
@@ -397,7 +397,7 @@ def accept_invite_session(body: AcceptInviteSessionIn, user: User = Depends(curr
     if not db.query(Membership).filter_by(user_id=user.id, band_id=inv.band_id).first():
         db.add(Membership(user_id=user.id, band_id=inv.band_id, role=inv.role, kind=inv.kind,
                           instrument=inv.instrument, sings=inv.sings))
-    inv.used_at = now()
+    inv.used_at, user.left_band_at = now(), None
     db.commit()
     return {"ok": True, "band_id": inv.band_id}
 
@@ -418,7 +418,7 @@ def accept_invite(body: AcceptInviteIn, db: Session = Depends(get_db)):
     if not db.query(Membership).filter_by(user_id=user.id, band_id=inv.band_id).first():
         db.add(Membership(user_id=user.id, band_id=inv.band_id, role=inv.role, kind=inv.kind,
                           instrument=inv.instrument, sings=inv.sings))
-    inv.used_at = now()
+    inv.used_at, user.left_band_at = now(), None
     db.commit()
     return {"token": create_session_jwt(user.id)}
 
@@ -490,6 +490,7 @@ def me(request: Request, user: User = Depends(current_user), db: Session = Depen
     return {
         "id": user.id, "email": user.email, "name": user.name, "is_super": user.is_super,
         "photo": img_url("users", user.id, user.photo),
+        "left_band": bool(user.left_band_at) and not bands and not user.is_super,
         "bands": [{"id": b.id, "name": b.name, "role": band_role(db, user, b.id),
                    "photo": img_url("bands", b.id, b.photo),
                    "billing": {k: v for k, v in billing.status(db, b).items() if k in ("state", "label", "can_write", "days_left", "hours_left", "purge_at")}}
@@ -658,13 +659,29 @@ def _request_out(r: MusicianRequest, band_name: str, mine: bool) -> dict:
 
 @app.get("/musician-requests")
 def list_musician_requests(user: User = Depends(current_user), db: Session = Depends(get_db)):
-    need_any_band_admin(db, user)
+    """Los admins de banda ven el contacto de cada búsqueda. El resto (músicos con cuenta gratis o integrantes)
+    ve la búsqueda sin el contacto y se postula desde la plataforma."""
     since = now() - timedelta(days=MUSICIAN_REQUEST_DAYS)
-    my_bands = {m.band_id for m in db.query(Membership).filter_by(user_id=user.id, role="admin").all()}
-    rows = (db.query(MusicianRequest, Band.name).join(Band, Band.id == MusicianRequest.band_id)
-            .filter(MusicianRequest.active.is_(True), MusicianRequest.created_at >= since)
+    is_admin = _is_any_band_admin(db, user)
+    mships = db.query(Membership).filter_by(user_id=user.id).all()
+    my_bands = {m.band_id for m in mships if m.role == "admin"}
+    member_of = {m.band_id for m in mships}
+    mine = {a.request_id: a for a in db.query(Application).filter_by(user_id=user.id).all()}
+    rows = (db.query(MusicianRequest, Band).join(Band, Band.id == MusicianRequest.band_id)
+            .filter(MusicianRequest.active.is_(True), MusicianRequest.created_at >= since,
+                    Band.blocked.is_(False), Band.purge_at.is_(None))
             .order_by(MusicianRequest.created_at.desc()).limit(200).all())
-    return [_request_out(r, n, user.is_super or r.band_id in my_bands) for r, n in rows]
+    out = []
+    for r, b in rows:
+        o = _request_out(r, b.name, user.is_super or r.band_id in my_bands)
+        o["band_photo"] = img_url("bands", b.id, b.photo)
+        o["member"] = r.band_id in member_of
+        a = mine.get(r.id)
+        o["my_application"] = {"id": a.id, "status": a.status} if a else None
+        if not is_admin:
+            o["contact_kind"], o["contact_value"] = "", ""
+        out.append(o)
+    return out
 
 
 @app.post("/bands/{band_id}/musician-requests")
@@ -988,6 +1005,7 @@ def band_remove_member(band_id: int, user_id: int, user: User = Depends(current_
         raise HTTPException(403, "Solo el super admin puede sacar a un admin de la banda")
     db.delete(m)
     db.commit()
+    _after_leaving(db, user_id, band_id)
     return {"ok": True}
 
 
@@ -999,6 +1017,7 @@ def remove_member(band_id: int, user_id: int, _: User = Depends(require_super),
         raise HTTPException(404, "No encontrado")
     db.delete(m)
     db.commit()
+    _after_leaving(db, user_id, band_id)
     return {"ok": True}
 
 
@@ -2837,6 +2856,428 @@ def chat_endpoint(body: ChatIn, request: Request, db: Session = Depends(get_db))
         return {"reply": limit, "limited": True}
     plans = db.query(Plan).filter_by(active=True).order_by(Plan.sort).all()
     return {"reply": chat.reply(body.message, body.history, plans)}
+
+
+# ===================================================================== banco de músicos: cuenta gratis
+# Un músico se anota gratis (sin banda ni plan), ve las búsquedas y las bandas, se postula, la banda le agenda
+# la audición y, si lo elige, pasa a ser integrante con todas las herramientas del plan de la banda.
+
+_BK = {
+    "es": {
+        "confirm_s": "Diablo Master Mix: confirmá tu cuenta de músico",
+        "confirm_b": "Hola {name},\n\nPara terminar tu registro gratis en el banco de músicos abrí este link y elegí tu contraseña:\n{link}\n\nEl link vale 48 horas. Si no pediste esta cuenta, ignorá este mail.\n\nDiablo Master Mix",
+        "exists_s": "Diablo Master Mix: ya tenés una cuenta",
+        "exists_b": "Hola,\n\nAlguien quiso registrar este mail en el banco de músicos, pero ya tiene una cuenta. Entrá con tu contraseña de siempre:\n{link}\n\nSi no fuiste vos, ignorá este mail.\n\nDiablo Master Mix",
+        "applied_s": "{name} se postuló a tu búsqueda de {ins}",
+        "applied_b": "Hola,\n\n{name} se postuló a la búsqueda de {ins} de {band}.\nMirá su perfil y agendá la audición desde el Banco de músicos:\n{link}\n\nDiablo Master Mix",
+        "applied_n": "{name} se postuló a la búsqueda de {ins}",
+        "aud_s": "{band} te citó a una audición",
+        "aud_b": "Hola {name},\n\n{band} te citó a una audición para {ins}.\n\nCuándo: {when} (hora UTC; en la app la ves en tu horario)\nDónde: {place}\n{notes}\nLa ves en tu calendario de audiciones:\n{link}\n\nDiablo Master Mix",
+        "aud_n": "{band} te citó a una audición",
+        "ok_s": "¡Ya sos parte de {band}!",
+        "ok_b": "Hola {name},\n\n{band} te eligió. Desde ahora sos integrante y tenés todas las herramientas de la banda: ensayos, producción, master, calendario y más.\n\nEntrá con tu cuenta de siempre:\n{link}\n\nDiablo Master Mix",
+        "ok_n": "{band} te sumó a la banda",
+        "no_s": "Novedades de tu postulación a {band}",
+        "no_b": "Hola {name},\n\n{band} avanzó con otra persona para la búsqueda de {ins}. Tu perfil sigue en el banco de músicos para otras bandas.\n\n{link}\n\nDiablo Master Mix",
+        "no_n": "{band} cerró la búsqueda de {ins} con otra persona",
+        "gone_n": "{name} retiró su postulación a {ins}",
+        "left_s": "Ya no sos integrante de {band}",
+        "left_b": "Hola {name},\n\nYa no sos integrante de {band} en Diablo Master Mix.\n\nTu cuenta sigue abierta. Al entrar elegís qué hacer con tus datos:\n- Conservarlos para el banco de músicos (gratis), así otras bandas pueden encontrarte.\n- Cancelar tu cuenta y eliminar todos tus datos.\n\n{link}\n\nDiablo Master Mix",
+        "aud_title": "Audición: {name} ({ins})", "nowhere": "a confirmar",
+    },
+    "en": {
+        "confirm_s": "Diablo Master Mix: confirm your musician account",
+        "confirm_b": "Hi {name},\n\nTo finish your free sign-up in the musicians' bank, open this link and choose your password:\n{link}\n\nThe link is valid for 48 hours. If you didn't request this account, ignore this email.\n\nDiablo Master Mix",
+        "exists_s": "Diablo Master Mix: you already have an account",
+        "exists_b": "Hi,\n\nSomeone tried to register this email in the musicians' bank, but it already has an account. Log in with your usual password:\n{link}\n\nIf it wasn't you, ignore this email.\n\nDiablo Master Mix",
+        "applied_s": "{name} applied to your search for {ins}",
+        "applied_b": "Hi,\n\n{name} applied to {band}'s search for {ins}.\nSee their profile and schedule the audition from the Musicians' bank:\n{link}\n\nDiablo Master Mix",
+        "applied_n": "{name} applied to the search for {ins}",
+        "aud_s": "{band} invited you to an audition",
+        "aud_b": "Hi {name},\n\n{band} invited you to an audition for {ins}.\n\nWhen: {when} (UTC; the app shows it in your local time)\nWhere: {place}\n{notes}\nYou'll find it in your auditions calendar:\n{link}\n\nDiablo Master Mix",
+        "aud_n": "{band} invited you to an audition",
+        "ok_s": "You're now part of {band}!",
+        "ok_b": "Hi {name},\n\n{band} picked you. You're now a member and have all the band's tools: rehearsals, production, mastering, calendar and more.\n\nLog in with your usual account:\n{link}\n\nDiablo Master Mix",
+        "ok_n": "{band} added you to the band",
+        "no_s": "News about your application to {band}",
+        "no_b": "Hi {name},\n\n{band} went ahead with someone else for the {ins} search. Your profile stays in the musicians' bank for other bands.\n\n{link}\n\nDiablo Master Mix",
+        "no_n": "{band} closed the {ins} search with someone else",
+        "gone_n": "{name} withdrew their application for {ins}",
+        "left_s": "You're no longer a member of {band}",
+        "left_b": "Hi {name},\n\nYou're no longer a member of {band} on Diablo Master Mix.\n\nYour account is still open. When you log in you choose what to do with your data:\n- Keep it for the musicians' bank (free), so other bands can find you.\n- Cancel your account and delete all your data.\n\n{link}\n\nDiablo Master Mix",
+        "aud_title": "Audition: {name} ({ins})", "nowhere": "to be confirmed",
+    },
+    "pt": {
+        "confirm_s": "Diablo Master Mix: confirme sua conta de músico",
+        "confirm_b": "Olá {name},\n\nPara concluir seu cadastro grátis no banco de músicos, abra este link e escolha sua senha:\n{link}\n\nO link vale 48 horas. Se você não pediu esta conta, ignore este e-mail.\n\nDiablo Master Mix",
+        "exists_s": "Diablo Master Mix: você já tem uma conta",
+        "exists_b": "Olá,\n\nAlguém tentou cadastrar este e-mail no banco de músicos, mas ele já tem uma conta. Entre com sua senha de sempre:\n{link}\n\nSe não foi você, ignore este e-mail.\n\nDiablo Master Mix",
+        "applied_s": "{name} se candidatou à sua busca de {ins}",
+        "applied_b": "Olá,\n\n{name} se candidatou à busca de {ins} de {band}.\nVeja o perfil e agende a audição no Banco de músicos:\n{link}\n\nDiablo Master Mix",
+        "applied_n": "{name} se candidatou à busca de {ins}",
+        "aud_s": "{band} chamou você para uma audição",
+        "aud_b": "Olá {name},\n\n{band} chamou você para uma audição de {ins}.\n\nQuando: {when} (UTC; no app aparece no seu horário)\nOnde: {place}\n{notes}\nEla está no seu calendário de audições:\n{link}\n\nDiablo Master Mix",
+        "aud_n": "{band} chamou você para uma audição",
+        "ok_s": "Você já faz parte de {band}!",
+        "ok_b": "Olá {name},\n\n{band} escolheu você. A partir de agora você é integrante e tem todas as ferramentas da banda: ensaios, produção, master, calendário e mais.\n\nEntre com sua conta de sempre:\n{link}\n\nDiablo Master Mix",
+        "ok_n": "{band} adicionou você à banda",
+        "no_s": "Novidades da sua candidatura a {band}",
+        "no_b": "Olá {name},\n\n{band} seguiu com outra pessoa na busca de {ins}. Seu perfil continua no banco de músicos para outras bandas.\n\n{link}\n\nDiablo Master Mix",
+        "no_n": "{band} fechou a busca de {ins} com outra pessoa",
+        "gone_n": "{name} retirou a candidatura a {ins}",
+        "left_s": "Você não é mais integrante de {band}",
+        "left_b": "Olá {name},\n\nVocê não é mais integrante de {band} no Diablo Master Mix.\n\nSua conta continua aberta. Ao entrar você escolhe o que fazer com seus dados:\n- Mantê-los no banco de músicos (grátis), para outras bandas encontrarem você.\n- Cancelar sua conta e excluir todos os seus dados.\n\n{link}\n\nDiablo Master Mix",
+        "aud_title": "Audição: {name} ({ins})", "nowhere": "a confirmar",
+    },
+}
+
+
+def _bk(lang: str | None) -> dict:
+    return _BK.get(lang if lang in _BK else "es")
+
+
+def _site_url(request: Request | None = None) -> str:
+    return PUBLIC_URL or (str(request.base_url).rstrip("/") if request else "")
+
+
+def _uname(u: User) -> str:
+    return u.name or u.email.split("@")[0]
+
+
+def _band_admins(db: Session, band_id: int) -> list[User]:
+    return (db.query(User).join(Membership, Membership.user_id == User.id)
+            .filter(Membership.band_id == band_id, Membership.role == "admin", User.active.is_(True)).all())
+
+
+def _after_leaving(db: Session, user_id: int, band_id: int) -> None:
+    """Quien queda sin ninguna banda conserva la cuenta y elige: seguir en el banco de músicos o borrar todo."""
+    u, band = db.get(User, user_id), db.get(Band, band_id)
+    if not u or u.is_super or db.query(Membership).filter_by(user_id=user_id).count():
+        return
+    u.left_band_at = now()
+    db.commit()
+    T = _bk(u.lang)
+    mail.send_customer(u.email, T["left_s"].format(band=band.name if band else ""),
+                       T["left_b"].format(name=_uname(u), band=band.name if band else "", link=f"{_site_url()}/#/"))
+
+
+class MusicianSignupIn(BaseModel):
+    name: str = Field(min_length=2, max_length=120)
+    email: str = Field(min_length=5, max_length=255)
+    website: str = Field("", max_length=200)          # trampa para robots: tiene que venir vacío
+    turnstile_token: str = Field("", max_length=4000)
+
+
+_msignup_hits: dict[str, list[float]] = {}
+
+
+@app.post("/public/musician-signup")
+def musician_signup(body: MusicianSignupIn, request: Request, db: Session = Depends(get_db)):
+    """Alta gratis de un músico. Se manda un link al mail: la cuenta se crea recién cuando lo abre y elige su clave,
+    así nadie registra un mail que no es suyo."""
+    ip = _client_ip(request)
+    if body.website.strip():
+        return {"ok": True}
+    if not _rate(_msignup_hits, ip, 6):
+        raise HTTPException(429, "Hiciste varios intentos seguidos. Probá de nuevo en un rato.")
+    if not mail.verify_turnstile(body.turnstile_token, ip):
+        raise HTTPException(400, "No pudimos verificar que no sos un robot. Marcá la casilla e intentá de nuevo.")
+    email, name = body.email.strip().lower(), " ".join(body.name.split())
+    if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+        raise HTTPException(422, "Revisá el email")
+    T, base = _bk(config.REQ_LANG.get()), _site_url(request)
+    if db.query(User).filter(func.lower(User.email) == email).first():
+        # misma respuesta que un alta nueva: no se revela qué mails tienen cuenta
+        mail.send_customer(email, T["exists_s"], T["exists_b"].format(link=f"{base}/#/login"))
+        return {"ok": True}
+    link = f"{base}/#/musico/{create_signup_token(email, name)}"
+    if not mail.mail_enabled():
+        return {"ok": True, "link": link}      # sin correo configurado (desarrollo): se sigue directo
+    if not mail.send_customer(email, T["confirm_s"], T["confirm_b"].format(name=name, link=link)):
+        raise HTTPException(424, "No pudimos enviarte el mail de confirmación. Probá de nuevo en unos minutos.")
+    return {"ok": True}
+
+
+@app.get("/public/musician-signup-info")
+def musician_signup_info(token: str):
+    data = decode_signup_token(token)
+    if not data:
+        raise HTTPException(400, "El link no es válido o venció. Registrate de nuevo")
+    return {"email": data["email"], "name": data.get("name", "")}
+
+
+class MusicianConfirmIn(BaseModel):
+    token: str
+    name: str = Field(min_length=2, max_length=120)
+    password: str = Field(min_length=10, max_length=200)
+
+
+@app.post("/public/musician-confirm")
+def musician_confirm(body: MusicianConfirmIn, db: Session = Depends(get_db)):
+    data = decode_signup_token(body.token)
+    if not data:
+        raise HTTPException(400, "El link no es válido o venció. Registrate de nuevo")
+    email = data["email"].lower()
+    if db.query(User).filter(func.lower(User.email) == email).first():
+        raise HTTPException(409, "Ese email ya tiene una cuenta. Entrá con tu contraseña.")
+    lg = config.REQ_LANG.get()
+    u = User(email=email, name=" ".join(body.name.split()), password_hash=hash_password(body.password),
+             lang=lg if lg in ("es", "en", "pt") else "es")
+    db.add(u)
+    db.commit()
+    return {"token": create_session_jwt(u.id)}
+
+
+@app.get("/bank/bands")
+def bank_bands(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Las bandas registradas, para quien tiene cuenta: solo nombre, foto y qué están buscando."""
+    since = now() - timedelta(days=MUSICIAN_REQUEST_DAYS)
+    looking: dict[int, list[str]] = {}
+    for r in db.query(MusicianRequest).filter(MusicianRequest.active.is_(True), MusicianRequest.created_at >= since).all():
+        looking.setdefault(r.band_id, []).append(r.instrument)
+    rows = db.query(Band).filter(Band.blocked.is_(False), Band.purge_at.is_(None)).order_by(func.lower(Band.name)).limit(500).all()
+    out = [{"id": b.id, "name": b.name, "photo": img_url("bands", b.id, b.photo), "looking": looking.get(b.id, [])} for b in rows]
+    out.sort(key=lambda b: (not b["looking"], b["name"].lower()))
+    return out
+
+
+def _app_musician(a: Application, band: Band, r: MusicianRequest | None) -> dict:
+    return {"id": a.id, "status": a.status, "band_id": band.id, "band_name": band.name,
+            "band_photo": img_url("bands", band.id, band.photo), "instrument": r.instrument if r else "",
+            "message": a.message, "created_at": a.created_at.isoformat(),
+            "audition_at": a.audition_at.isoformat() if a.audition_at else None,
+            "audition_place": a.audition_place, "audition_notes": a.audition_notes}
+
+
+def _app_band(a: Application, u: User, r: MusicianRequest | None) -> dict:
+    ins = [x for x in u.instruments.split(",") if x]
+    return {"id": a.id, "status": a.status, "request_id": a.request_id, "instrument": r.instrument if r else "",
+            "message": a.message, "created_at": a.created_at.isoformat(),
+            "audition_at": a.audition_at.isoformat() if a.audition_at else None,
+            "audition_place": a.audition_place, "audition_notes": a.audition_notes,
+            "musician": {"id": u.id, "name": _uname(u), "email": u.email, "photo": img_url("users", u.id, u.photo),
+                         "instruments": ins + (["Voz"] if u.sings and not any(x.lower() == "voz" for x in ins) else []),
+                         "styles": [x for x in u.styles.split(",") if x], "bio": u.bio, "equipment": u.equipment,
+                         "has_transport": u.has_transport, "has_rehearsal_space": u.has_rehearsal_space,
+                         "city": u.city, "country": u.country, "contact_kind": u.contact_kind, "contact_value": u.contact_value}}
+
+
+class ApplyIn(BaseModel):
+    message: str = Field("", max_length=600)
+
+
+@app.post("/musician-requests/{req_id}/apply")
+def apply_to_request(req_id: int, body: ApplyIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    r = db.get(MusicianRequest, req_id)
+    band = db.get(Band, r.band_id) if r else None
+    if not r or not r.active or not band or band.blocked or band.purge_at:
+        raise HTTPException(404, "Esa búsqueda ya no está publicada")
+    if user.is_super:
+        raise HTTPException(403, "El super admin no se postula")
+    if db.query(Membership).filter_by(user_id=user.id, band_id=r.band_id).first():
+        raise HTTPException(409, "Ya sos integrante de esa banda")
+    if not (user.instruments or user.sings):
+        raise HTTPException(422, "Antes de postularte completá tu perfil de músico: qué instrumento tocás o si cantás")
+    if db.query(Application).filter_by(request_id=req_id, user_id=user.id).first():
+        raise HTTPException(409, "Ya te postulaste a esta búsqueda")
+    a = Application(request_id=req_id, band_id=r.band_id, user_id=user.id, message=body.message.strip())
+    db.add(a)
+    link = f"#/band/{band.id}/musicos"
+    for adm in _band_admins(db, band.id):
+        T = _bk(adm.lang)
+        db.add(Notification(user_id=adm.id, band_id=band.id, kind="info", link=link,
+                            text=T["applied_n"].format(name=_uname(user), ins=r.instrument)[:300]))
+        if not adm.is_super:
+            mail.send_customer(adm.email, T["applied_s"].format(name=_uname(user), ins=r.instrument),
+                               T["applied_b"].format(name=_uname(user), ins=r.instrument, band=band.name, link=f"{_site_url()}/{link}"))
+    db.commit()
+    return _app_musician(a, band, r)
+
+
+@app.get("/me/applications")
+def my_applications(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    rows = (db.query(Application, Band).join(Band, Band.id == Application.band_id)
+            .filter(Application.user_id == user.id).order_by(Application.created_at.desc()).limit(100).all())
+    return [_app_musician(a, b, db.get(MusicianRequest, a.request_id)) for a, b in rows]
+
+
+def _own_application(db: Session, user: User, app_id: int) -> tuple[Application, Band, MusicianRequest | None]:
+    """La postulación, vista por el admin de la banda que la recibió."""
+    a = db.get(Application, app_id)
+    if not a:
+        raise HTTPException(404, "No encontrado")
+    need_band_admin(db, user, a.band_id, "Solo el admin de la banda gestiona las postulaciones")
+    return a, db.get(Band, a.band_id), db.get(MusicianRequest, a.request_id)
+
+
+def _drop_audition_event(db: Session, a: Application) -> None:
+    ev = db.get(Event, a.event_id) if a.event_id else None
+    if ev and ev.band_id == a.band_id:
+        db.delete(ev)
+    a.event_id = None
+
+
+@app.delete("/applications/{app_id}")
+def withdraw_application(app_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    a = db.get(Application, app_id)
+    if not a or a.user_id != user.id:
+        raise HTTPException(404, "No encontrado")
+    if a.status == "accepted":
+        raise HTTPException(409, "Esa postulación ya fue aceptada")
+    r = db.get(MusicianRequest, a.request_id)
+    if a.status in ("applied", "audition"):
+        for adm in _band_admins(db, a.band_id):
+            db.add(Notification(user_id=adm.id, band_id=a.band_id, kind="info", link=f"#/band/{a.band_id}/musicos",
+                                text=_bk(adm.lang)["gone_n"].format(name=_uname(user), ins=r.instrument if r else "")[:300]))
+    _drop_audition_event(db, a)
+    db.delete(a)
+    db.commit()
+    return {"ok": True}
+
+
+@app.get("/bands/{band_id}/applications")
+def band_applications(band_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    need_band_admin(db, user, band_id, "Solo el admin de la banda ve las postulaciones")
+    band = db.get(Band, band_id)
+    rows = (db.query(Application, User).join(User, User.id == Application.user_id)
+            .filter(Application.band_id == band_id, Application.status.in_(("applied", "audition")), User.active.is_(True))
+            .order_by(Application.created_at).limit(200).all())
+    return {"items": [_app_band(a, u, db.get(MusicianRequest, a.request_id)) for a, u in rows],
+            "discount": {"pct": billing.BANK_DISCOUNT_PCT, "available": billing.bank_discount_available(band)}}
+
+
+class AuditionIn(BaseModel):
+    starts_at: str
+    place: str = Field("", max_length=200)
+    notes: str = Field("", max_length=1000)
+
+
+@app.post("/applications/{app_id}/audition")
+def schedule_audition(app_id: int, body: AuditionIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """La banda agenda (o cambia) la audición: queda en el calendario de la banda y en el del músico."""
+    a, band, r = _own_application(db, user, app_id)
+    if a.status not in ("applied", "audition"):
+        raise HTTPException(409, "Esa postulación ya está cerrada")
+    mus = db.get(User, a.user_id)
+    when, ins = parse_dt(body.starts_at), (r.instrument if r else "")
+    if when < now() - timedelta(hours=1):
+        raise HTTPException(422, "La audición tiene que ser en una fecha futura")
+    a.status, a.audition_at, a.audition_place, a.audition_notes = "audition", when, body.place.strip(), body.notes.strip()
+    title = _bk(user.lang)["aud_title"].format(name=_uname(mus), ins=ins)[:200]
+    ev = db.get(Event, a.event_id) if a.event_id else None
+    if ev and ev.band_id == band.id:
+        ev.title, ev.starts_at, ev.place, ev.notes, ev.reminded_at = title, when, a.audition_place, a.audition_notes, None
+    else:
+        ev = Event(band_id=band.id, title=title, starts_at=when, place=a.audition_place, notes=a.audition_notes, created_by=user.id)
+        db.add(ev)
+        db.flush()
+        a.event_id = ev.id
+    notify_band(db, band.id, f'{user.name or user.email} agendó "{title}"', exclude_user_id=user.id,
+                kind="event", link=f"#/band/{band.id}/calendario")
+    T = _bk(mus.lang)
+    db.add(Notification(user_id=mus.id, band_id=band.id, kind="event", link="#/", text=T["aud_n"].format(band=band.name)[:300]))
+    db.commit()
+    mail.send_customer(mus.email, T["aud_s"].format(band=band.name),
+                       T["aud_b"].format(name=_uname(mus), band=band.name, ins=ins, when=when.strftime("%d/%m/%Y %H:%M"),
+                                         place=a.audition_place or T["nowhere"],
+                                         notes=(a.audition_notes + "\n") if a.audition_notes else "", link=f"{_site_url()}/#/"))
+    return _app_band(a, mus, r)
+
+
+@app.post("/applications/{app_id}/accept")
+def accept_application(app_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """La banda elige al músico: pasa a ser integrante con todas las herramientas del plan y la banda recibe su descuento."""
+    a, band, r = _own_application(db, user, app_id)
+    if a.status not in ("applied", "audition"):
+        raise HTTPException(409, "Esa postulación ya está cerrada")
+    mus = db.get(User, a.user_id)
+    if not mus or not mus.active:
+        raise HTTPException(404, "Esa persona ya no tiene cuenta")
+    if not db.query(Membership).filter_by(user_id=mus.id, band_id=band.id).first():
+        cap = billing.limits(db, band)["max_members"]
+        if cap is not None:
+            used = db.query(Membership).filter_by(band_id=band.id).count() + \
+                db.query(Invite).filter(Invite.band_id == band.id, Invite.used_at.is_(None), Invite.expires_at > now()).count()
+            if used >= cap:
+                raise HTTPException(409, f"Tu plan admite hasta {cap} integrantes por banda.")
+        ins = (r.instrument if r else "") or (mus.instruments.split(",")[0] if mus.instruments else "")
+        db.add(Membership(user_id=mus.id, band_id=band.id, role="member", kind="musico", instrument=ins[:120], sings=mus.sings))
+    a.status, a.decided_at, mus.left_band_at = "accepted", now(), None
+    if r:
+        r.active = False       # la búsqueda queda cubierta
+    T = _bk(mus.lang)
+    db.add(Notification(user_id=mus.id, band_id=band.id, kind="info", link=f"#/band/{band.id}/ensayos",
+                        text=T["ok_n"].format(band=band.name)[:300]))
+    db.commit()
+    mail.send_customer(mus.email, T["ok_s"].format(band=band.name),
+                       T["ok_b"].format(name=_uname(mus), band=band.name, link=f"{_site_url()}/#/band/{band.id}/ensayos"))
+    mode = billing.grant_bank_discount(db, band, _uname(mus))
+    return {"ok": True, "discount": mode, "pct": billing.BANK_DISCOUNT_PCT}
+
+
+@app.post("/applications/{app_id}/reject")
+def reject_application(app_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    a, band, r = _own_application(db, user, app_id)
+    if a.status not in ("applied", "audition"):
+        raise HTTPException(409, "Esa postulación ya está cerrada")
+    mus, ins = db.get(User, a.user_id), (r.instrument if r else "")
+    a.status, a.decided_at = "rejected", now()
+    _drop_audition_event(db, a)
+    if mus:
+        T = _bk(mus.lang)
+        db.add(Notification(user_id=mus.id, band_id=band.id, kind="info", link="#/", text=T["no_n"].format(band=band.name, ins=ins)[:300]))
+    db.commit()
+    if mus:
+        mail.send_customer(mus.email, T["no_s"].format(band=band.name),
+                           T["no_b"].format(name=_uname(mus), band=band.name, ins=ins, link=f"{_site_url()}/#/"))
+    return {"ok": True}
+
+
+@app.post("/me/keep-profile")
+def keep_profile(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Quedó sin banda y elige conservar sus datos para el banco de músicos."""
+    user.left_band_at = None
+    db.commit()
+    return {"ok": True}
+
+
+class DeleteMeIn(BaseModel):
+    password: str
+
+
+@app.post("/me/delete")
+def delete_me(body: DeleteMeIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Cancela la cuenta y elimina los datos personales. El material que subió a una banda es de la banda y queda ahí, sin su nombre."""
+    from sqlalchemy.exc import IntegrityError
+    if user.is_super:
+        raise HTTPException(403, "La cuenta del super admin no se elimina desde acá")
+    if not verify_password(body.password, user.password_hash):
+        raise HTTPException(403, "La contraseña no es correcta")
+    if db.query(Membership).filter_by(user_id=user.id, role="admin").count():
+        raise HTTPException(409, "Administrás una banda. Antes de eliminar tu cuenta, dá de baja la banda desde la sección Plan "
+                                 "o escribinos desde Contacto para pasarle la administración a otra persona.")
+    uid = user.id
+    for a in db.query(Application).filter_by(user_id=uid).all():
+        _drop_audition_event(db, a)
+        db.delete(a)
+    for model in (Membership, ApiToken, PushSubscription, Notification):
+        db.query(model).filter_by(user_id=uid).delete()
+    db.query(Invite).filter(func.lower(Invite.email) == user.email.lower(), Invite.used_at.is_(None)).delete(synchronize_session=False)
+    drop_photo_file("users", user)
+    db.commit()
+    try:
+        db.delete(user)
+        db.commit()
+    except IntegrityError:
+        # subió material a alguna banda: ese material queda, pero sin ningún dato suyo
+        db.rollback()
+        u = db.get(User, uid)
+        u.email, u.name, u.password_hash = f"eliminado-{uid}@eliminado.invalid", "Ex integrante", hash_password(new_secret())
+        u.active, u.photo, u.available, u.left_band_at = False, None, False, None
+        u.bio = u.styles = u.instruments = u.equipment = u.city = u.country = u.contact_kind = u.contact_value = ""
+        u.sings = u.has_transport = u.has_rehearsal_space = False
+        db.commit()
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------- front (al final)

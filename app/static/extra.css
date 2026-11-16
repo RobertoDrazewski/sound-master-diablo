@@ -1005,3 +1005,29 @@ input:hover, textarea:hover, select:hover { border-color: var(--muted); }
 a.stat { color: inherit; text-decoration: none; transition: border-color .2s; }
 a.stat:hover, a.stat:focus-visible { border-color: var(--ember); }
 .stat.warn b { color: var(--warn); }
+
+/* ---------- banco de músicos: cuenta gratis del músico y postulaciones ---------- */
+.bk-row { display: flex; flex-wrap: wrap; align-items: flex-start; gap: .8rem 1rem; }
+.bk-row > svg.i { flex: none; width: 2.6rem; height: 2.6rem; padding: .6rem; border-radius: 12px; color: var(--amber); background: rgba(255, 138, 42, .1); border: 1px solid rgba(255, 138, 42, .35); }
+.bk-row .grow { flex: 1 1 220px; min-width: 0; }
+.bk-row h2 { margin: 0 0 .2rem; }
+.bk-row p { margin: 0; }
+.bk-left { border-color: rgba(255, 138, 42, .45); }
+.bk-actions { gap: .5rem; margin-top: .8rem; flex-wrap: wrap; }
+.bk-disc { margin-bottom: .6rem; padding: .7rem .8rem; border-radius: 12px; background: rgba(255, 138, 42, .07); border: 1px solid rgba(255, 138, 42, .3); align-items: center; }
+.bk-disc strong { color: var(--amber); white-space: nowrap; }
+.bk-photo { flex: none; width: 46px; height: 46px; border-radius: 10px; overflow: hidden; border: 1px solid var(--line-2); }
+.bk-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.bk-bands { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: .6rem; }
+.bk-bands li { display: flex; align-items: center; gap: .7rem; padding: .55rem .65rem; border: 1px solid var(--line); border-radius: 12px; min-width: 0; }
+.bk-bands strong { overflow-wrap: anywhere; }
+.bk-when { display: flex; align-items: center; gap: .45rem; margin-top: .4rem; font-size: .9rem; color: var(--amber); }
+.bk-when svg.i { flex: none; width: 1.05rem; height: 1.05rem; }
+.bk-app .bk-actions .btn { flex: 0 1 auto; }
+.ms-mail { margin: .2rem 0 1rem; overflow-wrap: anywhere; }
+.l2-body > .l2-cta.left { margin-top: 1rem; }
+@media (max-width: 600px) {
+  .bk-actions .btn, .bk-row > .btn { flex: 1 1 100%; justify-content: center; }
+  .l2-body > .l2-cta.left .btn { width: 100%; justify-content: center; text-align: center; white-space: normal; }
+}
+.bk-actions .btn, #acc-del, #bk-keep, #bk-del { white-space: normal; max-width: 100%; height: auto; text-align: left; }

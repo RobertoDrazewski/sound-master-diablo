@@ -59,6 +59,25 @@ class User(Base):
     country: Mapped[str] = mapped_column(String(60), default="")
     contact_kind: Mapped[str] = mapped_column(String(10), default="")   # whatsapp | email
     contact_value: Mapped[str] = mapped_column(String(160), default="")
+    left_band_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)   # quedó sin banda: elige conservar o borrar sus datos
+
+
+class Application(Base):
+    """Postulación de un músico a la búsqueda de una banda: se postula, la banda agenda la audición y decide."""
+    __tablename__ = "applications"
+    __table_args__ = (UniqueConstraint("request_id", "user_id"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    request_id: Mapped[int] = mapped_column(ForeignKey("musician_requests.id", ondelete="CASCADE"), index=True)
+    band_id: Mapped[int] = mapped_column(ForeignKey("bands.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    message: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(10), default="applied")   # applied | audition | accepted | rejected
+    audition_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    audition_place: Mapped[str] = mapped_column(String(200), default="")
+    audition_notes: Mapped[str] = mapped_column(Text, default="")
+    event_id: Mapped[int | None] = mapped_column(Integer, nullable=True)   # el evento en el calendario de la banda
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class MusicianRequest(Base):
@@ -99,6 +118,8 @@ class Band(Base):
     polar_subscription_id: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
     courtesy_note: Mapped[str] = mapped_column(String(160), default="", server_default="")      # por qué no paga (cortesía)
     courtesy_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)           # la cortesía vence sola
+    bank_discount_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)         # último descuento por sumar un músico del banco
+    bank_discount_open: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")  # el próximo cobro va con descuento
 
 
 class Plan(Base):
@@ -412,3 +433,6 @@ def _migrate_sqlite():
         add(conn, "users", "lang", "VARCHAR(2) NOT NULL DEFAULT 'es'")
         add(conn, "bands", "courtesy_note", "VARCHAR(160) NOT NULL DEFAULT ''")
         add(conn, "bands", "courtesy_until", "DATETIME")
+        add(conn, "users", "left_band_at", "DATETIME")
+        add(conn, "bands", "bank_discount_at", "DATETIME")
+        add(conn, "bands", "bank_discount_open", "BOOLEAN NOT NULL DEFAULT 0")

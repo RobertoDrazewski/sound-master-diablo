@@ -51,6 +51,19 @@ def decode_session_jwt(token: str) -> int | None:
         return None
 
 
+def create_signup_token(email: str, name: str) -> str:
+    """Link de confirmación del alta gratis de un músico: prueba que el mail es suyo. Vale 48 horas."""
+    return jwt.encode({"scope": "msignup", "email": email, "name": name, "exp": int(time.time()) + 48 * 3600}, SECRET_KEY, ALGO)
+
+
+def decode_signup_token(token: str) -> dict | None:
+    try:
+        data = jwt.decode(token, SECRET_KEY, algorithms=[ALGO])
+        return data if data.get("scope") == "msignup" and data.get("email") else None
+    except Exception:
+        return None
+
+
 def create_media_token(user_id: int, version_id: int, fmt: str) -> str:
     """Token de corta vida para <audio> y descargas, atado a una version y formato."""
     payload = {"sub": str(user_id), "scope": "media", "vid": version_id, "fmt": fmt,
