@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 import shutil
 import tempfile
 import threading
@@ -180,6 +181,9 @@ def process_master(db, job: Job):
         db.commit()
 
 
+VOCAL_LABEL = re.compile(r"voz|voces|vocal|voice|vox|canto|lead|lyric", re.I)
+
+
 def process_lyrics(db, job: Job):
     """Detecta la letra escuchando el mismo audio que entra al master (mezcla o suma de pistas)."""
     from . import lyrics
@@ -187,16 +191,39 @@ def process_lyrics(db, job: Job):
     track = db.get(Track, p["track_id"])
     if track is None:
         raise RuntimeError("El tema ya no existe")
+    def progress(partial, frac):
+        cur = lyrics.read(track.id)
+        if cur.get("status") != "detecting":
+            return
+        cur.update(partial=partial, progress=round(frac, 3))
+        lyrics.write(track.id, cur)
+
     try:
         with tempfile.TemporaryDirectory(dir=DATA_DIR / "tmp") as tmpdir:
-            source, _ = _pick_source_info(track, Path(tmpdir))
-            lines, lang = lyrics.transcribe(source, p.get("language"))
+            # si hay pista de voz se escucha esa sola: es mucho más clara que el tema con la banda
+            vocal = [v for v in track.versions if v.status == "ready" and v.kind == "stem" and v.flac_path
+                     and VOCAL_LABEL.search(v.label or "")]
+            if vocal:
+                source, clean = Path(vocal[-1].flac_path), True
+            else:
+                masters = [v for v in track.versions if v.status == "ready" and v.kind == "master" and v.flac_path]
+                try:
+                    source, clean = _pick_source_info(track, Path(tmpdir))[0], False
+                except RuntimeError:
+                    # tema que solo tiene el master (por ejemplo, una canción ya masterizada): se escucha ese
+                    if not masters:
+                        raise
+                    source, clean = Path(masters[-1].flac_path), False
+            lines, lang = lyrics.transcribe(source, p.get("language"), clean, progress)
     except Exception as e:
         cur = lyrics.read(track.id)
         cur.update(status="error", error=str(e)[:300])
+        cur.pop("partial", None); cur.pop("progress", None)
         lyrics.write(track.id, cur)
         raise
     cur = lyrics.read(track.id)
+    cur.pop("partial", None)
+    cur.pop("progress", None)
     if not lines:
         # tema instrumental o voz que no se entiende: no se toca la letra que hubiera
         cur.update(status="empty", error=None)

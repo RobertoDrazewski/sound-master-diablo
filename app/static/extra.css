@@ -970,3 +970,17 @@ input:hover, textarea:hover, select:hover { border-color: var(--muted); }
 
 /* Herramientas del tema arriba, debajo del título: valen para el tema entero (mezcla o pistas) */
 .track-head + .track-foot { margin-top: .8rem; padding-bottom: .9rem; }
+
+/* Detección de letra: idioma y botón alineados abajo, barra de avance */
+.ly-ai { align-items: flex-end; }
+.ly-lang { flex-direction: column; align-items: stretch; gap: .35rem; margin: 0; }
+.ly-lang select { min-height: 44px; min-width: 15rem; }
+.ly-ai #ly-detect { min-height: 44px; }
+.ly-prog { flex: 1 0 100%; display: flex; align-items: center; gap: .7rem; margin-top: .3rem; }
+.ly-prog-bar { flex: 1; height: 8px; border-radius: 99px; background: var(--surface-2); overflow: hidden; border: 1px solid var(--line-2); }
+.ly-prog-bar i { display: block; height: 100%; width: 2%; border-radius: inherit; background: linear-gradient(90deg, var(--ember), var(--amber)); transition: width .8s ease; }
+.ly-prog span { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--amber); min-width: 3ch; text-align: right; }
+.ly-busy #ly-text { opacity: .92; caret-color: transparent; }
+.ly-busy [data-tab] { opacity: .5; pointer-events: none; }
+@media (max-width: 640px) { .ly-lang, .ly-lang select, .ly-ai #ly-detect { width: 100%; min-width: 0; } .ly-ai #ly-detect { justify-content: center; } }
+@media (prefers-reduced-motion: reduce) { .ly-prog-bar i { transition: none; } }

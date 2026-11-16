@@ -1322,7 +1322,9 @@ def _lyrics_out(track_id: int) -> dict:
                     d["error"] = d.get("error") or job.error
     return {"lines": d.get("lines") or [], "status": d.get("status", "none"), "source": d.get("source"),
             "lang": d.get("lang"), "error": d.get("error"), "updated_at": d.get("updated_at"),
-            "has_previous": bool(d.get("previous"))}
+            "has_previous": bool(d.get("previous")),
+            "progress": d.get("progress") if d.get("status") == "detecting" else None,
+            "partial": d.get("partial") or [] if d.get("status") == "detecting" else []}
 
 
 @app.get("/tracks/{track_id}/lyrics")
@@ -1367,7 +1369,7 @@ def detect_lyrics(track_id: int, body: LyricsDetectIn | None = None, user: User 
                   db: Session = Depends(get_db)):
     track = _track_for(db, user, track_id)
     band = write_gate(db, track.band_id)
-    if not any(v.status == "ready" and v.kind in ("mix", "stem", "raw") for v in track.versions):
+    if not any(v.status == "ready" and v.kind in ("mix", "stem", "raw", "master") for v in track.versions):
         raise HTTPException(409, "El tema no tiene audio listo para escuchar")
     cur = lyrics.read(track_id)
     if cur.get("status") == "detecting":
@@ -1379,7 +1381,7 @@ def detect_lyrics(track_id: int, body: LyricsDetectIn | None = None, user: User 
     db.add(job)
     db.commit()
     _lyrics_usage[key] = _lyrics_usage.get(key, 0) + 1
-    cur.update(status="detecting", job_id=job.id, error=None)
+    cur.update(status="detecting", job_id=job.id, error=None, progress=0, partial=[])
     lyrics.write(track_id, cur)
     worker.wake.set()
     return _lyrics_out(track_id)
@@ -1403,7 +1405,7 @@ def delete_version(version_id: int, user: User = Depends(current_user), db: Sess
 def master_track(track_id: int, body: MasterIn, user: User = Depends(current_user),
                  db: Session = Depends(get_db)):
     track = _track_for(db, user, track_id)
-    if not any(v.status == "ready" and v.kind in ("mix", "stem", "raw") for v in track.versions):
+    if not any(v.status == "ready" and v.kind in ("mix", "stem", "raw", "master") for v in track.versions):
         raise HTTPException(409, "El tema todavia no tiene audio listo")
     check_quota(db, track.band_id)
     band = db.get(Band, track.band_id)

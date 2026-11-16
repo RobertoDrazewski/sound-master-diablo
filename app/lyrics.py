@@ -101,21 +101,32 @@ def language_code(value: str | None) -> str | None:
     return v if v in LANGUAGES else None
 
 
-def transcribe(audio_path: Path, language: str | None = None) -> tuple[list[dict], str]:
+def transcribe(audio_path: Path, language: str | None = None, clean_vocals: bool = False,
+               on_progress=None) -> tuple[list[dict], str]:
     """Escucha el tema y devuelve (líneas con tiempo, idioma). Si la banda eligió el idioma se usa ese;
-    si no, lo reconoce solo (sirve para canciones en cualquier idioma)."""
+    si no, lo reconoce solo (sirve para canciones en cualquier idioma).
+
+    clean_vocals: True cuando se escucha la pista de voz sola; ahí el filtro de voz ayuda a saltear silencios.
+    Con la banda sonando ese filtro (pensado para voz hablada) descarta el canto, así que no se usa.
+    on_progress(líneas_hasta_ahora, fracción 0..1) se llama a medida que avanza."""
     try:
         from faster_whisper import WhisperModel
     except ImportError:
         raise RuntimeError("La detección de letra no está instalada en este servidor") from None
+    import time
+    samples = _load_16k(audio_path)
+    duration = max(1.0, len(samples) / 16000)
     models = DATA_DIR / "models"
     models.mkdir(parents=True, exist_ok=True)
     model = WhisperModel(LYRICS_MODEL, device="cpu", compute_type="int8", download_root=str(models), cpu_threads=4)
     try:
-        segments, info = model.transcribe(_load_16k(audio_path), vad_filter=True, beam_size=5,
-                                          condition_on_previous_text=False, word_timestamps=True,
-                                          language=language_code(language))
+        opts = dict(beam_size=5, condition_on_previous_text=False, word_timestamps=True,
+                    language=language_code(language), hallucination_silence_threshold=2.0)
+        if clean_vocals:
+            opts.update(vad_filter=True, vad_parameters={"threshold": 0.3, "min_silence_duration_ms": 1000})
+        segments, info = model.transcribe(samples, **opts)
         lines, cur, start, last_end = [], [], None, None
+        last_report = 0.0
 
         def flush():
             nonlocal cur, start
@@ -125,8 +136,12 @@ def transcribe(audio_path: Path, language: str | None = None) -> tuple[list[dict
                 lines.append({"t": round(start, 2), "text": text})
             cur, start = [], None
 
+        if on_progress:
+            on_progress([], 0.01)
         for seg in segments:
-            for w in (seg.words or []):
+            # partes sin voz donde el modelo igual "escribe" algo: se descartan
+            dudoso = (seg.no_speech_prob > 0.6 and seg.avg_logprob < -1.0) or seg.compression_ratio > 3.0
+            for w in ([] if dudoso else (seg.words or [])):
                 word = w.word.strip()
                 if not word:
                     continue
@@ -143,6 +158,11 @@ def transcribe(audio_path: Path, language: str | None = None) -> tuple[list[dict
                     flush()
             if cur:
                 flush()
+            if on_progress and time.monotonic() - last_report > 1.5:
+                last_report = time.monotonic()
+                on_progress(list(lines), min(0.99, seg.end / duration))
+            if len(lines) >= MAX_LINES:
+                break
         return lines[:MAX_LINES], getattr(info, "language", "") or ""
     finally:
         del model

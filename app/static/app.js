@@ -1122,6 +1122,7 @@ async function openLyrics(trackId) {
           </select></label>
         <button type="button" class="btn" id="ly-detect">${ic("spark")} Detectar letra con IA</button>
         <button type="button" class="btn small" id="ly-restore" ${data.has_previous ? "" : "hidden"}>Recuperar la letra anterior</button>
+        <div class="ly-prog" id="ly-prog" hidden><div class="ly-prog-bar"><i id="ly-prog-i"></i></div><span id="ly-prog-n">0%</span></div>
         <p class="small muted" id="ly-status" aria-live="polite"></p>
       </div>
       <div class="st-foot ly-foot">
@@ -1191,7 +1192,8 @@ async function openLyrics(trackId) {
       paintList();
     });
     text.addEventListener("input", () => { dirty = true; });
-    $$("[data-tab]", m).forEach((b) => b.addEventListener("click", () => setTab(b.dataset.tab)));
+    const busyNow = () => m.querySelector(".ly").classList.contains("ly-busy");
+    $$("[data-tab]", m).forEach((b) => b.addEventListener("click", () => { if (!busyNow()) setTab(b.dataset.tab); }));
     const key = (ev) => {
       if (!m.open) return document.removeEventListener("keydown", key);
       if (tab !== "sync" || ev.target === text || ev.target.tagName === "INPUT") return;
@@ -1208,7 +1210,22 @@ async function openLyrics(trackId) {
     const showStatus = (d) => {
       const busy = d.status === "detecting";
       $("#ly-detect", m).disabled = busy;
-      status.textContent = busy ? "Escuchando el tema para escribir la letra… puede tardar unos minutos. Podés cerrar esta ventana: te avisamos cuando esté."
+      $("#ly-lang", m).disabled = busy;
+      text.readOnly = busy;
+      m.querySelector(".ly").classList.toggle("ly-busy", busy);
+      const prog = $("#ly-prog", m);
+      prog.hidden = !busy;
+      if (busy) {
+        const pct = Math.round((d.progress || 0) * 100);
+        $("#ly-prog-i", m).style.width = `${Math.max(2, pct)}%`;
+        $("#ly-prog-n", m).textContent = `${pct}%`;
+        // la letra se va escribiendo en el cuadro a medida que el tema avanza
+        if (tab !== "write") setTab("write");
+        const partial = (d.partial || []).map((l) => l.text).join("\n");
+        if (partial && text.value !== partial) { text.value = partial; text.scrollTop = text.scrollHeight; }
+      }
+      status.textContent = busy ? (d.progress ? "Escuchando el tema y escribiendo la letra… Podés cerrar esta ventana: te avisamos cuando esté."
+        : "Preparando el detector… la primera vez tarda unos minutos más. Podés cerrar esta ventana: te avisamos cuando esté.")
         : d.status === "error" ? `No se pudo detectar la letra: ${d.error || "error"}`
         : d.status === "empty" ? "No escuchamos voz en este tema. Si tiene letra, probá elegir el idioma o escribila a mano." : "";
     };
@@ -1224,7 +1241,7 @@ async function openLyrics(trackId) {
             if (d.status === "ready") { load(d); toast("La letra está lista: revisala, corregí lo que haga falta y guardala.", "ok"); }
           }
         } catch { /* reintenta en la próxima vuelta */ }
-      }, 4000);
+      }, 2000);
     };
     try { $("#ly-lang", m).value = localStorage.getItem("dm_ly_lang") || ""; } catch { /* sin almacenamiento */ }
     $("#ly-detect", m).addEventListener("click", async (ev) => {
@@ -1233,7 +1250,10 @@ async function openLyrics(trackId) {
       await withBusy(ev.currentTarget, async () => {
         const language = $("#ly-lang", m).value || null;
         try { localStorage.setItem("dm_ly_lang", language || ""); } catch { /* sin almacenamiento */ }
-        try { const d = await api(`/tracks/${trackId}/lyrics/detect`, { method: "POST", json: { language } }); showStatus(d); startPoll(); }
+        try {
+          const d = await api(`/tracks/${trackId}/lyrics/detect`, { method: "POST", json: { language } });
+          setTab("write"); text.value = ""; showStatus(d); startPoll();
+        }
         catch (e) { toast(e.message, "err"); }
       });
     });
@@ -1263,6 +1283,7 @@ async function openLyrics(trackId) {
       saveText(fname("lrc"), lrc);
     });
     const close = () => {
+      if (busyNow()) return closeModal();
       if (tab === "write" && text.value.trim() !== lines.map((l) => l.text).join("\n").trim()) dirty = true;
       if (dirty && !confirm("Tenés cambios sin guardar en la letra. ¿Cerrar igual?")) return;
       closeModal();
