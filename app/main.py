@@ -29,7 +29,7 @@ from .notify import notify_band
 from .security import (create_media_token, create_session_jwt,
                        decode_media_token, decode_session_jwt, hash_password,
                        new_secret, sha256, throttle, throttle_ip, verify_password)
-from .worker import remove_version_files, worker
+from .worker import _pick_source_info, input_preview_path, remove_version_files, worker
 
 
 def seed_genres(db: Session):
@@ -1365,7 +1365,49 @@ def get_job(job_id: int, user: User = Depends(current_user), db: Session = Depen
 
 # --------------------------------------------------------- reproduccion y descarga
 
-FORMATS = {"preview": "m4a", "flac": "flac", "wav": "wav", "mp3": "mp3"}
+FORMATS = {"preview": "m4a", "flac": "flac", "wav": "wav", "mp3": "mp3", "input": "m4a"}
+_input_lock = threading.Lock()
+
+
+def _master_input(db: Session, v: Version, track: Track) -> Path:
+    """El audio exacto que entró a este master (lado A del comparador).
+    Masters nuevos: lo guardó el worker. Masters viejos: se reconstruye igual que lo armó el motor
+    (la mezcla, o la suma de pistas con las mismas ganancias y desfases del informe, o el crudo)."""
+    if v.kind != "master":
+        raise HTTPException(422, "Solo los masters tienen entrada para comparar")
+    saved = input_preview_path(v)
+    if saved.exists():
+        return saved
+    rep_f = DATA_DIR / "analysis" / f"{v.id}.master.json"
+    rep = json.loads(rep_f.read_text()) if rep_f.exists() else {}
+    src = rep.get("source") or {}
+    if src.get("version_id"):
+        sv = db.get(Version, src["version_id"])
+        if sv and sv.status == "ready" and sv.preview_path and Path(sv.preview_path).exists():
+            return Path(sv.preview_path)
+    opts = rep.get("options") or {}
+    with _input_lock:
+        if saved.exists():
+            return saved
+        (DATA_DIR / "tmp").mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=DATA_DIR / "tmp") as tmpdir:
+            try:
+                source, info = _pick_source_info(track, Path(tmpdir), opts.get("stem_gains"), opts.get("stem_offsets_ms"))
+            except RuntimeError as e:
+                raise HTTPException(404, str(e)) from None
+            if info.get("version_id"):
+                sv = db.get(Version, info["version_id"])
+                if sv and sv.preview_path and Path(sv.preview_path).exists():
+                    return Path(sv.preview_path)
+            saved.parent.mkdir(parents=True, exist_ok=True)
+            partial = saved.with_name(f"{v.id}.in.tmp{uuid.uuid4().hex[:6]}.m4a")
+            try:
+                audio.to_preview(source, partial)
+            except audio.AudioError as e:
+                partial.unlink(missing_ok=True)
+                raise HTTPException(500, f"No se pudo preparar el original: {e}") from None
+            partial.replace(saved)
+    return saved
 MEDIA_TYPES = {"m4a": "audio/mp4", "flac": "audio/flac", "wav": "audio/wav", "mp3": "audio/mpeg"}
 
 
@@ -1385,8 +1427,10 @@ def media_link(version_id: int, fmt: str = "preview", user: User = Depends(curre
     """Devuelve una URL firmada y de corta vida para usar en <audio> o como descarga."""
     if fmt not in FORMATS:
         raise HTTPException(422, "fmt: preview, flac, wav o mp3")
-    _, track = _version_for(db, user, version_id)
-    if fmt != "preview":
+    v, track = _version_for(db, user, version_id)
+    if fmt == "input":
+        _master_input(db, v, track)   # lo deja listo antes de devolver el link
+    elif fmt != "preview":
         download_gate(db, track.band_id)
     token = create_media_token(user.id, version_id, fmt)
     return {"url": f"/versions/{version_id}/media?fmt={fmt}&t={token}"}
@@ -1402,12 +1446,14 @@ def media(version_id: int, request: Request, fmt: str = "preview", t: str | None
     if not user or not user.active:
         raise HTTPException(401, "Link invalido o vencido")
     v, track = _version_for(db, user, version_id)  # revalida pertenencia a la banda
-    if fmt != "preview":
+    if fmt not in ("preview", "input"):
         download_gate(db, track.band_id)
 
     ext = FORMATS[fmt]
     if fmt == "preview":
         path = Path(v.preview_path)
+    elif fmt == "input":
+        path = _master_input(db, v, track)
     elif fmt == "flac":
         path = Path(v.flac_path)
     else:
@@ -1422,8 +1468,8 @@ def media(version_id: int, request: Request, fmt: str = "preview", t: str | None
                 raise HTTPException(500, f"No se pudo convertir: {e}") from None
             partial.replace(path)
 
-    filename = f"{safe_name(track.title)} - {safe_name(v.label)}.{ext}"
-    disposition = "inline" if fmt == "preview" else "attachment"
+    filename = f"{safe_name(track.title)} - {'original' if fmt == 'input' else safe_name(v.label)}.{ext}"
+    disposition = "inline" if fmt in ("preview", "input") else "attachment"
     return FileResponse(path, media_type=MEDIA_TYPES[ext], filename=filename,
                         content_disposition_type=disposition)
 

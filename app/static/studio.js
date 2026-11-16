@@ -413,12 +413,11 @@ async function openMasterReport(versionId, title) {
 
 /* ---------------------------------------------------------------- comparar A/B a igual volumen */
 async function openCompare(trackId, masterId, report) {
-  const t = state.tracks.get(trackId);
-  const src = t && primarySource(t);
-  if (!src) return toast("No hay audio original para comparar.", "err");
   stopPlayer();
+  // A = exactamente lo que entró a este master (la mezcla, o la suma de las pistas tal cual la armó el motor),
+  // nunca una pista suelta. El servidor lo resuelve desde el propio master.
   let urlA, urlB;
-  try { [urlA, urlB] = (await Promise.all([api(`/versions/${src.id}/link?fmt=preview`), api(`/versions/${masterId}/link?fmt=preview`)])).map((x) => x.url); }
+  try { [urlA, urlB] = (await Promise.all([api(`/versions/${masterId}/link?fmt=input`), api(`/versions/${masterId}/link?fmt=preview`)])).map((x) => x.url); }
   catch (e) { return toast(e.message, "err"); }
   const la = report.before.lufs, lb = report.after.lufs;
   const diff = lb - la; // dB que el master está más fuerte

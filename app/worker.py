@@ -28,6 +28,8 @@ def remove_version_files(version: Version):
     for p in (version.flac_path, version.preview_path):
         if p:
             Path(p).unlink(missing_ok=True)
+    if version.preview_path:
+        Path(version.preview_path).with_name(f"{version.id}.in.m4a").unlink(missing_ok=True)
     for f in (DATA_DIR / "cache").glob(f"{version.id}.*"):
         f.unlink(missing_ok=True)
     for f in (DATA_DIR / "analysis").glob(f"{version.id}.*"):
@@ -107,20 +109,33 @@ def _sum_stems(stems: list[Version], dst: Path, gains: dict | None = None, offse
     sf.write(dst, mix, sr, subtype="PCM_24")
 
 
-def _pick_source(track: Track, tmp: Path, gains: dict | None = None, offsets_ms: dict | None = None) -> Path:
+def _pick_source_info(track: Track, tmp: Path, gains: dict | None = None,
+                      offsets_ms: dict | None = None) -> tuple[Path, dict]:
+    """Elige la entrada del master y devuelve (archivo, de dónde salió).
+    Prioridad: la mezcla; si no hay, la suma de las pistas (con ganancias y desfases); si no, el crudo."""
     ready = [v for v in track.versions if v.status == "ready"]
     mixes = [v for v in ready if v.kind == "mix"]
     if mixes:
-        return Path(mixes[-1].flac_path)
+        return Path(mixes[-1].flac_path), {"version_id": mixes[-1].id}
     stems = [v for v in ready if v.kind == "stem"]
     if stems:
         dst = tmp / "suma_stems.wav"
         _sum_stems(stems, dst, gains, offsets_ms)
-        return dst
+        return dst, {"stems": [v.id for v in stems]}
     raws = [v for v in ready if v.kind == "raw"]
     if raws:
-        return Path(raws[-1].flac_path)
+        return Path(raws[-1].flac_path), {"version_id": raws[-1].id}
     raise RuntimeError("El tema no tiene audio listo para masterizar")
+
+
+def _pick_source(track: Track, tmp: Path, gains: dict | None = None, offsets_ms: dict | None = None) -> Path:
+    return _pick_source_info(track, tmp, gains, offsets_ms)[0]
+
+
+def input_preview_path(version: Version) -> Path:
+    """Audio exacto que entró al master (para escucharlo en el comparador A/B)."""
+    return Path(version.preview_path).with_name(f"{version.id}.in.m4a") if version.preview_path \
+        else DATA_DIR / "cache" / f"{version.id}.in.m4a"
 
 
 def process_master(db, job: Job):
@@ -132,7 +147,7 @@ def process_master(db, job: Job):
 
     with tempfile.TemporaryDirectory(dir=DATA_DIR / "tmp") as tmpdir:
         tmp = Path(tmpdir)
-        source = _pick_source(track, tmp, opts["stem_gains"], opts.get("stem_offsets_ms"))
+        source, source_info = _pick_source_info(track, tmp, opts["stem_gains"], opts.get("stem_offsets_ms"))
 
         reference = None
         ref_name = None
@@ -148,7 +163,15 @@ def process_master(db, job: Job):
         report["reference"] = ref_name
         report["genre"] = gname or None
         report["options"] = opts
+        report["source"] = source_info
         _finish_version(db, version, out)
+        if "stems" in source_info:
+            # la suma de pistas es un audio que no existe como versión: se guarda tal cual entró
+            # al motor, así el comparador A/B escucha exactamente lo que se masterizó
+            try:
+                audio.to_preview(source, input_preview_path(version))
+            except audio.AudioError:
+                log.warning("no se pudo guardar la entrada del master %s", version.id)
         rep = DATA_DIR / "analysis" / f"{version.id}.master.json"
         rep.parent.mkdir(parents=True, exist_ok=True)
         rep.write_text(json.dumps(report, ensure_ascii=False))
