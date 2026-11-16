@@ -325,6 +325,10 @@ class Worker(threading.Thread):
                         billing.purge_due(bdb)
                     with SessionLocal() as bdb:
                         billing.expire_unpaid(bdb)
+                    with SessionLocal() as bdb:
+                        billing.courtesy_expire(bdb)
+                    with SessionLocal() as bdb:
+                        billing.limit_alerts_due(bdb)
                 except Exception:  # noqa: BLE001
                     log.exception("reconciliacion de cobros fallo")
                 last_cleanup = time.time()

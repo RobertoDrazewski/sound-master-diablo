@@ -6,7 +6,7 @@ const AD_TABS = [
   ["personas", "Personas"], ["referencias", "Referencias"], ["estilos", "Estilos"], ["mensajes", "Mensajes"],
 ];
 const AD_STATE = {
-  exempt: ["Sin cargo", "ok"], trial: ["En prueba", "warn"], active: ["Pagando", "ok"], past_due: ["Pago atrasado", "warn"], suspended: ["Servicio cortado", "err"], closing: ["De baja", "err"],
+  exempt: ["Cortesía", "ok"], trial: ["En prueba", "warn"], active: ["Pagando", "ok"], past_due: ["Pago atrasado", "warn"], suspended: ["Servicio cortado", "err"], closing: ["De baja", "err"],
 };
 const adChip = (st) => { const [l, k] = AD_STATE[st] || [st, ""]; return `<span class="chip-st ${k}">${l}</span>`; };
 const adDay = (iso) => (iso ? parseDate(iso).toLocaleDateString(I18N.loc, { day: "numeric", month: "short", year: "numeric" }) : "—");
@@ -28,7 +28,9 @@ async function viewAdmin(nav, tab) {
   }).catch(() => {});
 }
 
-const adMoney = (n) => "$" + Math.round(n).toLocaleString(I18N.loc);
+const adMoney = (n) => "$" + Math.round(n || 0).toLocaleString(I18N.loc);
+const adUsd = (n) => "US$" + Math.round(n || 0).toLocaleString(I18N.loc);
+const AD_USE = { masters_month: ["sliders", "Masters del mes"], ai_covers_month: ["spark", "Tapas con IA del mes"], storage: ["disc", "Espacio (GB)"] };
 
 async function adResumen(body, nav) {
   const [ov, s] = await Promise.all([api("/admin/overview"), api("/admin/billing/summary")]);
@@ -37,10 +39,16 @@ async function adResumen(body, nav) {
   const check = (ok, label, hint) => `<li class="${ok ? "ok" : "no"}">${ok ? "✓" : "✗"} <b>${label}</b>${ok ? "" : ` <span class="small muted">${hint}</span>`}</li>`;
   body.innerHTML = `
     <section class="stats">
-      ${tile(s.bands, "Bandas")}${tile(s.active, "Pagando", "ok")}${tile(s.trial, "En prueba gratis")}${tile(s.exempt, "Sin cargo")}
+      ${tile(s.bands, "Bandas")}${tile(s.active, "Pagando", "ok")}${tile(s.trial, "En prueba gratis")}${tile(s.exempt, "Cortesía")}
       ${tile(s.past_due + s.suspended, "Atrasadas o cortadas", s.past_due + s.suspended ? "bad" : "")}
-      ${tile(adMoney(s.mrr), "Ingreso mensual (MRR)")}${tile(adMoney(s.collected_month), "Cobrado este mes")}
+      <a class="stat ${s.near_limit ? "warn" : ""}" href="#/admin/bandas" data-near><b>${s.near_limit}</b><span>Cerca del límite del plan</span></a>
     </section>
+    <section class="card"><h2>Suscripciones</h2>
+      <section class="stats" style="margin:0">
+        ${tile(s.subs_mp, "Mercado Pago (Argentina)")}${tile(s.subs_polar, "Polar (resto del mundo)")}
+        ${tile(adMoney(s.mrr_ars), "Ingreso mensual en pesos")}${tile(adUsd(s.mrr_usd), "Ingreso mensual en dólares")}
+        ${tile(adMoney(s.collected_ars), "Cobrado este mes en pesos")}${tile(adUsd(s.collected_usd), "Cobrado este mes en dólares")}
+      </section></section>
     <section class="card"><h2>Servidor</h2>
       <section class="stats" style="margin:0">${tile(ov.users, "Personas")}${tile(ov.tracks, "Temas")}${tile(fmtGB(ov.used_gb) + " GB", "Audio guardado")}${tile(fmtGB(ov.disk_free_gb) + " GB", "Libres en el servidor")}</section></section>
     <section class="card"><h2>Puesta en marcha</h2>
@@ -50,6 +58,8 @@ async function adResumen(body, nav) {
         ${check(s.turnstile, "Casilla anti-robots (Cloudflare Turnstile)", "Faltan TURNSTILE_SITE_KEY y TURNSTILE_SECRET.")}
         ${check(ov.ai_enabled, "IA (consejos, tapas y chat)", "Falta OPENAI_API_KEY.")}
       </ul></section>`;
+  const near = $("[data-near]", body);
+  if (near) near.addEventListener("click", () => { state._adFilter = "limit"; });
 }
 
 /* ---------- bandas ---------- */
@@ -75,17 +85,25 @@ async function adBandas(body, nav) {
       </form>
       <div id="nb-out" class="stack hidden" style="margin-top:1rem"></div>
     </details>
+    <div class="ad-filters" role="group" aria-label="Filtrar bandas">${[["all", "Todas"], ["limit", "Cerca del límite"], ["paying", "Pagando"], ["trial", "En prueba"], ["courtesy", "Cortesía"], ["problem", "Atrasadas o cortadas"]].map(([k, l]) =>
+      `<button type="button" class="chip-f ${(state._adFilter || "all") === k ? "on" : ""}" data-f="${k}">${l}</button>`).join("")}</div>
     <div class="ad-grid">
     ${bands.map((b) => {
       const pct = Math.min(100, (b.used_gb / b.quota_gb) * 100 || 0), st = b.stats, bl = b.billing;
       const mx = Math.max(1, st.ensayos, st.produccion, st.master, st.masters_hechos, st.albumes);
       const kpi = (icon, label, val) => `<div class="kpi"><span class="k-lab">${ic(icon)}${label}</span><span class="k-bar"><i style="width:${Math.round((val / mx) * 100)}%"></i></span><b class="k-val">${val}</b></div>`;
-      return `<section class="card admin-band" data-b="${b.id}">
+      const fk = [b.alerts.length ? "limit" : "", ["active", "past_due"].includes(bl.state) && !b.exempt ? "paying" : "", bl.state === "trial" ? "trial" : "", b.exempt ? "courtesy" : "", ["past_due", "suspended"].includes(bl.state) && !b.exempt ? "problem" : ""].join(" ");
+      return `<section class="card admin-band" data-b="${b.id}" data-fk="${fk}">
         <button type="button" class="ab-head" data-ab-open aria-expanded="false">
           ${avatar(b.photo, b.name)}
           <span class="grow">
             <span class="ab-name">${esc(b.name)}</span>
-            <span class="small muted ab-sub">${adChip(bl.state)} ${b.exempt ? "" : `Plan ${esc(planName(b.plan_id))} · `}${bl.state === "active" || bl.state === "past_due" ? `pagado hasta ${adDay(bl.paid_until)}` : bl.state === "trial" ? `prueba hasta ${adDay(bl.trial_ends_at)}` : ""}${b.mp_status ? ` · MP: ${esc(b.mp_status)}` : ""}</span>
+            <span class="small muted ab-sub">${adChip(bl.state)} ${b.alerts.length ? `<span class="chip-st ${b.alerts.some((a) => a.level === "full") ? "err" : "warn"}">${b.alerts.some((a) => a.level === "full") ? "En el tope" : "Cerca del límite"}</span> ` : ""}${[
+              b.exempt ? (b.courtesy_note ? esc(b.courtesy_note) : "") : `Plan ${esc(planName(b.plan_id))}`,
+              b.exempt && b.courtesy_until ? `vence el ${adDay(b.courtesy_until)}` : "",
+              b.provider && !b.exempt ? (b.provider === "polar" ? "Polar" : "Mercado Pago") : "",
+              bl.state === "active" || bl.state === "past_due" ? `pagado hasta ${adDay(bl.paid_until)}` : bl.state === "trial" ? `prueba hasta ${adDay(bl.trial_ends_at)}` : "",
+            ].filter(Boolean).map((x) => `<span>${x}</span>`).join(" · ")}</span>
             <span class="meter mini ${pct >= 100 ? "full" : pct >= 80 ? "warn" : ""}"><i style="width:${pct}%"></i></span>
           </span>
           <span class="ab-chev">${ic("down")}</span>
@@ -98,11 +116,17 @@ async function adBandas(body, nav) {
           ${kpi("flame", "Masters hechos", st.masters_hechos)}
           ${kpi("disc", "Álbumes", st.albumes)}
         </div>
-        <p class="small muted" style="margin:.5rem 0 .3rem">Este mes: ${b.usage.masters_month} masters · Última actividad: ${ago(st.ultima_actividad)}</p>
-        <div class="small muted row between"><span>Espacio</span><span>${fmtGB(b.used_gb)} de ${esc(b.quota_gb)} GB</span></div>
-        <div class="meter ${pct >= 100 ? "full" : pct >= 80 ? "warn" : ""}"><i style="width:${pct}%"></i></div>
+        <p class="small muted" style="margin:.6rem 0 .2rem">Última actividad: ${ago(st.ultima_actividad)}</p>
+        <div class="ab-use">${[["masters_month", b.usage.masters_month, b.limits.masters_month], ["ai_covers_month", b.usage.ai_covers_month, b.limits.ai_covers_month], ["storage", b.used_gb, b.quota_gb]].map(([k, u, cap]) => {
+          const p = cap ? Math.min(100, (u / cap) * 100) : 0, al = b.alerts.find((a) => a.kind === k);
+          return `<div class="use-row"><span class="u-lab">${ic(AD_USE[k][0])}<span>${AD_USE[k][1]}</span></span>
+            <span class="meter ${p >= 100 ? "full" : p >= 80 ? "warn" : ""}"><i style="width:${p}%"></i></span>
+            <b class="u-val">${k === "storage" ? fmtGB(u) : u} <span class="muted">/ ${cap == null ? "sin tope" : k === "storage" ? fmtGB(cap) : cap}</span></b>
+            ${al && !b.exempt ? `<button type="button" class="btn small" data-upsell="${k}" title="Le manda al admin de la banda el aviso con el plan que le conviene, en su idioma">Mandar aviso</button>` : ""}</div>`;
+        }).join("")}</div>
         <div class="ad-actions">
-          <label class="check"><input type="checkbox" data-exempt ${b.exempt ? "checked" : ""}> Sin cargo (no paga)</label>
+          <label class="check"><input type="checkbox" data-exempt ${b.exempt ? "checked" : ""}> Cortesía (no paga)</label>
+          ${b.exempt ? `<button class="btn small" data-act="courtesy" title="Motivo y vencimiento de la cortesía">Motivo y vencimiento</button>` : ""}
           ${b.exempt ? "" : `<select class="mini-sel" data-plan aria-label="Plan de ${esc(b.name)}">${plans.map((p) => `<option value="${p.id}" ${p.id === b.plan_id ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select>
           <button class="btn small" data-act="paid30" title="Registrar un pago manual (transferencia, efectivo) y sumar 30 días">+30 días pagados</button>
           <button class="btn small" data-act="trial" title="Darle una prueba gratis nueva">Prueba gratis…</button>
@@ -122,6 +146,19 @@ async function adBandas(body, nav) {
     </div>`;
 
   const reload = () => viewAdmin(nav, "bandas");
+  const applyFilter = () => {
+    const f = state._adFilter || "all";
+    $$(".chip-f", body).forEach((x) => x.classList.toggle("on", x.dataset.f === f));
+    $$(".admin-band", body).forEach((c) => { c.hidden = f !== "all" && !c.dataset.fk.split(" ").includes(f); });
+  };
+  $$(".chip-f", body).forEach((x) => x.addEventListener("click", () => { state._adFilter = x.dataset.f; applyFilter(); }));
+  applyFilter();
+  $$("[data-upsell]", body).forEach((btn) => btn.addEventListener("click", adGuard(async () => {
+    const bid = btn.closest("[data-b]").dataset.b;
+    if (!confirm("¿Mandarle ahora al admin de la banda el aviso de que está cerca del límite, con el plan que le conviene?")) return;
+    const r = await api(`/admin/bands/${bid}/upsell`, { method: "POST", json: { kind: btn.dataset.upsell } });
+    toast(r.sent === 1 ? "Aviso enviado" : `Aviso enviado a ${r.sent} admins`, "ok");
+  })));
   // ficha expandible: un toque abre la banda con sus KPIs y acciones; se recuerda cuál quedó abierta
   $$(".admin-band", body).forEach((card) => {
     const head = $("[data-ab-open]", card), panel = $(".ab-body", card);
@@ -158,12 +195,19 @@ async function adBandas(body, nav) {
   const put = (bid, json) => api(`/admin/bands/${bid}/billing`, { method: "PUT", json });
   $$("[data-b]", body).forEach((card) => {
     const bid = card.dataset.b;
-    $("[data-exempt]", card).addEventListener("change", adGuard(async (e) => { await put(bid, { exempt: e.target.checked }); toast(e.target.checked ? "Ahora no paga" : "Ahora paga suscripción", "ok"); reload(); }));
+    $("[data-exempt]", card).addEventListener("change", adGuard(async (e) => { await put(bid, { exempt: e.target.checked }); toast(e.target.checked ? "Ahora es cortesía: no paga" : "Ahora paga suscripción", "ok"); reload(); }));
     const ps = $("[data-plan]", card);
     if (ps) ps.addEventListener("change", adGuard(async () => { await put(bid, { plan_id: Number(ps.value) }); toast("Plan cambiado", "ok"); reload(); }));
     $$("[data-act]", card).forEach((btn) => btn.addEventListener("click", adGuard(async () => {
       const a = btn.dataset.act;
-      if (a === "paid30") { if (!confirm("¿Registrar un pago manual y sumar 30 días de servicio?")) return; await put(bid, { add_paid_days: 30 }); toast("30 días sumados", "ok"); }
+      if (a === "courtesy") {
+        const b0 = bands.find((x) => String(x.id) === String(bid)) || {};
+        const note = prompt("Motivo de la cortesía (por ejemplo: artista invitado, banda amiga, prensa)", b0.courtesy_note || "");
+        if (note === null) return;
+        const d = prompt("¿Cuántos días dura? Dejá 0 para que no venza. Al vencer, la banda pasa a 7 días de prueba para elegir un plan.", "0");
+        if (d === null) return;
+        await put(bid, { courtesy_note: note, courtesy_days: Math.max(0, Number(d) || 0) }); toast("Cortesía guardada", "ok");
+      } else if (a === "paid30") { if (!confirm("¿Registrar un pago manual y sumar 30 días de servicio?")) return; await put(bid, { add_paid_days: 30 }); toast("30 días sumados", "ok"); }
       else if (a === "trial") { const d = prompt("¿Cuántos días de prueba gratis?", "14"); if (d === null) return; await put(bid, { trial_days: Number(d) || 0 }); toast("Prueba actualizada", "ok"); }
       else if (a === "sync") { await api(`/admin/bands/${bid}/billing/sync`, { method: "POST" }); toast("Sincronizado con Mercado Pago", "ok"); }
       else if (a === "block") { const bl = btn.textContent.includes("Cortar"); if (bl && !confirm("¿Cortar el servicio? La banda sigue viendo y bajando su material, pero no puede subir ni masterizar.")) return; await put(bid, { blocked: bl }); toast(bl ? "Servicio cortado" : "Servicio reactivado", "ok"); }
@@ -200,7 +244,7 @@ async function adBandas(body, nav) {
 
 /* ---------- cobros ---------- */
 async function adCobros(body, nav) {
-  const [pays, bands, sum] = await Promise.all([api("/admin/payments"), api("/admin/bands"), api("/admin/billing/summary")]);
+  const [pays, bands, sum, subs] = await Promise.all([api("/admin/payments"), api("/admin/bands"), api("/admin/billing/summary"), api("/admin/subscriptions")]);
   if (nav !== state.nav) return;
   const pend = sum.pending_signups || [];
   const bajas = sum.cancellations || [];
@@ -216,10 +260,17 @@ async function adCobros(body, nav) {
       <ul class="upcoming">${pend.map((s) => `<li><div class="grow"><strong>${esc(s.band)}</strong> <span class="chip-st">${esc(s.plan)}</span><div class="small muted">${esc(s.name)} · ${esc(s.email)} · ${adDay(s.created_at)}</div></div></li>`).join("")}</ul></section>` : ""}
     ${problem.length ? `<section class="card"><h2>Para mirar</h2><ul class="upcoming">${problem.map((b) => `<li><div class="grow"><strong>${esc(b.name)}</strong> ${adChip(b.billing.state)}
       <div class="small muted">${b.billing.state === "past_due" ? `El pago venció el ${adDay(b.billing.paid_until)}. Si no paga, se corta solo a los pocos días.` : "Sin servicio: solo puede ver y bajar su material."}</div></div></li>`).join("")}</ul></section>` : ""}
+    <section class="card"><h2>Suscripciones</h2>
+      <p class="small muted">Mercado Pago cobra en pesos a las bandas de Argentina; Polar cobra en dólares al resto del mundo. Acá no se ven datos de tarjetas ni de cuentas.</p>
+      ${subs.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Banda</th><th>Cobro</th><th>Plan</th><th>Precio</th><th>Estado</th><th>Próximo cobro</th></tr></thead><tbody>
+      ${subs.map((x) => `<tr><td>${esc(x.band)}</td><td>${x.provider === "polar" ? "Polar" : "Mercado Pago"}</td><td>${esc(x.plan || "—")}</td>
+        <td>${x.price ? (x.currency === "USD" ? adUsd(x.price) : adMoney(x.price)) : "—"}</td><td>${adChip(x.state)}</td>
+        <td>${x.state === "trial" ? `prueba hasta ${adDay(x.trial_ends_at)}` : adDay(x.paid_until)}</td></tr>`).join("")}
+      </tbody></table></div>` : `<p class="muted">Todavía no hay suscripciones.</p>`}</section>
     <section class="card"><h2>Pagos</h2>
-      <p class="small muted">El corte por falta de pago es automático: cuando Mercado Pago no cobra el mes, la banda pasa a “pago atrasado” unos días y después queda sin servicio hasta que se regularice.</p>
+      <p class="small muted">El corte por falta de pago es automático: cuando Mercado Pago o Polar no cobran el mes, la banda pasa a “pago atrasado” unos días y después queda sin servicio hasta que se regularice.</p>
       ${pays.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Fecha</th><th>Banda</th><th>Monto</th><th>Estado</th><th>Origen</th></tr></thead><tbody>
-      ${pays.map((p) => `<tr><td>${adDay(p.paid_at)}</td><td>${esc(p.band || "—")}</td><td>${p.amount ? adMoney(p.amount) : "—"}</td><td>${p.status === "approved" ? `<span class="chip-st ok">Aprobado</span>` : `<span class="chip-st err">Rechazado</span>`}</td><td>${p.kind === "manual" ? "Manual" : "Mercado Pago"}</td></tr>`).join("")}
+      ${pays.map((p) => `<tr><td>${adDay(p.paid_at)}</td><td>${esc(p.band || "—")}</td><td>${p.amount ? (p.currency === "USD" ? adUsd(p.amount) : adMoney(p.amount)) : "—"}</td><td>${p.status === "approved" ? `<span class="chip-st ok">Aprobado</span>` : `<span class="chip-st err">Rechazado</span>`}</td><td>${p.kind === "manual" ? "Manual" : p.kind === "polar" ? "Polar" : "Mercado Pago"}</td></tr>`).join("")}
       </tbody></table></div>` : `<p class="muted">Todavía no hay pagos.</p>`}</section>`;
   $$("[data-stop]", body).forEach((b) => b.addEventListener("click", adGuard(async () => {
     if (!confirm("¿Frenar la baja? No se borra nada, pero la banda queda sin suscripción y tiene que volver a suscribirse.")) return;

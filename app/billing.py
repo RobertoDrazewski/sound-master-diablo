@@ -21,7 +21,7 @@ from . import config, mail
 from .notify import notify_band, notify_supers
 from .security import gen_password, hash_password
 from .netutil import HTTPFail, http_json
-from .db import Band, Cancellation, Membership, Payment, Plan, Signup, Track, UsageEvent, User, Version, now
+from .db import Band, Cancellation, Membership, Notification, Payment, Plan, Signup, Track, UsageEvent, User, Version, now
 
 MP_API = "https://api.mercadopago.com"
 
@@ -529,17 +529,172 @@ def stop_cancellation(db: Session, band: Band):
 def overview(db: Session) -> dict:
     bands = db.query(Band).all()
     counts = {"exempt": 0, "trial": 0, "active": 0, "past_due": 0, "suspended": 0, "closing": 0}
-    mrr = 0
+    mrr_ars, mrr_usd, subs_mp, subs_polar, near = 0, 0, 0, 0, 0
     for b in bands:
         s = status(db, b)
         counts[s["state"]] += 1
-        if s["state"] in ("active", "past_due") and b.mp_status == "authorized":
+        if s["state"] in ("active", "past_due", "trial") and b.mp_status == "authorized":
             p = band_plan(db, b)
-            mrr += p.price_ars if p else 0
+            if b.pay_provider == "polar":
+                subs_polar += 1
+                mrr_usd += (p.price_usd or 0) if p and s["state"] != "trial" else 0
+            else:
+                subs_mp += 1
+                mrr_ars += p.price_ars if p and s["state"] != "trial" else 0
+        if s["state"] not in ("closing", "suspended") and usage_alerts(db, b):
+            near += 1
     ms = month_start()
-    collected = db.query(func.coalesce(func.sum(Payment.amount), 0)).filter(
-        Payment.status == "approved", Payment.paid_at >= ms).scalar() or 0
-    return {"bands": len(bands), **counts, "mrr": mrr, "collected_month": float(collected)}
+    collected = dict(db.query(Payment.currency, func.coalesce(func.sum(Payment.amount), 0)).filter(
+        Payment.status == "approved", Payment.paid_at >= ms).group_by(Payment.currency).all())
+    ars = float(collected.get("ARS", 0))
+    return {"bands": len(bands), **counts, "mrr": mrr_ars, "mrr_ars": mrr_ars, "mrr_usd": mrr_usd,
+            "subs_mp": subs_mp, "subs_polar": subs_polar, "near_limit": near,
+            "collected_month": ars, "collected_ars": ars, "collected_usd": float(collected.get("USD", 0))}
+
+
+# ------------------------------------------------------------------ uso cerca del tope y cortesías
+
+def used_bytes(db: Session, band_id: int) -> int:
+    q = (db.query(func.coalesce(func.sum(Version.size_bytes), 0))
+         .join(Track, Track.id == Version.track_id).filter(Track.band_id == band_id))
+    return int(q.scalar() or 0)
+
+
+ALERT_KINDS = ("masters_month", "ai_covers_month", "storage")
+
+
+def usage_alerts(db: Session, band: Band) -> list[dict]:
+    """Topes del plan al 80% o más. Solo números: nunca mira el audio."""
+    lim, use = limits(db, band), usage(db, band.id)
+    rows = [("masters_month", use["masters_month"], lim["masters_month"]),
+            ("ai_covers_month", use["ai_covers_month"], lim["ai_covers_month"]),
+            ("storage", round(used_bytes(db, band.id) / 1e9, 2), lim["quota_gb"])]
+    out = []
+    for kind, used, cap in rows:
+        if not cap:
+            continue
+        pct = used / cap
+        if pct >= 0.8:
+            out.append({"kind": kind, "used": used, "cap": cap, "pct": round(pct * 100),
+                        "level": "full" if pct >= 1 else "near"})
+    return out
+
+
+def next_plan(db: Session, band: Band) -> Plan | None:
+    """El plan siguiente (más capacidad) para sugerir. None si ya está en el más grande."""
+    cur = band_plan(db, band)
+    plans = db.query(Plan).filter_by(active=True).order_by(Plan.sort).all()
+    if cur is None:
+        return next((p for p in plans if p.highlight), plans[0] if plans else None)
+    bigger = [p for p in plans if p.sort > cur.sort]
+    return bigger[0] if bigger else None
+
+
+_ALERT_TXT = {
+    "es": {"masters_month": "masters de este mes", "ai_covers_month": "tapas con IA de este mes", "storage": "GB de espacio",
+           "subj": "{band}: están cerca del límite de su plan",
+           "hi": "Hola,\n\n{band} ya usó {used} de {cap} {what} ({pct}%).",
+           "full": "Hola,\n\n{band} llegó al tope de su plan: {used} de {cap} {what}.",
+           "up": "Con el plan {plan} tienen {cap2} {what} y todo lo demás sigue igual. Lo cambian en un minuto desde Plan:",
+           "trial": "Están en la prueba gratis, que tiene topes más bajos. Al elegir un plan se amplían:",
+           "top": "Ya están en el plan más grande. Si necesitan más, respondan este mail y lo vemos.",
+           "renew": "Los masters y las tapas se renuevan el 1° de cada mes.", "bye": "Diablo Master Mix",
+           "note": "{band} llegó al {pct}% de sus {what}. Mirá los planes para seguir sin cortes."},
+    "en": {"masters_month": "masters this month", "ai_covers_month": "AI covers this month", "storage": "GB of storage",
+           "subj": "{band}: you're close to your plan's limit",
+           "hi": "Hi,\n\n{band} has used {used} of {cap} {what} ({pct}%).",
+           "full": "Hi,\n\n{band} has reached its plan's limit: {used} of {cap} {what}.",
+           "up": "With the {plan} plan you get {cap2} {what} and everything else stays the same. You can switch in a minute from Plan:",
+           "trial": "You're on the free trial, which has lower limits. Choosing a plan raises them:",
+           "top": "You're already on the biggest plan. If you need more, reply to this email and we'll sort it out.",
+           "renew": "Masters and covers reset on the 1st of every month.", "bye": "Diablo Master Mix",
+           "note": "{band} reached {pct}% of its {what}. Check the plans to keep going without interruptions."},
+    "pt": {"masters_month": "masters deste mês", "ai_covers_month": "capas com IA deste mês", "storage": "GB de espaço",
+           "subj": "{band}: vocês estão perto do limite do plano",
+           "hi": "Olá,\n\n{band} já usou {used} de {cap} {what} ({pct}%).",
+           "full": "Olá,\n\n{band} chegou ao limite do plano: {used} de {cap} {what}.",
+           "up": "Com o plano {plan} vocês têm {cap2} {what} e todo o resto continua igual. Dá para trocar em um minuto em Plano:",
+           "trial": "Vocês estão no teste grátis, que tem limites menores. Ao escolher um plano eles aumentam:",
+           "top": "Vocês já estão no maior plano. Se precisarem de mais, respondam este e-mail e resolvemos.",
+           "renew": "Os masters e as capas renovam no dia 1º de cada mês.", "bye": "Diablo Master Mix",
+           "note": "{band} chegou a {pct}% de seus {what}. Veja os planos para continuar sem interrupções."},
+}
+
+
+def _cap_of(plan: Plan, kind: str):
+    return {"masters_month": plan.masters_month, "ai_covers_month": plan.ai_covers_month, "storage": plan.quota_gb}[kind]
+
+
+def send_limit_mail(db: Session, band: Band, alert: dict) -> int:
+    """Mail a los admins de la banda (en el idioma de cada uno) + aviso adentro de la app. Devuelve a cuántos llegó."""
+    nxt = next_plan(db, band)
+    admins = (db.query(User).join(Membership, Membership.user_id == User.id)
+              .filter(Membership.band_id == band.id, Membership.role == "admin", User.is_super.is_(False),
+                      User.active.is_(True)).all())
+    link = f"{_site()}/#/band/{band.id}/plan" if _site() else ""
+    sent = 0
+    for u in admins:
+        T = _ALERT_TXT.get(u.lang if u.lang in _ALERT_TXT else "es")
+        what = T[alert["kind"]]
+        cap = int(alert["cap"]) if float(alert["cap"]).is_integer() else alert["cap"]
+        parts = [(T["full"] if alert["level"] == "full" else T["hi"]).format(
+            band=band.name, used=alert["used"], cap=cap, what=what, pct=alert["pct"])]
+        if in_trial(band):
+            parts.append(T["trial"] + (f"\n{link}" if link else ""))
+        elif nxt:
+            parts.append(T["up"].format(plan=nxt.name, cap2=_cap_of(nxt, alert["kind"]), what=what) + (f"\n{link}" if link else ""))
+        else:
+            parts.append(T["top"])
+        if alert["kind"] != "storage":
+            parts.append(T["renew"])
+        parts.append(T["bye"])
+        if mail.send_customer(u.email, T["subj"].format(band=band.name), "\n\n".join(parts)):
+            sent += 1
+        db.add(Notification(user_id=u.id, band_id=band.id, kind="plan",
+                            text=T["note"].format(band=band.name, pct=alert["pct"], what=what)[:300],
+                            link=f"#/band/{band.id}/plan"))
+    db.commit()
+    return sent
+
+
+_ALERT_CODE = {"masters_month": "m", "ai_covers_month": "c", "storage": "s"}
+
+
+def limit_alerts_due(db: Session) -> int:
+    """Una vez por hora: avisa a las bandas que pasan el 80% o llegan al 100% de algo de su plan.
+    Cada aviso sale una sola vez por mes y por nivel (se anota como UsageEvent 'al:m:n')."""
+    sent = 0
+    ms = month_start()
+    for b in db.query(Band).filter(Band.exempt.is_(False), Band.blocked.is_(False), Band.purge_at.is_(None)).all():
+        if status(db, b)["state"] not in ("trial", "active", "past_due"):
+            continue
+        since = b.created_at if in_trial(b) and b.created_at else ms
+        for a in usage_alerts(db, b):
+            key = f"al:{_ALERT_CODE[a['kind']]}:{a['level'][0]}"
+            if db.query(UsageEvent.id).filter(UsageEvent.band_id == b.id, UsageEvent.kind == key,
+                                              UsageEvent.at >= since).first():
+                continue
+            db.add(UsageEvent(band_id=b.id, kind=key))
+            db.commit()
+            send_limit_mail(db, b, a)
+            sent += 1
+    return sent
+
+
+def courtesy_expire(db: Session) -> int:
+    """Las cortesías con fecha vencen solas: la banda pasa a una prueba de 7 días para que elija plan."""
+    n = 0
+    for b in db.query(Band).filter(Band.exempt.is_(True), Band.courtesy_until.isnot(None),
+                                   Band.courtesy_until <= now()).all():
+        b.exempt, b.courtesy_until = False, None
+        if not (b.paid_until and b.paid_until > now()):
+            b.trial_ends_at = now() + timedelta(days=7)
+        db.commit()
+        n += 1
+        _tell_owner(db, f"Terminó la cortesía de {b.name}",
+                    f"La cuenta sin cargo de \"{b.name}\" venció. Quedó con 7 días de prueba para elegir un plan.",
+                    "#/admin/bandas")
+    return n
 
 
 def public_plans(db: Session) -> list[dict]:

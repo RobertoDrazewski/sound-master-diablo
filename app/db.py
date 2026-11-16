@@ -42,6 +42,7 @@ class User(Base):
     name: Mapped[str] = mapped_column(String(120), default="")
     password_hash: Mapped[str] = mapped_column(String(255))
     photo: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    lang: Mapped[str] = mapped_column(String(2), default="es", server_default="es")           # idioma de los mails
     is_super: Mapped[bool] = mapped_column(Boolean, default=False)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
@@ -96,6 +97,8 @@ class Band(Base):
     purge_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)              # baja pedida: se borra todo en esta fecha
     pay_provider: Mapped[str | None] = mapped_column(String(8), nullable=True)               # mp | polar
     polar_subscription_id: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
+    courtesy_note: Mapped[str] = mapped_column(String(160), default="", server_default="")      # por qué no paga (cortesía)
+    courtesy_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)           # la cortesía vence sola
 
 
 class Plan(Base):
@@ -406,3 +409,6 @@ def _migrate_sqlite():
         add(conn, "plans", "price_usd", "INTEGER")
         add(conn, "signups", "provider", "VARCHAR(8) NOT NULL DEFAULT 'mp'")
         add(conn, "signups", "polar_checkout_id", "VARCHAR(80)")
+        add(conn, "users", "lang", "VARCHAR(2) NOT NULL DEFAULT 'es'")
+        add(conn, "bands", "courtesy_note", "VARCHAR(160) NOT NULL DEFAULT ''")
+        add(conn, "bands", "courtesy_until", "DATETIME")

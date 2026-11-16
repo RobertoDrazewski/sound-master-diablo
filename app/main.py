@@ -480,6 +480,10 @@ def me(request: Request, user: User = Depends(current_user), db: Session = Depen
     # el panel web del super admin no mezcla bandas (se administran desde Admin), pero Reaper
     # (token pck_) necesita ver las bandas de las que el super es integrante para poder subir
     es_reaper = request.headers.get("authorization", "")[7:].strip().startswith("pck_")
+    lg = config.REQ_LANG.get()
+    if not es_reaper and lg in ("es", "en", "pt") and user.lang != lg:
+        user.lang = lg                      # los mails que le mandamos salen en el idioma que usa la app
+        db.commit()
     if user.is_super:
         # el super admin cuenta como admin en todas las bandas: Reaper se las muestra todas
         bands = db.query(Band).order_by(Band.name).all() if es_reaper else []
@@ -885,7 +889,9 @@ def admin_bands(_: User = Depends(require_super), db: Session = Depends(get_db))
             "used_gb": round(band_used_bytes(db, b.id) / 1e9, 2), "quota_gb": billing.limits(db, b)["quota_gb"],
             "stats": band_stats(db, b.id), "billing": billing.status(db, b), "exempt": b.exempt, "blocked": b.blocked,
             "plan_id": b.plan_id, "mp_status": b.mp_status, "created_at": b.created_at,
-            "usage": billing.usage(db, b.id),
+            "usage": billing.usage(db, b.id), "limits": billing.limits(db, b), "alerts": billing.usage_alerts(db, b),
+            "provider": b.pay_provider or ("mp" if b.mp_preapproval_id else None),
+            "courtesy_note": b.courtesy_note, "courtesy_until": b.courtesy_until,
             "members": [{"user_id": u.id, "email": u.email, "name": u.name, "role": m.role}
                         for m, u in members],
         })
@@ -2467,6 +2473,8 @@ def admin_billing_summary(_: User = Depends(require_super), db: Session = Depend
 
 class BandBillingIn(BaseModel):
     exempt: bool | None = None
+    courtesy_note: str | None = Field(None, max_length=160)
+    courtesy_days: int | None = Field(None, ge=0, le=3650)   # 0 = sin vencimiento
     blocked: bool | None = None
     plan_id: int | None = None
     trial_days: int | None = Field(None, ge=0, le=365)      # reinicia la prueba gratis
@@ -2482,6 +2490,12 @@ def admin_band_billing(band_id: int, body: BandBillingIn, _: User = Depends(requ
         raise HTTPException(404, "Banda inexistente")
     if body.exempt is not None:
         b.exempt = body.exempt
+        if not body.exempt:
+            b.courtesy_note, b.courtesy_until = "", None
+    if body.courtesy_note is not None:
+        b.courtesy_note = body.courtesy_note.strip()
+    if body.courtesy_days is not None:
+        b.courtesy_until = now() + timedelta(days=body.courtesy_days) if body.courtesy_days else None
     if body.blocked is not None:
         b.blocked = body.blocked
     if body.plan_id is not None:
@@ -2496,6 +2510,44 @@ def admin_band_billing(band_id: int, body: BandBillingIn, _: User = Depends(requ
         db.add(Payment(band_id=b.id, band_name=b.name, amount=body.amount or 0, kind="manual", status="approved"))
     db.commit()
     return {"status": billing.status(db, b)}
+
+
+class UpsellIn(BaseModel):
+    kind: str = Field(pattern="^(masters_month|ai_covers_month|storage)$")
+
+
+@app.post("/admin/bands/{band_id}/upsell")
+def admin_upsell(band_id: int, body: UpsellIn, _: User = Depends(require_super), db: Session = Depends(get_db)):
+    """Manda ahora el mail de 'cerca del límite' (sale solo una vez por mes; esto es para reenviarlo a mano)."""
+    b = db.get(Band, band_id)
+    if not b:
+        raise HTTPException(404, "Banda inexistente")
+    alert = next((a for a in billing.usage_alerts(db, b) if a["kind"] == body.kind), None)
+    if not alert:
+        raise HTTPException(409, "Esa banda no está cerca de ese límite")
+    if not mail.mail_enabled():
+        raise HTTPException(424, "El envío de mails no está configurado")
+    n = billing.send_limit_mail(db, b, alert)
+    if not n:
+        raise HTTPException(409, "La banda no tiene un admin con mail para avisarle")
+    return {"sent": n}
+
+
+@app.get("/admin/subscriptions")
+def admin_subscriptions(_: User = Depends(require_super), db: Session = Depends(get_db)):
+    """Tablero de suscripciones: Mercado Pago (pesos) y Polar (dólares). Sin datos de pago de nadie."""
+    out = []
+    for b in db.query(Band).filter(Band.exempt.is_(False)).order_by(Band.name).all():
+        if not (b.mp_status or b.pay_provider or b.mp_preapproval_id or b.polar_subscription_id):
+            continue
+        p = billing.band_plan(db, b)
+        polar_ = (b.pay_provider == "polar")
+        out.append({"band_id": b.id, "band": b.name, "provider": "polar" if polar_ else "mp",
+                    "plan": p.name if p else None, "currency": "USD" if polar_ else "ARS",
+                    "price": ((p.price_usd or 0) if polar_ else p.price_ars) if p else 0,
+                    "sub_status": b.mp_status, "state": billing.status(db, b)["state"],
+                    "paid_until": b.paid_until, "trial_ends_at": b.trial_ends_at})
+    return out
 
 
 @app.post("/admin/bands/{band_id}/billing/sync")
