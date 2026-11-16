@@ -733,8 +733,9 @@ async function viewHome(nav) {
         ${bands.length > 1 ? `<button type="button" class="btn small band-switch" id="band-switch">${ic("users")} Cambiar de banda</button>` : ""}
       </div>
       <a class="btn primary rec-cta" href="#/band/${b.id}/ensayos">${ic("mic")} Grabar ensayo</a>
-      <div class="tool-grid">${TOOLS.slice(0, 6).map(([k, l, i, d]) =>
-        `<a class="tool-tile" href="#/band/${b.id}/${k}">${ic(i)}<strong>${l}</strong><span>${d}</span></a>`).join("")}</div>
+      <div class="tool-grid tt-grid">${TOOLS.map(([k, l, i, d]) =>
+        `<a class="tool-tile tt" href="#/band/${b.id}/${k}" style="--img:url(/img/herramienta-${k === "integrantes" ? "musicos" : k}.jpg)"><span class="tt-pic" aria-hidden="true"></span>
+          <span class="tt-row"><span class="l2-ibox">${ic(i)}</span><span class="tt-txt"><strong>${l}</strong><span>${d}</span></span></span></a>`).join("")}</div>
     </section>`;
   }
   if (up.length) {

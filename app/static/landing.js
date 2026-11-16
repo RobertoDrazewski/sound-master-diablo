@@ -3,28 +3,28 @@
 
 
 const LAND_BLOCKS = [
-  { k: "ensayos", icon: "mic", t: "Ensayos", img: "/img/herramienta-ensayos.jpg", lead: "Graba el ensayo desde el teléfono y compártelo con toda la banda.",
+  { k: "ensayos", desc: "Abre la plataforma en el teléfono, pulsa grabar y deja el móvil en la sala. Al terminar, el ensayo queda guardado y toda la banda lo puede escuchar desde su casa.", icon: "mic", t: "Ensayos", img: "/img/herramienta-ensayos.jpg", lead: "Graba el ensayo desde el teléfono y compártelo con toda la banda.",
     items: ["Graba desde el navegador o sube el archivo", "Ensayos ordenados por fecha y sesión", "Aviso automático a toda la banda"] },
-  { k: "produccion", icon: "music", t: "Producción", img: "/img/herramienta-produccion.jpg", lead: "Demos, tomas, mezclas y letras en un solo lugar, antes del master.",
+  { k: "produccion", desc: "El lugar de trabajo de cada canción. Sube demos, tomas y mezclas, compara versiones y deja la letra lista antes de pasar al master.", icon: "music", t: "Producción", img: "/img/herramienta-produccion.jpg", lead: "Demos, tomas, mezclas y letras en un solo lugar, antes del master.",
     items: ["Subida desde REAPER con un script incluido", "Pistas separadas o mezcla completa", "Reproductor con loop A–B y control de velocidad",
       "La letra se lee desde tu propia canción: la corriges, la apruebas y queda sincronizada verso por verso para Spotify y Apple Music"] },
   { k: "master", icon: "sliders", t: "Master", img: "/img/herramienta-master.jpg", star: true, lead: "Deja tu mezcla lista para publicar y compara el antes y el después.",
     items: ["Más de 70 estilos, desde rock y metal hasta jazz, cumbia y hip hop", "Master por referencia: tu tema adopta el sonido de otro que elijas",
       "Control de volumen, potencia, tono, ancho estéreo y balance de instrumentos", "Informe paso a paso y comparación A/B a igual volumen"] },
-  { k: "practica", icon: "headphones", t: "Practica en casa", img: "/img/herramienta-practica.jpg", lead: "Silencia tu instrumento y toca encima del resto de la banda.",
+  { k: "practica", desc: "Abre el tema con sus pistas separadas, baja tu instrumento y toca encima del resto de la banda. Repite el pasaje difícil en bucle hasta que salga.", icon: "headphones", t: "Practica en casa", img: "/img/herramienta-practica.jpg", lead: "Silencia tu instrumento y toca encima del resto de la banda.",
     items: ["Mesa de pistas con silencio (M) y solo (S) por instrumento", "Loop A–B para repetir un pasaje", "Vista de ondas en pantallas grandes y lista simple en móvil"] },
-  { k: "asistente", icon: "spark", t: "Asistente", img: "/img/herramienta-asistente.jpg", lead: "Analiza el audio y explica qué corregir, en lenguaje simple.",
+  { k: "asistente", desc: "Antes de masterizar, el asistente escucha la mezcla y te dice qué conviene corregir. Sin tecnicismos: qué pasa, por qué importa y cómo se arregla.", icon: "spark", t: "Asistente", img: "/img/herramienta-asistente.jpg", lead: "Analiza el audio y explica qué corregir, en lenguaje simple.",
     items: ["Medición de volumen, picos, saturación y compatibilidad estéreo", "Veredicto claro y consejos priorizados", "Chat con un ingeniero de audio para consultas de mezcla y master"] },
-  { k: "albumes", icon: "disc", t: "Álbumes", img: "/img/herramienta-albumes.jpg", lead: "Ordena los temas y diseña la portada del disco.",
+  { k: "albumes", desc: "Reúne los temas terminados en un disco, define el orden y crea la portada. Todo queda preparado para el lanzamiento.", icon: "disc", t: "Álbumes", img: "/img/herramienta-albumes.jpg", lead: "Ordena los temas y diseña la portada del disco.",
     items: ["Orden final de los temas por arrastre", "Portada con tu foto, estilos prediseñados o inteligencia artificial", "Archivo a 3000 px, el tamaño que piden las plataformas"] },
-  { k: "lanzamiento", icon: "rocket", t: "Lanzamiento", img: "/img/herramienta-lanzamiento.jpg", lead: "Descarga el álbum listo para cada plataforma.",
+  { k: "lanzamiento", desc: "Cuando el disco está terminado, descargas un paquete con todo lo que pide una distribuidora. Lo subes tal cual y sigues la guía hasta verlo publicado.", icon: "rocket", t: "Lanzamiento", img: "/img/herramienta-lanzamiento.jpg", lead: "Descarga el álbum listo para cada plataforma.",
     items: ["WAV 24 bits, MP3 320, portada y letras en un solo paquete", "Título, artista, álbum, créditos y letra guardados dentro de cada archivo",
       "Guía paso a paso para publicar con AMA (INAMU), DistroKid o CD Baby, con costos y requisitos de cada una",
       "Spotify, Apple Music y YouTube Music mediante la distribuidora que elijas, y Bandcamp de forma directa", "También preparado para vinilo y CD"],
     note: "AMA, INAMU, DistroKid y CD Baby son marcas de sus respectivos titulares; Diablo Master Mix no está afiliado ni respaldado por ellos." },
-  { k: "calendario", icon: "calendar", t: "Calendario", img: "/img/herramienta-calendario.jpg", lead: "Ensayos y presentaciones con aviso a toda la banda.",
+  { k: "calendario", desc: "Una agenda compartida para que nadie falte. Cada fecha nueva le llega a toda la banda y aparece en el inicio.", icon: "calendar", t: "Calendario", img: "/img/herramienta-calendario.jpg", lead: "Ensayos y presentaciones con aviso a toda la banda.",
     items: ["Agenda de ensayos, shows y grabaciones", "Aviso automático a los integrantes", "Próximos eventos visibles en el inicio"] },
-  { k: "musicos", icon: "users", t: "Banco de músicos", img: "/img/herramienta-musicos.jpg", lead: "Las bandas encuentran integrantes y los músicos encuentran banda.",
+  { k: "musicos", desc: "Si falta un integrante, la banda publica la búsqueda. Los músicos se registran gratis, se postulan y la audición se agenda desde la misma plataforma.", icon: "users", t: "Banco de músicos", img: "/img/herramienta-musicos.jpg", lead: "Las bandas encuentran integrantes y los músicos encuentran banda.",
     items: ["Registro gratis para músicos: crea tu perfil y postúlate a las búsquedas", "La banda publica qué integrante busca y agenda la audición en el calendario",
       "Si la banda te elige, pasas a ser integrante con todas sus herramientas", "Descuento en el próximo cobro para la banda que suma a un músico del banco"],
     cta: { href: "#/musico", t: "Regístrate gratis en el banco de músicos" } },
@@ -120,10 +120,17 @@ function viewLanding() {
 
         <section class="l2-sec" id="l2-features" aria-label="Herramientas">
           <h2 class="l2-h">Herramientas para cada etapa de tu banda</h2>
-          <div class="l2-grid">
-            ${rest.map((b) => `<article class="l2-card" data-glow id="f-${b.k}">
-              ${landPic(b)}
-              <div class="l2-body">${landHead(b)}${landList(b)}${b.note ? `<small class="l2-trade">${b.note}</small>` : ""}${b.cta ? `<div class="l2-cta left"><a class="btn primary" href="${b.cta.href}">${b.cta.t}</a></div>` : ""}</div></article>`).join("")}
+          <div class="tc" id="tc">
+            <div class="tc-track" id="tc-track" tabindex="0" role="group" aria-label="Herramientas">
+              ${rest.map((b) => `<article class="l2-card tc-slide" data-glow id="f-${b.k}">
+                <div class="tc-pic" style="--img:url(${b.img})" role="img" aria-label="${b.t}"></div>
+                <div class="l2-body">${landHead(b)}<p class="tc-desc">${b.desc}</p>${landList(b)}${b.note ? `<small class="l2-trade">${b.note}</small>` : ""}${b.cta ? `<div class="l2-cta left"><a class="btn primary" href="${b.cta.href}">${b.cta.t}</a></div>` : ""}</div></article>`).join("")}
+            </div>
+            <div class="tc-ctl">
+              <button type="button" class="tc-arrow" data-tc="-1" aria-label="Herramienta anterior">${ic("left")}</button>
+              <div class="tc-tabs">${rest.map((b, i) => `<button type="button" class="tc-tab" data-tci="${i}" aria-label="${b.t}">${ic(b.icon)}<span>${b.t}</span><i class="tc-bar" aria-hidden="true"></i></button>`).join("")}</div>
+              <button type="button" class="tc-arrow" data-tc="1" aria-label="Herramienta siguiente">${ic("right")}</button>
+            </div>
           </div>
         </section>
 
@@ -185,9 +192,62 @@ function viewLanding() {
     $$("[data-glow]", root).forEach((c) => io.observe(c));
   } else $$("[data-glow]", root).forEach((c) => c.classList.add("in"));
 
+  landCarousel(root);
   landPlans();
   landContact($("#l2-form-box", root));
   if (typeof chatMount === "function") chatMount();
+}
+
+/* carrusel de herramientas: en el teléfono se desliza con el dedo; en escritorio avanza solo cada 6 segundos
+   (la barra de la pestaña activa marca el tiempo) y se detiene mientras el cursor está encima */
+function landCarousel(root) {
+  const tc = $("#tc", root);
+  if (!tc) return;
+  const track = $("#tc-track", tc), slides = $$(".tc-slide", tc), tabs = $$(".tc-tab", tc);
+  const calm = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const desk = window.matchMedia ? matchMedia("(hover: hover) and (pointer: fine) and (min-width: 900px)") : { matches: false };
+  const setAuto = () => tc.classList.toggle("auto", desk.matches && !calm);
+  setAuto();
+  if (desk.addEventListener) desk.addEventListener("change", setAuto);
+  let cur = -1, lockUntil = 0, raf = 0;
+  const mark = (i) => {
+    if (i === cur) return;
+    cur = i;
+    slides.forEach((s, k) => s.classList.toggle("on", k === i));
+    tabs.forEach((t, k) => { t.classList.toggle("on", k === i); t.setAttribute("aria-current", k === i ? "true" : "false"); });
+  };
+  const leftOf = (s) => s.offsetLeft - (track.clientWidth - s.offsetWidth) / 2;
+  const go = (i) => {
+    i = (i + slides.length) % slides.length;
+    lockUntil = Date.now() + 900;
+    track.scrollTo({ left: leftOf(slides[i]), behavior: calm ? "auto" : "smooth" });
+    mark(i);
+  };
+  track.addEventListener("scroll", () => {
+    if (raf || Date.now() < lockUntil) return;
+    raf = requestAnimationFrame(() => {
+      raf = 0;
+      const mid = track.scrollLeft + track.clientWidth / 2;
+      let best = 0, d = Infinity;
+      slides.forEach((s, k) => { const x = Math.abs(s.offsetLeft + s.offsetWidth / 2 - mid); if (x < d) { d = x; best = k; } });
+      mark(best);
+    });
+  }, { passive: true });
+  $$("[data-tc]", tc).forEach((b) => b.addEventListener("click", () => go(cur + Number(b.dataset.tc))));
+  tabs.forEach((t) => t.addEventListener("click", () => go(Number(t.dataset.tci))));
+  track.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowRight") { e.preventDefault(); go(cur + 1); }
+    if (e.key === "ArrowLeft") { e.preventDefault(); go(cur - 1); }
+  });
+  // la barra de la pestaña activa dura 6 segundos: cuando termina, pasa a la herramienta siguiente
+  tc.addEventListener("animationend", (e) => { if (e.animationName === "tcFill" && tc.classList.contains("auto")) go(cur + 1); });
+  const hold = (on) => tc.classList.toggle("paused", on);
+  tc.addEventListener("pointerenter", () => hold(true));
+  tc.addEventListener("pointerleave", () => hold(false));
+  tc.addEventListener("focusin", () => hold(true));
+  tc.addEventListener("focusout", () => hold(false));
+  if ("IntersectionObserver" in window) new IntersectionObserver((es) => es.forEach((e) => tc.classList.toggle("away", !e.isIntersecting)), { threshold: 0.35 }).observe(tc);
+  mark(0);
 }
 
 /* sello de cobro: logo de Mercado Pago a la izquierda y el texto a la derecha */
