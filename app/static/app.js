@@ -1879,12 +1879,10 @@ async function viewRelease(band, nav) {
   let list = await api(`/bands/${band.id}/releases`);
   if (nav !== state.nav) return;
   const dests = [
-    ["Spotify, Apple Music y YouTube Music", "Se publican a través de una distribuidora (DistroKid, TuneCore, CD Baby, Amuse). Le subís los WAV y la tapa del paquete, y ella lo manda a todas las plataformas.", "upload"],
     ["Bandcamp", "Recibe la música directo de la banda. Subís los WAV y la tapa, ponés el precio y compartís el link.", "music"],
     ["Vinilo y CD", "Para prensar, la planta pide los WAV (separados por lado en el vinilo) y la tapa. El paquete trae una guía con lo que tenés que preguntar.", "disc"],
   ];
   const DEST_STEPS = {
-    "Spotify, Apple Music y YouTube Music": ["Descargá el paquete del álbum (arriba).", "Elegí una distribuidora: DistroKid, TuneCore, CD Baby o Amuse.", "Subí los WAV 24 bits y la tapa de 3000 px.", "Completá título, artista, géneros y fecha de salida.", "La distribuidora lo manda a Spotify, Apple Music y YouTube Music (tarda entre 2 y 7 días)."],
     "Bandcamp": ["Descargá el paquete del álbum (arriba).", "Entrá a tu cuenta de Bandcamp y creá un álbum nuevo.", "Subí los WAV y la tapa; Bandcamp genera solo los demás formatos.", "Ponés el precio (o “el que quieras pagar”) y publicás.", "Compartí el link con tu banda y tu público."],
     "Vinilo y CD": ["Descargá el paquete del álbum (arriba): trae una guía con lo que hay que preguntarle a la planta.", "Pedí presupuesto a una planta de prensado y confirmá qué formato de archivo necesita.", "Para vinilo, repartí los temas por lado (A y B, hasta unos 20 minutos por lado).", "Enviá los WAV y la tapa; pedí una prueba de prensado antes de la tirada completa."],
   };
@@ -1915,11 +1913,13 @@ async function viewRelease(band, nav) {
   setApp(`
     ${bandHead(band, "Lanzamiento", "Cuando el álbum está masterizado, armá el paquete para publicarlo donde quieran o prensarlo.")}
     <div id="rel">${list.length ? list.map(card).join("") : `<div class="card empty">${ic("rocket")}Todavía no tienen álbumes.<br><a href="#/band/${band.id}/albumes">Armá el primero en Álbumes</a></div>`}</div>
-    <section class="card"><h2>Descargá el álbum para…</h2>
+    <section class="card distro" id="distro"></section>
+    <section class="card"><h2>Bandcamp, vinilo y CD</h2>
       <p class="muted small" style="margin:0 0 .8rem">Armá el paquete arriba y descargalo. Después tocá la plataforma para ver cómo se sube.</p>
       <div class="dest-acc">${dests.map(([t, d, i]) => `<details class="dest-item"><summary><span class="dest-ico">${ic(i)}</span><strong>${esc(t)}</strong><span class="dest-go">Cómo se hace</span></summary>
         <p class="muted">${esc(d)}</p><ol class="dest-steps">${DEST_STEPS[t].map((x) => `<li>${esc(x)}</li>`).join("")}</ol></details>`).join("")}</div></section>`);
   wireBandHead(band);
+  mountDistro($("#distro"), band);
   let timer = null;
   const stop = () => { if (timer) { clearInterval(timer); timer = null; } };
   const paint = () => { if (nav !== state.nav) return stop(); $("#rel").innerHTML = list.length ? list.map(card).join("") : $("#rel").innerHTML; };
@@ -1947,6 +1947,118 @@ async function viewRelease(band, nav) {
       }
     } catch (e) { toast(e.message, "err"); }
   });
+}
+
+/* Guía de distribución: antes de publicar (registro de obras) y cómo subir con cada distribuidora.
+   Argentina: SADAIC, ISRC por CAPIF, INAMU y AMA. Otro país: cada uno tiene su sociedad de autores. */
+const DISTRO = {
+  ama: {
+    name: "AMA · Agregadora de Música Argentina (INAMU)", ico: "flame", only: "AR",
+    tag: "Gratis para subir · te quedás con el 85%",
+    cost: "No cobra por subir. Se queda con el 15% de lo que generan las reproducciones y te paga el 85% al CBU, cada cuatro meses (desde USD 5).",
+    steps: [
+      "Registrate gratis en el Registro Único de Artistas del INAMU (inamu.musica.ar).",
+      "Conseguí el código de distribución: el INAMU lo entrega en sus capacitaciones y convocatorias de AMA, en los Consejos Regionales y en las secretarías de cultura provinciales.",
+      "Sacá los ISRC de tus temas: los da CAPIF con tu código de productor (AMA no distribuye sin ISRC).",
+      "Entrá a ama.musica.ar y cargá cada tema: intérpretes, autores, técnicos, ISRC, fecha de salida y la tapa.",
+      "En los créditos de mastering poné: Diablo Master Mix.",
+      "Elegí la fecha de salida unos 30 días después de la carga: AMA revisa y certifica cada lanzamiento antes de mandarlo.",
+      "AMA lo publica en Spotify, Apple Music, YouTube Music, Deezer, Tidal, Amazon Music, TikTok, Instagram y más.",
+    ],
+    files: "El paquete de arriba ya cumple lo que pide AMA: WAV 24 bits 44,1 kHz y tapa de 3000 px.",
+    url: "https://ama.musica.ar/",
+  },
+  distrokid: {
+    name: "DistroKid", ico: "rocket",
+    tag: "USD 24,99 por año · te quedás con el 100%",
+    cost: "Suscripción anual (plan Musician: USD 24,99 por año, temas ilimitados). Te pagan el 100% de las regalías. Si dejás de pagar, bajan tus temas, salvo los que protejas con Leave a Legacy (USD 29 por single, USD 49 por álbum).",
+    steps: [
+      "Creá tu cuenta en distrokid.com y elegí el plan (Musician alcanza para una banda).",
+      "Tocá Upload y completá: nombre de la banda, título, idioma y género.",
+      "Subí la tapa de 3000 px y los WAV del paquete, uno por tema.",
+      "Si tenés ISRC (de CAPIF o de otra distribuidora) cargalos; si no, DistroKid los asigna solo.",
+      "Completá los créditos (Apple Music pide al menos un intérprete y un productor) y en mastering poné: Diablo Master Mix.",
+      "Marcá las casillas obligatorias y enviá: suele llegar a las plataformas en unos días.",
+    ],
+    files: "El paquete de arriba ya cumple lo que pide DistroKid: WAV y tapa de 3000 x 3000 px.",
+    url: "https://distrokid.com/",
+  },
+  cdbaby: {
+    name: "CD Baby", ico: "disc",
+    tag: "Pago único · te quedás con el 91%",
+    cost: "Pagás una sola vez por lanzamiento (USD 9,99 el single, USD 14,99 el álbum) y queda publicado sin renovar. Se queda con el 9% de las regalías de streaming y descargas.",
+    steps: [
+      "Creá tu cuenta en cdbaby.com y empezá un lanzamiento nuevo (single o álbum).",
+      "Subí los WAV del paquete y la tapa de 3000 px.",
+      "Completá los datos: banda, títulos, compositores, idioma, género y fecha de salida.",
+      "En los créditos de mastering poné: Diablo Master Mix.",
+      "Pagá el lanzamiento y enviá: queda publicado sin cuota anual.",
+    ],
+    files: "El paquete de arriba ya cumple lo que pide CD Baby: WAV y tapa de 3000 px.",
+    url: "https://cdbaby.com/",
+  },
+};
+
+function mountDistro(box, band) {
+  if (!box) return;
+  const key = `dm_ctry_${band.id}`;
+  let ctry = null;
+  try { ctry = localStorage.getItem(key); } catch { /* sin almacenamiento */ }
+  const render = () => {
+    const ar = ctry === "AR";
+    const before = ar ? `
+      <ol class="dest-steps pre-steps">
+        <li><strong>Registrá tus canciones en SADAIC.</strong>
+          <span class="muted">Es online y gratis registrar: creás tu usuario, cargás título, álbum, género, duración y autores, y adjuntás el archivo. Ya no hace falta pasar antes por la DNDA ni presentar partituras.</span>
+          <span class="muted">Para cobrar tus derechos de autor, además escribí a socios@sadaic.org.ar con tu CBU y alias.</span>
+          <a class="btn small" href="https://www.sadaic.org.ar/" target="_blank" rel="noopener">Ir a SADAIC</a></li>
+        <li><strong>Registrate en el INAMU.</strong>
+          <span class="muted">El Registro Único de Artistas es gratis. Lo necesitás para usar AMA y para los subsidios y convocatorias del instituto.</span>
+          <a class="btn small" href="https://inamu.musica.ar/" target="_blank" rel="noopener">Ir al INAMU</a></li>
+        <li><strong>Conseguí los ISRC de tus grabaciones.</strong>
+          <span class="muted">El ISRC es el documento de identidad de cada grabación. Para AMA los sacás con tu código de productor de CAPIF; DistroKid y CD Baby te los asignan solos si no tenés.</span></li>
+      </ol>` : `
+      <div class="pre-other">
+        <p><strong>Registrá tus canciones en la sociedad de autores de tu país.</strong></p>
+        <p class="muted">Así cobrás cuando tus temas suenan en radio, shows y plataformas. Cada país tiene la suya: por ejemplo SGAE en España, UBC en Brasil, SACM en México, ASCAP o BMI en Estados Unidos.</p>
+      </div>`;
+    const list = Object.entries(DISTRO).filter(([, d]) => !d.only || d.only === ctry);
+    box.innerHTML = `
+      <h2>Spotify, Apple Music y YouTube Music</h2>
+      <p class="muted small" style="margin:0 0 .9rem">Se publican a través de una distribuidora. Primero dejá registradas tus canciones; después elegí cómo subirlas.</p>
+      <div class="ctry-pick" role="group" aria-label="¿De dónde es la banda?">
+        <span class="small muted">¿De dónde es la banda?</span>
+        <button type="button" class="pl-chip ${ar ? "on" : ""}" data-ctry="AR">Argentina</button>
+        <button type="button" class="pl-chip ${ar ? "" : "on"}" data-ctry="XX">Otro país</button>
+      </div>
+      <h3 class="st-sub">Antes de publicar</h3>
+      ${before}
+      <h3 class="st-sub">Elegí tu distribuidora</h3>
+      <div class="dest-acc">${list.map(([k, d]) => `
+        <details class="dest-item distro-item" data-d="${k}">
+          <summary><span class="dest-ico">${ic(d.ico)}</span><span class="grow distro-sum"><strong>${esc(d.name)}</strong><span class="small muted">${esc(d.tag)}</span></span><span class="dest-go">Cómo se hace</span></summary>
+          <p class="muted">${esc(d.cost)}</p>
+          <ol class="dest-steps">${d.steps.map((x) => `<li>${esc(x)}</li>`).join("")}</ol>
+          <p class="small distro-files">${ic("check")}<span>${esc(d.files)}</span></p>
+          <a class="btn small" href="${d.url}" target="_blank" rel="noopener">Ir a ${esc(d.name.split(" · ")[0])}</a>
+        </details>`).join("")}</div>
+      <h3 class="st-sub">Después de publicar: la letra en Spotify</h3>
+      <p class="muted">Spotify muestra las letras que le llegan de Musixmatch. Reclamá el perfil de la banda en Musixmatch for Artists (es gratis) y cargá la letra de cada tema, si podés sincronizada línea por línea.</p>`;
+    $$("[data-ctry]", box).forEach((b) => b.addEventListener("click", () => {
+      ctry = b.dataset.ctry;
+      try { localStorage.setItem(key, ctry); } catch { /* sin almacenamiento */ }
+      render();
+    }));
+  };
+  if (ctry) return render();
+  // primera vez: se adivina por el país desde donde se conecta (la banda lo puede cambiar)
+  ctry = (window.I18N && I18N.lang === "es") ? "AR" : "XX";
+  render();
+  api("/public-config").then((c) => {
+    let saved = null;
+    try { saved = localStorage.getItem(key); } catch { /* sin almacenamiento */ }
+    if (c && c.country && !saved && box.isConnected) { ctry = c.country === "AR" ? "AR" : "XX"; render(); }
+  }).catch(() => { /* queda la suposición */ });
 }
 
 /* ===================== conectar con Reaper ===================== */

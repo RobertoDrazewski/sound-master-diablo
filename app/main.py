@@ -1565,6 +1565,49 @@ def release_file(album_id: int, t: str | None = None, db: Session = Depends(get_
 
 # ------------------------------------------------------------------- asistente
 
+def _analysis_for(db: Session, v: Version, track: Track) -> tuple[str, dict]:
+    """Analiza el mismo audio que entraría al master: si el tema se subió por pistas, la suma de todas
+    (nunca una pista suelta). Devuelve (clave de caché, resultado)."""
+    if v.status != "ready" or not v.flac_path or not Path(v.flac_path).exists():
+        raise HTTPException(409, "El audio todavía se está procesando")
+    if v.kind != "stem":
+        key, path, dur = str(v.id), Path(v.flac_path), v.duration
+        cache = DATA_DIR / "analysis" / f"{key}.json"
+        if cache.exists():
+            return key, json.loads(cache.read_text())
+        try:
+            result = analysis.analyze(str(path), dur)
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(422, f"No se pudo analizar: {e}") from None
+    else:
+        (DATA_DIR / "tmp").mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=DATA_DIR / "tmp") as tmpdir:
+            try:
+                path, info = _pick_source_info(track, Path(tmpdir))
+            except RuntimeError as e:
+                raise HTTPException(409, str(e)) from None
+            if info.get("version_id"):
+                key = str(info["version_id"])
+            else:
+                key = f"t{track.id}-s" + "-".join(str(i) for i in sorted(info["stems"]))
+            cache = DATA_DIR / "analysis" / f"{key}.json"
+            if cache.exists():
+                return key, json.loads(cache.read_text())
+            try:
+                result = analysis.analyze(str(path), audio.duration(path))
+            except Exception as e:  # noqa: BLE001
+                raise HTTPException(422, f"No se pudo analizar: {e}") from None
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    cache.write_text(json.dumps(result))
+    return key, result
+
+
+def _note_path(key: str) -> Path:
+    """El consejo con IA se guarda por idioma (el español conserva el nombre de siempre)."""
+    lg = config.REQ_LANG.get()
+    return DATA_DIR / "analysis" / (f"{key}.note.txt" if lg == "es" else f"{key}.note.{lg}.txt")
+
+
 @app.get("/versions/{version_id}/analysis")
 def version_analysis(version_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
     v = db.get(Version, version_id)
@@ -1572,19 +1615,8 @@ def version_analysis(version_id: int, user: User = Depends(current_user), db: Se
         raise HTTPException(404, "No encontrado")
     track = db.get(Track, v.track_id)
     need_member(db, user, track.band_id)
-    if v.status != "ready" or not v.flac_path or not Path(v.flac_path).exists():
-        raise HTTPException(409, "El audio todavía se está procesando")
-    cache = DATA_DIR / "analysis" / f"{v.id}.json"
-    if cache.exists():
-        result = json.loads(cache.read_text())
-    else:
-        try:
-            result = analysis.analyze(v.flac_path, v.duration)
-        except Exception as e:  # noqa: BLE001
-            raise HTTPException(422, f"No se pudo analizar: {e}") from None
-        cache.parent.mkdir(parents=True, exist_ok=True)
-        cache.write_text(json.dumps(result))
-    note = DATA_DIR / "analysis" / f"{v.id}.note.txt"
+    key, result = _analysis_for(db, v, track)
+    note = _note_path(key)
     return {**result, "ai_available": assistant.enabled(),
             "ai_note": note.read_text() if note.exists() else None}
 
@@ -1606,10 +1638,10 @@ def assistant_note(version_id: int, body: NoteIn, user: User = Depends(current_u
         raise HTTPException(404, "No encontrado")
     track = db.get(Track, v.track_id)
     need_member(db, user, track.band_id)
-    note = DATA_DIR / "analysis" / f"{v.id}.note.txt"
+    key, base = _analysis_for(db, v, track)
+    note = _note_path(key)
     if note.exists():
         return {"note": note.read_text()}
-    base = version_analysis(version_id, user, db)
     band = write_gate(db, track.band_id)
     key = (track.band_id, now().strftime("%Y-%m-%d"))
     day_cap = min(ASSISTANT_DAILY_LIMIT, billing.limits(db, band)["ai_notes_day"] or ASSISTANT_DAILY_LIMIT)

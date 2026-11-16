@@ -742,9 +742,9 @@ input:hover, textarea:hover, select:hover { border-color: var(--muted); }
   .auth-wrap a, .auth-wrap button,
   .modal a, .modal button, .modal summary, .modal .seg label,
   .chat-fab, .chat-panel button {
-    cursor: url(/cursor-rock.png) 24 1, pointer;
-    cursor: -webkit-image-set(url(/cursor-rock.png) 1x, url(/cursor-rock-2x.png) 2x) 24 1, pointer;
-    cursor: image-set(url(/cursor-rock.png) 1x, url(/cursor-rock-2x.png) 2x) 24 1, pointer;
+    cursor: url(/cursor-rock.png) 7 5, pointer;
+    cursor: -webkit-image-set(url(/cursor-rock.png) 1x, url(/cursor-rock-2x.png) 2x) 7 5, pointer;
+    cursor: image-set(url(/cursor-rock.png) 1x, url(/cursor-rock-2x.png) 2x) 7 5, pointer;
   }
 }
 
@@ -833,3 +833,95 @@ input:hover, textarea:hover, select:hover { border-color: var(--muted); }
 
 /* alta de banda plegada para que la lista mande */
 .ad-alta summary h2 { color: var(--amber); }
+
+/* ===================== estudio y entrega sin scroll en escritorio (nov 2026) =====================
+   En pantallas de escritorio las ventanas del master se ven completas de una vez.
+   En el celular siguen desplazándose (no entra todo en 390px). */
+.rp-grid { display: grid; gap: 1rem; }
+.rp-first { margin-top: 0; }
+@media (min-width: 1180px) and (min-height: 680px) {
+  /* qué hizo el master: números y pasos a la izquierda, curva de tono a la derecha */
+  .modal.wide.rp-full { width: min(1380px, calc(100vw - 2rem)); }
+  .rp-full .rp-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1.6rem; align-items: start; }
+  .rp-full .rp-notes { gap: .3rem; font-size: .95rem; }
+  .rp-full .mt-row { padding: .55rem .9rem; }
+  .rp-full .st-foot { position: static; background: none; margin-top: .9rem; padding: 0; }
+
+  /* estudio de master: ocupa la pantalla; estilo a la izquierda, ajustes a la derecha */
+  .modal.wide.st-full {
+    width: min(1720px, calc(100vw - 1.6rem)); height: calc(100vh - 1.6rem); max-height: none;
+    overflow: hidden; padding: 1rem 1.2rem;
+  }
+  .st-full > .st-modal { display: flex; flex-direction: column; height: 100%; }
+  .st-full .st-modal-head h2 { font-size: 1.7rem; }
+  .st-full #st-host { flex: 1; min-height: 0; }
+  .st-full .studio { grid-template-columns: minmax(380px, .8fr) minmax(0, 2fr); gap: 1rem; height: 100%; }
+  .st-full .st-block { padding: .85rem .95rem; overflow: auto; min-height: 0; scrollbar-width: thin; }
+  .st-full .st-title { margin-bottom: .6rem; }
+  .st-full .st-title h3 { font-size: 1.35rem; }
+  .st-full .st-tabs { margin-bottom: .6rem; }
+  .st-full .st-tabs button { padding: .5rem .75rem; }
+  .st-full .st-fam { margin-bottom: .5rem; gap: .3rem; }
+  .st-full .st-fam button { padding: .28rem .7rem; font-size: .8rem; }
+  .st-full .st-genres { grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: .35rem; }
+  .st-full .st-genres button { padding: .42rem .6rem; font-size: .86rem; }
+  .st-full .st-recipe { margin-top: .6rem; padding: .55rem .8rem; }
+  .st-full .st-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .7rem; }
+  .st-full .st-card { padding: .7rem .85rem; }
+  .st-full .st-card h4 { margin-bottom: .5rem; font-size: 1.1rem; }
+  .st-full .st-ctl { margin-bottom: .45rem; position: relative; }
+  .st-full .st-ctl input[type=range] { min-height: 22px; }
+  .st-full .st-chips { margin: -.1rem 0 .6rem; }
+  /* la explicación de cada control aparece al pasar el mouse o al tocarlo, sin ocupar lugar */
+  .st-full .st-ctl > .st-help {
+    position: absolute; left: 0; right: 0; top: 100%; z-index: 6; margin-top: .25rem;
+    padding: .55rem .7rem; border-radius: 9px; background: var(--surface-2);
+    border: 1px solid rgba(255, 150, 60, .45); box-shadow: 0 14px 30px -12px rgba(0, 0, 0, .8);
+    color: var(--text); font-size: .82rem; opacity: 0; visibility: hidden; transition: opacity .15s;
+    pointer-events: none;
+  }
+  .st-full .st-ctl:hover > .st-help, .st-full .st-ctl:focus-within > .st-help { opacity: 1; visibility: visible; }
+  .st-full .st-foot { position: static; background: none; margin-top: .7rem; padding: 0; }
+}
+/* monitores grandes: los cuatro paneles de ajuste en una sola fila */
+@media (min-width: 1560px) and (min-height: 680px) {
+  .st-full .st-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+/* notebooks (1180–1559 px): tres columnas; Equilibrio ocupa dos filas y Ancho estéreo va debajo de Volumen */
+@media (min-width: 1180px) and (max-width: 1559px) and (min-height: 680px) {
+  .st-full .studio { grid-template-columns: minmax(330px, .62fr) minmax(0, 2fr); }
+  .st-full .st-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-flow: dense; }
+  .st-full .st-grid > .st-card:nth-child(3) { grid-column: 3; grid-row: span 2; }
+  .st-full .st-genres { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+}
+/* pantallas bajas: se ocultan las descripciones largas (la ayuda sigue en cada control) */
+@media (min-width: 1180px) and (min-height: 680px) and (max-height: 900px) {
+  .st-full .st-title p, .st-full .st-modal > p.muted, .st-full .st-card > p.st-help { display: none; }
+  .st-full .st-title h3 { font-size: 1.25rem; }
+  .st-full .st-recipe p { margin: .1rem 0; font-size: .88rem; }
+  .st-full .st-tabs button span { display: none; }
+}
+/* celular: en el informe los botones van uno debajo del otro, a todo el ancho, sin cortarse */
+@media (max-width: 640px) {
+  .rp-full .st-foot { flex-direction: column; align-items: stretch; }
+  .rp-full .st-foot .btn { width: 100%; justify-content: center; white-space: normal; text-align: center; }
+}
+
+/* ===================== lanzamiento: guía de distribución (nov 2026) ===================== */
+.ctry-pick { display: flex; align-items: center; flex-wrap: wrap; gap: .45rem; margin-bottom: .4rem; }
+.ctry-pick > span { flex: 1 0 100%; }
+.pre-steps li { margin-bottom: .6rem; }
+.pre-steps li > strong, .pre-steps li > span { display: block; margin-bottom: .25rem; }
+.pre-steps li .btn { margin-top: .2rem; }
+.pre-other { padding: .8rem 1rem; border-radius: 12px; background: rgba(255, 179, 71, .06); border: 1px solid rgba(255, 179, 71, .22); }
+.pre-other p { margin: 0 0 .3rem; } .pre-other p:last-child { margin: 0; }
+.distro-sum { display: flex; flex-direction: column; gap: .1rem; min-width: 0; }
+.distro-item[open] { border-color: rgba(255, 120, 40, .55); }
+.distro-files { display: flex; align-items: flex-start; gap: .45rem; color: var(--ok); margin: .4rem 0 .7rem; }
+.distro-files .i { width: 18px; height: 18px; flex: none; margin-top: .1rem; }
+.distro-files span { color: var(--text); }
+.distro-sum strong { flex: none !important; }
+/* distribuidoras: ícono a la izquierda y texto a la derecha también en el celular */
+.distro-item summary { flex-wrap: nowrap !important; align-items: center; }
+.distro-item .dest-go { flex: none !important; padding-left: 0 !important; white-space: nowrap; }
+@media (max-width: 480px) { .distro-item .dest-go { font-size: 0; } .distro-item .dest-go::after { font-size: 1rem; } }

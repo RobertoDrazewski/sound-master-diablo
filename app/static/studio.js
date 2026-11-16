@@ -333,7 +333,7 @@ async function openMasterModal(trackId) {
       <div class="st-foot"><button type="button" class="btn" id="st-cancel">Cancelar</button>
         <button type="button" class="btn primary big" id="st-go">${ic("sliders")} Masterizar</button></div>
     </div>`, (m) => {
-    m.classList.add("wide");
+    m.classList.add("wide", "st-full");
     studio = studioMount($("#st-host", m), { genres, bandId: track.band_id ?? state.bandId, stems,
       onChange: () => { $("#st-go", m).disabled = !studio.valid(); } });
     $("#st-x", m).addEventListener("click", closeModal);
@@ -350,7 +350,7 @@ async function openMasterModal(trackId) {
       });
     });
   });
-  $("#modal").addEventListener("close", () => $("#modal").classList.remove("wide"), { once: true });
+  $("#modal").addEventListener("close", () => $("#modal").classList.remove("wide", "st-full"), { once: true });
 }
 
 /* ---------------------------------------------------------------- informe: qué hizo el master */
@@ -386,29 +386,35 @@ async function openMasterReport(versionId, title) {
     <div class="st-modal">
       <div class="st-modal-head"><h2>Qué hizo el master</h2><button type="button" class="icon-btn" id="rp-x" aria-label="Cerrar">✕</button></div>
       <p class="muted small" style="margin:0 0 1rem">${esc(title || "")}${r.genre ? ` · estilo <b>${esc(r.genre)}</b>` : ""}${r.reference ? ` · referencia <b>${esc(r.reference)}</b>` : ""}</p>
-      <div class="rp-metrics">
-        ${metricRow("Volumen", r.before.lufs, r.after.lufs, "LUFS", `Objetivo ${stNum(r.target_lufs)}${r.target_reached ? "" : " (no se llegó sin romper los picos)"}`)}
-        ${metricRow("Pico máximo", r.before.peak, r.after.peak, "dBTP", "Quedó bajo −1 dB para que no distorsione al convertir a MP3")}
-        ${plr}
-        ${metricRow("Ancho estéreo", r.before.width_db, r.after.width_db, "dB", "Qué tan abierta está la mezcla")}
+      <div class="rp-grid">
+        <div class="rp-col">
+          <div class="rp-metrics">
+            ${metricRow("Volumen", r.before.lufs, r.after.lufs, "LUFS", `Objetivo ${stNum(r.target_lufs)}${r.target_reached ? "" : " (no se llegó sin romper los picos)"}`)}
+            ${metricRow("Pico máximo", r.before.peak, r.after.peak, "dBTP", "Quedó bajo −1 dB para que no distorsione al convertir a MP3")}
+            ${plr}
+            ${metricRow("Ancho estéreo", r.before.width_db, r.after.width_db, "dB", "Qué tan abierta está la mezcla")}
+          </div>
+          <h3 class="st-sub">Paso a paso, en palabras</h3>
+          <ol class="rp-notes">${(r.notes || []).map((n) => `<li>${esc(n)}</li>`).join("")}</ol>
+        </div>
+        <div class="rp-col">
+          <h3 class="st-sub rp-first">Cómo cambió el tono</h3>
+          ${r.bands ? eqChart(r.bands) : ""}
+          ${r.balance ? `<p class="small muted">Ajuste de balance aplicado: batería ${stDb(r.balance.drums ?? 0)} · bajo ${stDb(r.balance.bass ?? 0)} · voces y guitarras ${stDb(r.balance.voice ?? 0)}.</p>` : ""}
+        </div>
       </div>
-      <h3 class="st-sub">Cómo cambió el tono</h3>
-      ${r.bands ? eqChart(r.bands) : ""}
-      <h3 class="st-sub">Paso a paso, en palabras</h3>
-      <ol class="rp-notes">${(r.notes || []).map((n) => `<li>${esc(n)}</li>`).join("")}</ol>
-      ${r.balance ? `<p class="small muted">Ajuste de balance aplicado: batería ${stDb(r.balance.drums ?? 0)} · bajo ${stDb(r.balance.bass ?? 0)} · voces y guitarras ${stDb(r.balance.voice ?? 0)}.</p>` : ""}
       <div class="st-foot">
         ${trackId ? `<button type="button" class="btn primary big" id="rp-ab">${ic("headphones")} Comparar con el original a igual volumen</button>` : ""}
         <button type="button" class="btn" id="rp-close">Cerrar</button>
       </div>
     </div>`, (m) => {
-    m.classList.add("wide");
+    m.classList.add("wide", "rp-full");
     $("#rp-x", m).addEventListener("click", closeModal);
     $("#rp-close", m).addEventListener("click", closeModal);
     const ab = $("#rp-ab", m);
     if (ab) ab.addEventListener("click", () => openCompare(trackId, versionId, r));
   });
-  $("#modal").addEventListener("close", () => $("#modal").classList.remove("wide"), { once: true });
+  $("#modal").addEventListener("close", () => $("#modal").classList.remove("wide", "rp-full"), { once: true });
 }
 
 /* ---------------------------------------------------------------- comparar A/B a igual volumen */
@@ -437,6 +443,7 @@ async function openCompare(trackId, masterId, report) {
       <p class="small muted" id="cp-load">Preparando los audios para comparar…</p>
       <p class="small muted">Atajos: <kbd>A</kbd> / <kbd>B</kbd> cambian de versión, <kbd>espacio</kbd> reproduce.</p>
     </div>`, (m) => {
+    m.classList.remove("rp-full", "st-full");
     m.classList.add("wide");
     /* Las dos versiones suenan desde el mismo reloj de audio (Web Audio): el cambio A/B es
        instantáneo y sin cortes. Antes eran dos <audio> sincronizados a mano y en iPhone se
