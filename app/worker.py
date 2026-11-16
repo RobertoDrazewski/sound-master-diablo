@@ -190,13 +190,18 @@ def process_lyrics(db, job: Job):
     try:
         with tempfile.TemporaryDirectory(dir=DATA_DIR / "tmp") as tmpdir:
             source, _ = _pick_source_info(track, Path(tmpdir))
-            lines, lang = lyrics.transcribe(source)
+            lines, lang = lyrics.transcribe(source, p.get("language"))
     except Exception as e:
         cur = lyrics.read(track.id)
         cur.update(status="error", error=str(e)[:300])
         lyrics.write(track.id, cur)
         raise
     cur = lyrics.read(track.id)
+    if not lines:
+        # tema instrumental o voz que no se entiende: no se toca la letra que hubiera
+        cur.update(status="empty", error=None)
+        lyrics.write(track.id, cur)
+        return
     if cur.get("lines"):
         cur["previous"] = cur["lines"]          # la letra anterior queda guardada por si la detección empeora
     cur.update(lines=lines, status="ready", source="ai", lang=lang, error=None)

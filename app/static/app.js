@@ -868,7 +868,6 @@ function trackCard(t, ctx) {
         <button class="icon-btn" data-act="rename" data-id="${t.id}" aria-label="Cambiar el nombre de ${esc(t.title)}" title="Cambiar nombre">${ic("edit")}</button>
         <button class="icon-btn" data-act="del-track" data-id="${t.id}" aria-label="Borrar el tema ${esc(t.title)}" title="Borrar tema">${ic("trash")}</button>
       </div>
-      <ul class="versions">${versions.map((v) => versionRow(t, v)).join("")}</ul>
       <div class="track-foot">
         <div class="oneclick">${styleSelect(t.id, ctx.genres)}
           <button class="btn primary" data-act="oneclick" data-id="${t.id}" ${hasAudio ? "" : "disabled"}>${ic("sliders")} Master en un clic</button></div>
@@ -879,6 +878,7 @@ function trackCard(t, ctx) {
         ${albumSel}${moveSel}
       </div>
       <div id="as-${t.id}" hidden></div>
+      <ul class="versions">${versions.map((v) => versionRow(t, v)).join("")}</ul>
     </article>`;
 }
 
@@ -1114,6 +1114,12 @@ async function openLyrics(trackId) {
         <ol class="ly-lines" id="ly-lines"></ol>
       </div>
       <div class="ly-ai">
+        <label class="ly-lang"><span class="small muted">Idioma de la letra</span>
+          <select id="ly-lang">
+            <option value="">Reconocer solo</option>
+            <option value="es">Español</option><option value="en">English</option><option value="pt">Português</option>
+            <option value="it">Italiano</option><option value="fr">Français</option><option value="de">Deutsch</option>
+          </select></label>
         <button type="button" class="btn" id="ly-detect">${ic("spark")} Detectar letra con IA</button>
         <button type="button" class="btn small" id="ly-restore" ${data.has_previous ? "" : "hidden"}>Recuperar la letra anterior</button>
         <p class="small muted" id="ly-status" aria-live="polite"></p>
@@ -1203,7 +1209,8 @@ async function openLyrics(trackId) {
       const busy = d.status === "detecting";
       $("#ly-detect", m).disabled = busy;
       status.textContent = busy ? "Escuchando el tema para escribir la letra… puede tardar unos minutos. Podés cerrar esta ventana: te avisamos cuando esté."
-        : d.status === "error" ? `No se pudo detectar la letra: ${d.error || "error"}` : "";
+        : d.status === "error" ? `No se pudo detectar la letra: ${d.error || "error"}`
+        : d.status === "empty" ? "No escuchamos voz en este tema. Si tiene letra, probá elegir el idioma o escribila a mano." : "";
     };
     const startPoll = () => {
       if (poll) return;
@@ -1219,11 +1226,14 @@ async function openLyrics(trackId) {
         } catch { /* reintenta en la próxima vuelta */ }
       }, 4000);
     };
+    try { $("#ly-lang", m).value = localStorage.getItem("dm_ly_lang") || ""; } catch { /* sin almacenamiento */ }
     $("#ly-detect", m).addEventListener("click", async (ev) => {
       if (tab === "write") fromText();
       if (lines.length && !confirm("La detección reemplaza la letra actual. La anterior queda guardada y la podés recuperar.")) return;
       await withBusy(ev.currentTarget, async () => {
-        try { const d = await api(`/tracks/${trackId}/lyrics/detect`, { method: "POST" }); showStatus(d); startPoll(); }
+        const language = $("#ly-lang", m).value || null;
+        try { localStorage.setItem("dm_ly_lang", language || ""); } catch { /* sin almacenamiento */ }
+        try { const d = await api(`/tracks/${trackId}/lyrics/detect`, { method: "POST", json: { language } }); showStatus(d); startPoll(); }
         catch (e) { toast(e.message, "err"); }
       });
     });
@@ -2128,11 +2138,12 @@ async function viewRelease(band, nav) {
         </div>
         ${building ? `<p class="muted small" style="margin-top:.5rem">${esc(b.step || "Preparando")}… ${b.total ? Math.round((b.done / b.total) * 100) : 0}%</p>` : ""}
         ${b.status === "error" ? `<p class="small" style="color:var(--err);margin-top:.5rem">No se pudo preparar: ${esc(b.error || "error")}</p>` : ""}
-        ${ready ? `<p class="muted small" style="margin-top:.5rem">Incluye los WAV 24 bits, los MP3 320, la tapa en 3000 px y una guía para publicar. Queda disponible 24 horas.</p>` : ""}
+        ${ready ? `<p class="muted small" style="margin-top:.5rem">Incluye los WAV 24 bits, los MP3 320, la tapa en 3000 px, las letras y una guía para publicar. Queda disponible 24 horas.</p>` : ""}
       </div></div></article>`;
   };
   setApp(`
     ${bandHead(band, "Lanzamiento", "Cuando el álbum está masterizado, armá el paquete para publicarlo donde quieran o prensarlo.")}
+    <p class="rights-note">${ic("shield")}<span>Los temas y sus derechos son 100% de tu banda. Cada master lleva adentro el título, la banda, el álbum, la letra y el crédito «Mastered with Diablo Master Mix».</span></p>
     <div id="rel">${list.length ? list.map(card).join("") : `<div class="card empty">${ic("rocket")}Todavía no tienen álbumes.<br><a href="#/band/${band.id}/albumes">Armá el primero en Álbumes</a></div>`}</div>
     <section class="card distro" id="distro"></section>
     <section class="card"><h2>Bandcamp, vinilo y CD</h2>

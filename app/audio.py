@@ -33,15 +33,24 @@ def duration(path: Path) -> float:
         return 0.0
 
 
-def convert(src_flac: Path, dst: Path, fmt: str):
+def convert(src_flac: Path, dst: Path, fmt: str, tags: dict | None = None):
+    """Convierte el FLAC guardado al formato de descarga. Con tags, el archivo lleva adentro el crédito,
+    los datos del tema y la letra (ver app/tags.py)."""
+    from . import tags as tg
+    extra = tg.ffmpeg_args(tags, fmt) if tags else []
     if fmt == "wav":
-        _run(["ffmpeg", "-y", "-i", str(src_flac), "-c:a", "pcm_s24le", str(dst)])
+        _run(["ffmpeg", "-y", "-i", str(src_flac), "-map_metadata", "-1", *extra, "-c:a", "pcm_s24le", str(dst)])
     elif fmt == "mp3":
-        _run(["ffmpeg", "-y", "-i", str(src_flac), "-c:a", "libmp3lame", "-b:a", "320k", str(dst)])
+        _run(["ffmpeg", "-y", "-i", str(src_flac), "-map_metadata", "-1", "-c:a", "libmp3lame", "-b:a", "320k",
+              "-id3v2_version", "3", str(dst)])
     elif fmt == "flac":
-        raise AudioError("flac ya es el formato guardado")
+        if not tags:
+            raise AudioError("flac ya es el formato guardado")
+        _run(["ffmpeg", "-y", "-i", str(src_flac), "-map_metadata", "-1", "-c:a", "copy", str(dst)])
     else:
         raise AudioError(f"formato no soportado: {fmt}")
+    if tags and fmt in ("mp3", "flac"):
+        tg.write(dst, fmt, tags)
 
 
 def cut_reference(src: Path, dst: Path, seconds: int):

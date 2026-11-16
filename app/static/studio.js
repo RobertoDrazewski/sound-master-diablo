@@ -330,7 +330,8 @@ async function openMasterModal(trackId) {
         <button type="button" class="icon-btn" id="st-x" aria-label="Cerrar">✕</button></div>
       <p class="muted small" style="margin:0 0 .8rem">${esc(sourceNote)} Se crea una versión nueva: la original no se toca. Después podés ver qué hizo y compararla a igual volumen.</p>
       <div id="st-host"></div>
-      <div class="st-foot"><button type="button" class="btn" id="st-cancel">Cancelar</button>
+      <div class="st-foot"><p class="st-rights">${ic("shield")}<span>El tema y sus derechos son 100% de tu banda. El master lleva adentro el crédito «Mastered with Diablo Master Mix».</span></p>
+        <button type="button" class="btn" id="st-cancel">Cancelar</button>
         <button type="button" class="btn primary big" id="st-go">${ic("sliders")} Masterizar</button></div>
     </div>`, (m) => {
     m.classList.add("wide", "st-full");

@@ -79,8 +79,31 @@ def to_lrc(lines: list[dict], title: str = "", artist: str = "") -> str:
     return "\n".join(head + body) + "\n" if body else ""
 
 
-def transcribe(audio_path: Path) -> tuple[list[dict], str]:
-    """Escucha el tema y devuelve (líneas con tiempo, idioma detectado)."""
+LANGUAGES = ("es", "en", "pt", "it", "fr", "de")
+
+
+def _load_16k(audio_path: Path):
+    """Decodifica con ffmpeg a 16 kHz mono (lo que escucha Whisper). Así no depende del decodificador
+    interno de faster-whisper, que se rompe cuando cambia la versión de PyAV."""
+    import subprocess
+
+    import numpy as np
+    res = subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-i", str(audio_path), "-ac", "1", "-ar", "16000",
+                          "-f", "f32le", "-"], capture_output=True, timeout=900)
+    if res.returncode != 0 or not res.stdout:
+        raise RuntimeError("No se pudo leer el audio del tema")
+    return np.frombuffer(res.stdout, dtype=np.float32).copy()
+
+
+def language_code(value: str | None) -> str | None:
+    """Idioma elegido por la banda para la detección; None = que lo reconozca solo."""
+    v = (value or "").strip().lower()[:2]
+    return v if v in LANGUAGES else None
+
+
+def transcribe(audio_path: Path, language: str | None = None) -> tuple[list[dict], str]:
+    """Escucha el tema y devuelve (líneas con tiempo, idioma). Si la banda eligió el idioma se usa ese;
+    si no, lo reconoce solo (sirve para canciones en cualquier idioma)."""
     try:
         from faster_whisper import WhisperModel
     except ImportError:
@@ -89,8 +112,9 @@ def transcribe(audio_path: Path) -> tuple[list[dict], str]:
     models.mkdir(parents=True, exist_ok=True)
     model = WhisperModel(LYRICS_MODEL, device="cpu", compute_type="int8", download_root=str(models), cpu_threads=4)
     try:
-        segments, info = model.transcribe(str(audio_path), vad_filter=True, beam_size=5,
-                                          condition_on_previous_text=False, word_timestamps=True)
+        segments, info = model.transcribe(_load_16k(audio_path), vad_filter=True, beam_size=5,
+                                          condition_on_previous_text=False, word_timestamps=True,
+                                          language=language_code(language))
         lines, cur, start, last_end = [], [], None, None
 
         def flush():

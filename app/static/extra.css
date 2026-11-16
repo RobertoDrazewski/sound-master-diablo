@@ -956,3 +956,17 @@ input:hover, textarea:hover, select:hover { border-color: var(--muted); }
   .ly-lines { max-height: 36vh; }
 }
 .ly-tabs { grid-template-columns: 1fr 1fr !important; }
+
+/* Idioma para detectar la letra */
+.ly-lang { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.ly-lang select { min-height: 40px; padding: .35rem .6rem; border-radius: 10px; border: 1px solid var(--line-2); background: var(--surface-2); color: inherit; font: inherit; }
+
+/* Aviso de derechos: ícono a la izquierda, texto a la derecha */
+.rights-note, .st-rights { display: flex; align-items: flex-start; gap: .55rem; margin: 0; font-size: .82rem; line-height: 1.45; color: var(--muted); }
+.rights-note { margin: 0 0 1rem; }
+.rights-note .i, .st-rights .i { flex: 0 0 auto; width: 18px; height: 18px; margin-top: .1rem; color: var(--amber); }
+.st-foot .st-rights { flex: 1 1 18rem; margin-right: auto; align-self: center; text-align: left; }
+@media (max-width: 640px) { .st-foot .st-rights { flex-basis: 100%; } }
+
+/* Herramientas del tema arriba, debajo del título: valen para el tema entero (mezcla o pistas) */
+.track-head + .track-foot { margin-top: .8rem; padding-bottom: .9rem; }

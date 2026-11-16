@@ -15,3 +15,5 @@ pywebpush>=2.0
 
 # Letras: detección por voz en la CPU (ver app/lyrics.py)
 faster-whisper>=1.0
+# Datos dentro de los masters (título, banda, letra, crédito)
+mutagen>=1.47

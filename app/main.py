@@ -18,7 +18,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 log = logging.getLogger("uvicorn.error")
-from . import align, config, analysis, assistant, audio, billing, chat, covers, genres, lyrics, mail, masterjob, polar, purge, push, release
+from . import align, config, analysis, assistant, audio, billing, chat, covers, genres, lyrics, mail, masterjob, polar, purge, push, release, tags
 from .config import (ASSISTANT_DAILY_LIMIT, COVER_AI_DAILY_LIMIT, LYRICS_DAILY_LIMIT, PUBLIC_URL, BAND_QUOTA_GB, CORS_ORIGINS, DATA_DIR,
                      INVITE_TTL_DAYS, MAX_UPLOAD_MB, RAW_RETENTION_DAYS,
                      REFERENCE_SECONDS, SUPERADMIN_EMAIL, SUPERADMIN_PASSWORD, CHAT_ENABLED, TRIAL_DAYS,
@@ -1358,8 +1358,13 @@ def restore_lyrics(track_id: int, user: User = Depends(current_user), db: Sessio
     return _lyrics_out(track_id)
 
 
+class LyricsDetectIn(BaseModel):
+    language: str | None = Field(default=None, max_length=5)
+
+
 @app.post("/tracks/{track_id}/lyrics/detect")
-def detect_lyrics(track_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+def detect_lyrics(track_id: int, body: LyricsDetectIn | None = None, user: User = Depends(current_user),
+                  db: Session = Depends(get_db)):
     track = _track_for(db, user, track_id)
     band = write_gate(db, track.band_id)
     if not any(v.status == "ready" and v.kind in ("mix", "stem", "raw") for v in track.versions):
@@ -1370,7 +1375,7 @@ def detect_lyrics(track_id: int, user: User = Depends(current_user), db: Session
     key = (band.id, now().strftime("%Y-%m-%d"))
     if _lyrics_usage.get(key, 0) >= LYRICS_DAILY_LIMIT:
         raise HTTPException(429, "Se alcanzó el límite de detecciones de letra de hoy para esta banda. Mañana vuelve.")
-    job = Job(kind="lyrics", created_by=user.id, payload=json.dumps({"track_id": track_id}))
+    job = Job(kind="lyrics", created_by=user.id, payload=json.dumps({"track_id": track_id, "language": lyrics.language_code(body.language if body else None)}))
     db.add(job)
     db.commit()
     _lyrics_usage[key] = _lyrics_usage.get(key, 0) + 1
@@ -1521,6 +1526,24 @@ def media_link(version_id: int, fmt: str = "preview", user: User = Depends(curre
     return {"url": f"/versions/{version_id}/media?fmt={fmt}&t={token}"}
 
 
+def _track_tags(db: Session, track: Track, album: Album | None = None, number: int | None = None) -> dict:
+    """Datos que viajan dentro del master: crédito, título, banda, álbum, número, año y letra."""
+    band = db.get(Band, track.band_id)
+    if album is None and track.album_id:
+        album = db.get(Album, track.album_id)
+    if album is not None and number is None:
+        ids = [t.id for t in db.query(Track).filter_by(album_id=album.id).order_by(Track.position, Track.id).all()]
+        number = ids.index(track.id) + 1 if track.id in ids else None
+    ly = lyrics.read(track.id)
+    text = lyrics.to_txt(ly.get("lines") or []).strip()
+    return tags.build(track.title, band.name if band else "", album.title if album else None, number,
+                      album.year if album else None, text or None, ly.get("lang"))
+
+
+def _master_tags(db: Session, v: Version, track: Track) -> dict:
+    return _track_tags(db, track)
+
+
 @app.get("/versions/{version_id}/media")
 def media(version_id: int, request: Request, fmt: str = "preview", t: str | None = None,
           db: Session = Depends(get_db)):
@@ -1535,23 +1558,28 @@ def media(version_id: int, request: Request, fmt: str = "preview", t: str | None
         download_gate(db, track.band_id)
 
     ext = FORMATS[fmt]
+    tg = _master_tags(db, v, track) if v.kind == "master" else None
     if fmt == "preview":
         path = Path(v.preview_path)
     elif fmt == "input":
         path = _master_input(db, v, track)
-    elif fmt == "flac":
+    elif fmt == "flac" and not tg:
         path = Path(v.flac_path)
     else:
-        path = DATA_DIR / "cache" / f"{v.id}.{ext}"
+        # los masters llevan adentro el crédito, los datos del tema y la letra; la huella renueva el archivo si cambian
+        name = f"{v.id}.{tags.signature(tg)}.{ext}" if tg else f"{v.id}.{ext}"
+        path = DATA_DIR / "cache" / name
         if not path.exists():
             # el temporal conserva la extension real para que ffmpeg elija el formato
             partial = path.with_name(f"{v.id}.tmp{uuid.uuid4().hex[:6]}.{ext}")
             try:
-                audio.convert(Path(v.flac_path), partial, fmt)
-            except audio.AudioError as e:
+                audio.convert(Path(v.flac_path), partial, fmt, tg)
+            except Exception as e:  # noqa: BLE001
                 partial.unlink(missing_ok=True)
                 raise HTTPException(500, f"No se pudo convertir: {e}") from None
             partial.replace(path)
+            if tg:
+                tags.drop_stale(path, v.id, ext)
 
     filename = f"{safe_name(track.title)} - {'original' if fmt == 'input' else safe_name(v.label)}.{ext}"
     disposition = "inline" if fmt in ("preview", "input") else "attachment"
@@ -1617,9 +1645,12 @@ def release_build(album_id: int, user: User = Depends(current_user), db: Session
     band = db.get(Band, a.band_id)
     release.start(a.id, {"album": a.title, "year": a.year, "band": band.name if band else "",
                          "cover": str(cover) if a.photo and cover.exists() else None,
+                         "lang": config.REQ_LANG.get(),
                          "tracks": [{"title": t["title"], "flac": db.get(Version, t["version_id"]).flac_path,
                                      "version_id": t["version_id"], "duration": t["duration"],
-                                     "track_id": t["track_id"]} for t in info["tracks"]]},
+                                     "track_id": t["track_id"],
+                                     "tags": _track_tags(db, db.get(Track, t["track_id"]), a, i)}
+                                    for i, t in enumerate(info["tracks"], 1)]},
                   DATA_DIR)
     return release.state(a.id)
 
