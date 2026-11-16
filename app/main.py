@@ -18,8 +18,8 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 log = logging.getLogger("uvicorn.error")
-from . import align, config, analysis, assistant, audio, billing, chat, covers, genres, mail, masterjob, polar, purge, push, release
-from .config import (ASSISTANT_DAILY_LIMIT, COVER_AI_DAILY_LIMIT, PUBLIC_URL, BAND_QUOTA_GB, CORS_ORIGINS, DATA_DIR,
+from . import align, config, analysis, assistant, audio, billing, chat, covers, genres, lyrics, mail, masterjob, polar, purge, push, release
+from .config import (ASSISTANT_DAILY_LIMIT, COVER_AI_DAILY_LIMIT, LYRICS_DAILY_LIMIT, PUBLIC_URL, BAND_QUOTA_GB, CORS_ORIGINS, DATA_DIR,
                      INVITE_TTL_DAYS, MAX_UPLOAD_MB, RAW_RETENTION_DAYS,
                      REFERENCE_SECONDS, SUPERADMIN_EMAIL, SUPERADMIN_PASSWORD, CHAT_ENABLED, TRIAL_DAYS,
                      TURNSTILE_SITE_KEY, PURGE_HOURS)
@@ -1290,9 +1290,94 @@ def delete_track(track_id: int, user: User = Depends(current_user), db: Session 
     for v in track.versions:
         remove_version_files(v)
     shutil.rmtree(DATA_DIR / "bands" / str(track.band_id) / str(track.id), ignore_errors=True)
+    lyrics.path(track.id).unlink(missing_ok=True)
     db.delete(track)
     db.commit()
     return {"ok": True}
+
+
+# ------------------------------------------------------------------- letras
+
+class LyricLineIn(BaseModel):
+    t: float | None = Field(None, ge=0, le=7200)
+    text: str = Field("", max_length=300)
+
+
+class LyricsIn(BaseModel):
+    lines: list[LyricLineIn] = Field(default_factory=list, max_length=lyrics.MAX_LINES)
+
+
+_lyrics_usage: dict[tuple[int, str], int] = {}
+
+
+def _lyrics_out(track_id: int) -> dict:
+    d = lyrics.read(track_id)
+    if d.get("status") == "detecting" and d.get("job_id"):
+        # si el servidor se reinició a mitad de la detección, no queda colgado en "detectando"
+        with SessionLocal() as s2:
+            job = s2.get(Job, d["job_id"])
+            if job is None or job.status in ("error", "done"):
+                d["status"] = "error" if job is None or job.status == "error" else d.get("status")
+                if job is not None and job.status == "error":
+                    d["error"] = d.get("error") or job.error
+    return {"lines": d.get("lines") or [], "status": d.get("status", "none"), "source": d.get("source"),
+            "lang": d.get("lang"), "error": d.get("error"), "updated_at": d.get("updated_at"),
+            "has_previous": bool(d.get("previous"))}
+
+
+@app.get("/tracks/{track_id}/lyrics")
+def get_lyrics(track_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    _track_for(db, user, track_id)
+    return _lyrics_out(track_id)
+
+
+@app.put("/tracks/{track_id}/lyrics")
+def save_lyrics(track_id: int, body: LyricsIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    track = _track_for(db, user, track_id)
+    write_gate(db, track.band_id)
+    cur = lyrics.read(track_id)
+    if cur.get("status") == "detecting":
+        raise HTTPException(409, "Se está detectando la letra: esperá a que termine para guardar")
+    cur.update(lines=lyrics.clean_lines([ln.model_dump() for ln in body.lines]), status="ready",
+               source="manual", error=None)
+    lyrics.write(track_id, cur)
+    return _lyrics_out(track_id)
+
+
+@app.post("/tracks/{track_id}/lyrics/restore")
+def restore_lyrics(track_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Vuelve a la letra que había antes de la última detección."""
+    track = _track_for(db, user, track_id)
+    write_gate(db, track.band_id)
+    cur = lyrics.read(track_id)
+    if not cur.get("previous"):
+        raise HTTPException(404, "No hay una letra anterior para recuperar")
+    cur["lines"], cur["previous"] = cur["previous"], cur.get("lines") or []
+    cur.update(status="ready", source="manual", error=None)
+    lyrics.write(track_id, cur)
+    return _lyrics_out(track_id)
+
+
+@app.post("/tracks/{track_id}/lyrics/detect")
+def detect_lyrics(track_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    track = _track_for(db, user, track_id)
+    band = write_gate(db, track.band_id)
+    if not any(v.status == "ready" and v.kind in ("mix", "stem", "raw") for v in track.versions):
+        raise HTTPException(409, "El tema no tiene audio listo para escuchar")
+    cur = lyrics.read(track_id)
+    if cur.get("status") == "detecting":
+        return _lyrics_out(track_id)
+    key = (band.id, now().strftime("%Y-%m-%d"))
+    if _lyrics_usage.get(key, 0) >= LYRICS_DAILY_LIMIT:
+        raise HTTPException(429, "Se alcanzó el límite de detecciones de letra de hoy para esta banda. Mañana vuelve.")
+    job = Job(kind="lyrics", created_by=user.id, payload=json.dumps({"track_id": track_id}))
+    db.add(job)
+    db.commit()
+    _lyrics_usage[key] = _lyrics_usage.get(key, 0) + 1
+    cur.update(status="detecting", job_id=job.id, error=None)
+    lyrics.write(track_id, cur)
+    worker.wake.set()
+    return _lyrics_out(track_id)
 
 
 @app.delete("/versions/{version_id}")
@@ -1533,7 +1618,8 @@ def release_build(album_id: int, user: User = Depends(current_user), db: Session
     release.start(a.id, {"album": a.title, "year": a.year, "band": band.name if band else "",
                          "cover": str(cover) if a.photo and cover.exists() else None,
                          "tracks": [{"title": t["title"], "flac": db.get(Version, t["version_id"]).flac_path,
-                                     "version_id": t["version_id"], "duration": t["duration"]} for t in info["tracks"]]},
+                                     "version_id": t["version_id"], "duration": t["duration"],
+                                     "track_id": t["track_id"]} for t in info["tracks"]]},
                   DATA_DIR)
     return release.state(a.id)
 

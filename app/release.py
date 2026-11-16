@@ -62,6 +62,12 @@ QUÉ HAY EN ESTA CARPETA
   mp3-320/     Los mismos temas en MP3 320 kbps, para compartir, escuchar en el celular o subir a redes.
   tapa/        La tapa cuadrada en JPG. {cover_note}
   tracklist.csv  Orden y duración de los temas.
+  letras/      La letra de cada tema (si la cargaron): .txt para leer y .lrc sincronizado línea por línea.
+
+LA LETRA EN SPOTIFY Y APPLE MUSIC
+  Las plataformas muestran las letras que reciben de Musixmatch. Reclamá el perfil de la banda en
+  Musixmatch for Artists (es gratis) y subí la letra de cada tema. El .lrc de letras/ ya trae los tiempos
+  de cada línea, así aparece sincronizada mientras suena.
 
 CÓMO PUBLICAR EN SPOTIFY, APPLE MUSIC, YOUTUBE MUSIC Y OTRAS
   Estas plataformas no reciben música directo de las bandas: se sube a través de una distribuidora
@@ -118,6 +124,19 @@ def _build(album_id: int, meta: dict, data_dir: Path):
                         tmp.replace(cached)
                     z.write(cached, f"{root}/{folder}/{base}.{ext}")
                     done += 1
+            # letras: .txt para leer y .lrc sincronizado para Musixmatch (Spotify y Apple Music toman las letras de ahí)
+            from . import lyrics
+            for i, t in enumerate(tracks, 1):
+                if not t.get("track_id"):
+                    continue
+                ls = lyrics.read(t["track_id"]).get("lines") or []
+                if not ls:
+                    continue
+                base = f"{i:02d} - {_safe(t['title'])}"
+                z.writestr(f"{root}/letras/{base}.txt", lyrics.to_txt(ls))
+                lrc = lyrics.to_lrc(ls, t["title"], meta.get("band", ""))
+                if lrc:
+                    z.writestr(f"{root}/letras/{base}.lrc", lrc)
             _set(album_id, step="Tapa", done=done, total=total_steps)
             cover_px = 0
             if meta.get("cover"):

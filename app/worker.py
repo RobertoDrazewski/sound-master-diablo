@@ -180,6 +180,32 @@ def process_master(db, job: Job):
         db.commit()
 
 
+def process_lyrics(db, job: Job):
+    """Detecta la letra escuchando el mismo audio que entra al master (mezcla o suma de pistas)."""
+    from . import lyrics
+    p = json.loads(job.payload)
+    track = db.get(Track, p["track_id"])
+    if track is None:
+        raise RuntimeError("El tema ya no existe")
+    try:
+        with tempfile.TemporaryDirectory(dir=DATA_DIR / "tmp") as tmpdir:
+            source, _ = _pick_source_info(track, Path(tmpdir))
+            lines, lang = lyrics.transcribe(source)
+    except Exception as e:
+        cur = lyrics.read(track.id)
+        cur.update(status="error", error=str(e)[:300])
+        lyrics.write(track.id, cur)
+        raise
+    cur = lyrics.read(track.id)
+    if cur.get("lines"):
+        cur["previous"] = cur["lines"]          # la letra anterior queda guardada por si la detección empeora
+    cur.update(lines=lines, status="ready", source="ai", lang=lang, error=None)
+    lyrics.write(track.id, cur)
+    notify_band(db, track.band_id, f'La letra de "{track.title}" está lista para revisar',
+                kind="lyrics", link=f"#/band/{track.band_id}/{track.section}")
+    db.commit()
+
+
 def claim_job(db) -> Job | None:
     job = db.query(Job).filter(Job.status == "queued").order_by(Job.id).first()
     if job:
@@ -197,6 +223,8 @@ def run_job(job_id: int):
                 process_ingest(db, job)
             elif job.kind == "master":
                 process_master(db, job)
+            elif job.kind == "lyrics":
+                process_lyrics(db, job)
             else:
                 raise RuntimeError(f"tipo de job desconocido: {job.kind}")
             job.status = "done"

@@ -57,6 +57,8 @@ ASSISTANT_DAILY_LIMIT = int(os.getenv("ASSISTANT_DAILY_LIMIT", "20"))  # consult
 COVER_AI_MODEL = os.getenv("COVER_AI_MODEL", "gpt-image-2.5-sunburst")
 COVER_AI_QUALITY = os.getenv("COVER_AI_QUALITY", "high")  # low | medium | high (cuesta mas cuanto mas alta; high ronda USD 0.05 por imagen)
 COVER_AI_DAILY_LIMIT = int(os.getenv("COVER_AI_DAILY_LIMIT", "5"))  # imagenes con IA por banda por dia (tiene costo)
+LYRICS_MODEL = os.getenv("LYRICS_MODEL", "small")  # modelo de faster-whisper para detectar letras (corre en la CPU)
+LYRICS_DAILY_LIMIT = int(os.getenv("LYRICS_DAILY_LIMIT", "10"))  # detecciones de letra por banda por dia (usa CPU del servidor)
 
 
 # ------------------------------------------------------------------ suscripciones (Mercado Pago)

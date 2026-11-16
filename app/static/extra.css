@@ -925,3 +925,34 @@ input:hover, textarea:hover, select:hover { border-color: var(--muted); }
 .distro-item summary { flex-wrap: nowrap !important; align-items: center; }
 .distro-item .dest-go { flex: none !important; padding-left: 0 !important; white-space: nowrap; }
 @media (max-width: 480px) { .distro-item .dest-go { font-size: 0; } .distro-item .dest-go::after { font-size: 1rem; } }
+
+/* ===================== letra del tema (nov 2026) ===================== */
+.ly-intro { margin: 0 0 .8rem; }
+.ly-tabs { margin-bottom: .8rem; }
+.ly-tabs button { text-align: center; }
+.ly-tabs button.on { border-color: var(--ember); background: rgba(255, 90, 31, .1); color: var(--text); }
+#ly-text { width: 100%; min-height: 260px; resize: vertical; line-height: 1.55; font-size: 1rem; }
+.ly-bar { margin: .2rem 0 .6rem; }
+.ly-marks { display: flex; gap: .6rem; margin: .4rem 0; }
+.ly-mark { flex: 1; justify-content: center; min-height: 52px; font-size: 1.05rem; }
+.ly-hint { margin: .2rem 0 .6rem; }
+.ly-lines { list-style: none; margin: 0; padding: .3rem; max-height: min(42vh, 380px); overflow: auto;
+  border: 1px solid var(--line-2); border-radius: 12px; background: var(--bg-2); scrollbar-width: thin; }
+.ly-lines li { display: flex; gap: .8rem; align-items: baseline; padding: .5rem .6rem; border-radius: 8px; cursor: pointer;
+  border-left: 3px solid transparent; transition: background .15s; }
+.ly-lines li:hover { background: rgba(255, 255, 255, .04); }
+.ly-lines li.next { border-left-color: var(--amber); background: rgba(255, 179, 71, .07); }
+.ly-lines li.now .ly-txt { color: var(--amber); font-weight: 700; }
+.ly-lines li.ly-empty { cursor: default; color: var(--muted); }
+.ly-t { flex: none; width: 4.4rem; font-variant-numeric: tabular-nums; font-size: .82rem; color: var(--muted); }
+.ly-txt { flex: 1; min-width: 0; }
+.ly-ai { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-top: .9rem; padding-top: .8rem; border-top: 1px dashed var(--line-2); }
+.ly-ai p { flex: 1 0 100%; margin: .2rem 0 0; }
+.ly-foot { justify-content: flex-end; }
+@media (max-width: 640px) {
+  .ly-foot { position: static; justify-content: stretch; }
+  .ly-foot .btn { flex: 1 1 auto; justify-content: center; }
+  .ly-foot .btn.primary { flex: 1 0 100%; order: -1; }
+  .ly-lines { max-height: 36vh; }
+}
+.ly-tabs { grid-template-columns: 1fr 1fr !important; }

@@ -66,6 +66,7 @@ const ICONS = {
   user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c.8-4.5 4-6.5 8-6.5s7.2 2 8 6.5"/>',
   flame: '<path d="M12 3c.8 3.2 5 5.2 5 9.8a5 5 0 0 1-10 0c0-2 .9-3.4 2.2-4.6 0 1.8.8 2.8 1.8 2.8C11 7.8 10.6 5.8 12 3z"/>',
   spark: '<path d="M12 3l2 6 6 2-6 2-2 6-2-6-6-2 6-2z"/>',
+  lyrics: '<path d="M4 6h16M4 10h16M4 14h10M4 18h7"/><path d="M18 13v6.5a1.5 1.5 0 1 1-1.5-1.5H18"/>',
   left: '<path d="M15 5l-7 7 7 7"/>',
   right: '<path d="M9 5l7 7-7 7"/>',
   up: '<path d="M12 19V5M6 11l6-6 6 6"/>',
@@ -873,6 +874,7 @@ function trackCard(t, ctx) {
           <button class="btn primary" data-act="oneclick" data-id="${t.id}" ${hasAudio ? "" : "disabled"}>${ic("sliders")} Master en un clic</button></div>
         <button class="btn" data-act="assist" data-id="${t.id}" ${hasAudio ? "" : "disabled"}>${ic("spark")} Asistente</button>
         <button class="btn small" data-act="master" data-id="${t.id}" ${hasAudio ? "" : "disabled"}>${ic("sliders")} Estudio de master</button>
+        <button class="btn small" data-act="lyrics" data-id="${t.id}" ${hasAudio ? "" : "disabled"}>${ic("lyrics")} Letra</button>
         ${t.versions.filter((v) => v.kind === "stem" && v.status === "ready").length >= 2 ? `<button class="btn small" data-act="mixer" data-id="${t.id}" title="Silenciá tu pista y tocá encima del resto">${ic("headphones")} Practicá en casa</button>` : ""}
         ${albumSel}${moveSel}
       </div>
@@ -946,6 +948,7 @@ async function onTrackClick(ev) {
       case "mixer": return openMixer(id);
       case "oneclick": return oneClick(id, btn);
       case "assist": return toggleAssist(id);
+      case "lyrics": return openLyrics(id);
       case "ai-note": return askAiNote(id, btn);
       case "rename": return renameTrack(id);
       case "del-track": {
@@ -1047,6 +1050,224 @@ function assistHtml(id) {
     <details class="small"><summary>Datos técnicos</summary><p class="muted">${esc(tech)}</p></details>
   </div>`;
 }
+/* ===================== letra del tema: escribir, sincronizar, detectar y exportar ===================== */
+function lyricsAudio(t) {
+  // se escucha el tema completo: el master si hay; si no la mezcla o el ensayo; si solo hay pistas, la de voz
+  const ready = t.versions.filter((v) => v.status === "ready");
+  const pick = (k) => ready.filter((v) => v.kind === k).pop();
+  const stems = ready.filter((v) => v.kind === "stem");
+  return pick("master") || pick("mix") || pick("raw") ||
+    stems.find((v) => /voz|voces|vocal|voice|canto/i.test(v.label || "")) || stems[0] || null;
+}
+const lyFmt = (sec) => { const cs = Math.round(sec * 100); return `${String(Math.floor(cs / 6000)).padStart(2, "0")}:${String(Math.floor(cs / 100) % 60).padStart(2, "0")}.${String(cs % 100).padStart(2, "0")}`; };
+function lyricsLrc(lines, title, band) {
+  const body = lines.filter((l) => l.t != null).map((l) => `[${lyFmt(l.t)}]${l.text}`);
+  return body.length ? [`[ti:${title}]`, `[ar:${band}]`, ...body].join("\n") + "\n" : "";
+}
+function saveText(name, text) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([text], { type: "text/plain;charset=utf-8" }));
+  a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+
+async function openLyrics(trackId) {
+  const t = state.tracks.get(trackId);
+  if (!t) return;
+  const band = currentBand();
+  const src = lyricsAudio(t);
+  let data, url = null;
+  try {
+    [data, url] = await Promise.all([
+      api(`/tracks/${trackId}/lyrics`),
+      src ? api(`/versions/${src.id}/link?fmt=preview`).then((r) => r.url).catch(() => null) : Promise.resolve(null),
+    ]);
+  } catch (e) { return toast(e.message, "err"); }
+  let lines = (data.lines || []).map((l) => ({ t: l.t, text: l.text }));
+  let tab = lines.length ? "sync" : "write", cur = 0, dirty = false, poll = null, raf = 0;
+  const srcNote = src && src.kind === "stem" ? "Este tema todavía no tiene master: para sincronizar se escucha la pista de voz." : "";
+  openModal(`
+    <div class="st-modal ly">
+      <div class="st-modal-head"><h2>Letra · ${esc(t.title)}</h2><button type="button" class="icon-btn" id="ly-x" aria-label="Cerrar">✕</button></div>
+      <p class="muted small ly-intro">Escribí o pegá la letra, un verso por línea. Después dale play y tocá Marcar línea cuando empieza cada verso: así queda sincronizada para Spotify.</p>
+      <div class="st-tabs ly-tabs" role="tablist">
+        <button type="button" role="tab" data-tab="write">Escribir</button>
+        <button type="button" role="tab" data-tab="sync">Sincronizar</button>
+      </div>
+      <div class="ly-pane" data-pane="write">
+        <textarea id="ly-text" rows="12" spellcheck="true" placeholder="Pegá acá la letra, un verso por línea"></textarea>
+      </div>
+      <div class="ly-pane" data-pane="sync">
+        ${url ? `<audio id="ly-audio" preload="auto" src="${esc(url)}"></audio>` : ""}
+        <div class="cp-bar ly-bar">
+          <button type="button" class="pl-btn main" id="ly-play" aria-label="Reproducir" ${url ? "" : "disabled"}>${plIcon("play")}</button>
+          <span class="pl-time" id="ly-cur">0:00</span>
+          <input type="range" id="ly-seek" min="0" max="1000" value="0" aria-label="Posición" ${url ? "" : "disabled"}>
+          <span class="pl-time" id="ly-dur">0:00</span>
+        </div>
+        ${srcNote ? `<p class="small muted">${esc(srcNote)}</p>` : ""}
+        <div class="ly-marks">
+          <button type="button" class="btn primary ly-mark" id="ly-mark" ${url ? "" : "disabled"}>${ic("check")} Marcar línea</button>
+          <button type="button" class="btn" id="ly-back">Deshacer</button>
+        </div>
+        <p class="small muted ly-hint">Atajo: barra espaciadora para marcar. Tocá una línea para ir a ese momento o para volver a marcar desde ahí.</p>
+        <ol class="ly-lines" id="ly-lines"></ol>
+      </div>
+      <div class="ly-ai">
+        <button type="button" class="btn" id="ly-detect">${ic("spark")} Detectar letra con IA</button>
+        <button type="button" class="btn small" id="ly-restore" ${data.has_previous ? "" : "hidden"}>Recuperar la letra anterior</button>
+        <p class="small muted" id="ly-status" aria-live="polite"></p>
+      </div>
+      <div class="st-foot ly-foot">
+        <button type="button" class="btn small" id="ly-txt">${ic("download")} .txt</button>
+        <button type="button" class="btn small" id="ly-lrc">${ic("download")} .lrc (Musixmatch)</button>
+        <button type="button" class="btn primary" id="ly-save">Guardar</button>
+      </div>
+    </div>`, (m) => {
+    m.classList.add("wide");
+    const A = $("#ly-audio", m), text = $("#ly-text", m), list = $("#ly-lines", m), status = $("#ly-status", m);
+    const fromText = () => {
+      // conserva el tiempo de las líneas que no cambiaron
+      const old = lines.slice();
+      lines = text.value.split("\n").map((x) => x.replace(/\s+/g, " ").trim()).filter(Boolean).map((x, i) => {
+        const same = old[i] && old[i].text === x ? old[i] : old.find((o) => o.text === x && o.t != null);
+        return { t: same ? same.t : null, text: x };
+      });
+    };
+    const active = () => { if (!A) return -1; const now = A.currentTime; let k = -1; lines.forEach((l, i) => { if (l.t != null && l.t <= now + 0.05) k = i; }); return k; };
+    const paintList = () => {
+      const a = active();
+      list.innerHTML = lines.length ? lines.map((l, i) => `<li class="${i === cur ? "next" : ""} ${i === a ? "now" : ""}" data-i="${i}">
+        <span class="ly-t">${l.t != null ? lyFmt(l.t).slice(0, 8) : "··:··"}</span><span class="ly-txt">${esc(l.text)}</span></li>`).join("")
+        : `<li class="ly-empty">Primero escribí la letra en la pestaña Escribir.</li>`;
+      const nx = list.querySelector("li.next");
+      if (nx && A && !A.paused) nx.scrollIntoView({ block: "nearest" });
+    };
+    const setTab = (k) => {
+      if (tab === "write" && k === "sync") fromText();
+      if (k === "write") text.value = lines.map((l) => l.text).join("\n");
+      tab = k;
+      $$("[data-tab]", m).forEach((b) => b.classList.toggle("on", b.dataset.tab === k));
+      $$("[data-pane]", m).forEach((p) => { p.hidden = p.dataset.pane !== k; });
+      if (k === "sync") { cur = Math.max(0, lines.findIndex((l) => l.t == null)); if (cur < 0) cur = 0; paintList(); }
+    };
+    const showTime = () => {
+      if (!A) return;
+      const d = A.duration || 0;
+      $("#ly-cur", m).textContent = plFmt(A.currentTime); $("#ly-dur", m).textContent = plFmt(d);
+      if (d && !m._seeking) $("#ly-seek", m).value = (A.currentTime / d) * 1000;
+      $("#ly-play", m).innerHTML = plIcon(A.paused ? "play" : "pause");
+    };
+    let lastActive = -2;
+    const tick = () => { showTime(); const a = active(); if (a !== lastActive) { lastActive = a; paintList(); } raf = requestAnimationFrame(tick); };
+    const mark = () => {
+      if (!A || !lines.length || cur >= lines.length) return;
+      lines[cur].t = Math.max(0, +(A.currentTime - 0.15).toFixed(2));   // compensa el tiempo de reacción
+      cur = Math.min(cur + 1, lines.length); dirty = true; paintList();
+    };
+    const toggle = () => { if (!A) return; if (A.paused) A.play().catch(() => {}); else A.pause(); showTime(); };
+    if (A) {
+      A.addEventListener("loadedmetadata", showTime); A.addEventListener("play", showTime); A.addEventListener("pause", showTime);
+      $("#ly-play", m).addEventListener("click", toggle);
+      const seek = $("#ly-seek", m);
+      seek.addEventListener("input", () => { m._seeking = true; });
+      seek.addEventListener("change", () => { A.currentTime = (seek.value / 1000) * (A.duration || 0); m._seeking = false; });
+      raf = requestAnimationFrame(tick);
+    }
+    $("#ly-mark", m).addEventListener("click", mark);
+    $("#ly-back", m).addEventListener("click", () => {
+      if (cur > 0) { cur -= 1; lines[cur].t = null; dirty = true; if (A && cur > 0 && lines[cur - 1].t != null) A.currentTime = lines[cur - 1].t; paintList(); }
+    });
+    list.addEventListener("click", (ev) => {
+      const li = ev.target.closest("li[data-i]"); if (!li) return;
+      cur = +li.dataset.i;
+      if (A && lines[cur].t != null) A.currentTime = Math.max(0, lines[cur].t - 1.5);
+      paintList();
+    });
+    text.addEventListener("input", () => { dirty = true; });
+    $$("[data-tab]", m).forEach((b) => b.addEventListener("click", () => setTab(b.dataset.tab)));
+    const key = (ev) => {
+      if (!m.open) return document.removeEventListener("keydown", key);
+      if (tab !== "sync" || ev.target === text || ev.target.tagName === "INPUT") return;
+      if (ev.key === " " || ev.key === "Enter") { ev.preventDefault(); mark(); }
+    };
+    document.addEventListener("keydown", key);
+
+    const load = (d) => {
+      lines = (d.lines || []).map((l) => ({ t: l.t, text: l.text })); dirty = false;
+      $("#ly-restore", m).hidden = !d.has_previous;
+      setTab(lines.length ? "sync" : "write");
+      if (tab === "write") text.value = "";
+    };
+    const showStatus = (d) => {
+      const busy = d.status === "detecting";
+      $("#ly-detect", m).disabled = busy;
+      status.textContent = busy ? "Escuchando el tema para escribir la letra… puede tardar unos minutos. Podés cerrar esta ventana: te avisamos cuando esté."
+        : d.status === "error" ? `No se pudo detectar la letra: ${d.error || "error"}` : "";
+    };
+    const startPoll = () => {
+      if (poll) return;
+      poll = setInterval(async () => {
+        if (!m.open) { clearInterval(poll); poll = null; return; }
+        try {
+          const d = await api(`/tracks/${trackId}/lyrics`);
+          showStatus(d);
+          if (d.status !== "detecting") {
+            clearInterval(poll); poll = null;
+            if (d.status === "ready") { load(d); toast("La letra está lista: revisala, corregí lo que haga falta y guardala.", "ok"); }
+          }
+        } catch { /* reintenta en la próxima vuelta */ }
+      }, 4000);
+    };
+    $("#ly-detect", m).addEventListener("click", async (ev) => {
+      if (tab === "write") fromText();
+      if (lines.length && !confirm("La detección reemplaza la letra actual. La anterior queda guardada y la podés recuperar.")) return;
+      await withBusy(ev.currentTarget, async () => {
+        try { const d = await api(`/tracks/${trackId}/lyrics/detect`, { method: "POST" }); showStatus(d); startPoll(); }
+        catch (e) { toast(e.message, "err"); }
+      });
+    });
+    $("#ly-restore", m).addEventListener("click", async (ev) => {
+      await withBusy(ev.currentTarget, async () => {
+        try { load(await api(`/tracks/${trackId}/lyrics/restore`, { method: "POST" })); toast("Recuperaste la letra anterior.", "ok"); }
+        catch (e) { toast(e.message, "err"); }
+      });
+    });
+    $("#ly-save", m).addEventListener("click", async (ev) => {
+      if (tab === "write") fromText();
+      await withBusy(ev.currentTarget, async () => {
+        try { load(await api(`/tracks/${trackId}/lyrics`, { method: "PUT", json: { lines } })); toast("Letra guardada.", "ok"); }
+        catch (e) { toast(e.message, "err"); }
+      });
+    });
+    const fname = (ext) => `${t.title.replace(/[\\/:*?"<>|]+/g, "").trim() || "letra"}.${ext}`;
+    $("#ly-txt", m).addEventListener("click", () => {
+      if (tab === "write") fromText();
+      if (!lines.length) return toast("Todavía no hay letra para descargar.", "err");
+      saveText(fname("txt"), lines.map((l) => l.text).join("\n") + "\n");
+    });
+    $("#ly-lrc", m).addEventListener("click", () => {
+      if (tab === "write") fromText();
+      const lrc = lyricsLrc(lines, t.title, band ? band.name : "");
+      if (!lrc) return toast("Para el .lrc primero sincronizá la letra en la pestaña Sincronizar.", "err");
+      saveText(fname("lrc"), lrc);
+    });
+    const close = () => {
+      if (tab === "write" && text.value.trim() !== lines.map((l) => l.text).join("\n").trim()) dirty = true;
+      if (dirty && !confirm("Tenés cambios sin guardar en la letra. ¿Cerrar igual?")) return;
+      closeModal();
+    };
+    $("#ly-x", m).addEventListener("click", close);
+    m.addEventListener("cancel", (ev) => { if (dirty) { ev.preventDefault(); close(); } }, { once: false });
+    m.addEventListener("close", () => { cancelAnimationFrame(raf); if (poll) clearInterval(poll); if (A) A.pause(); document.removeEventListener("keydown", key); }, { once: true });
+    setTab(tab);
+    if (tab === "write") text.value = "";
+    showStatus(data);
+    if (data.status === "detecting") startPoll();
+  });
+  $("#modal").addEventListener("close", () => $("#modal").classList.remove("wide"), { once: true });
+}
+
 async function toggleAssist(id) {
   const box = $("#as-" + id);
   if (!box) return;
