@@ -2533,6 +2533,45 @@ def admin_upsell(band_id: int, body: UpsellIn, _: User = Depends(require_super),
     return {"sent": n}
 
 
+@app.get("/admin/trials")
+def admin_trials(days: int = 90, _: User = Depends(require_super), db: Session = Depends(get_db)):
+    """Pruebas gratis: bandas que la están usando y altas que no terminaron el pago (para escribirles).
+    Solo datos de la cuenta y conteos de uso: nunca el audio."""
+    days = max(7, min(days, 365))
+    since = now() - timedelta(days=days)
+    plans = {p.id: p.name for p in db.query(Plan).all()}
+    trials = []
+    for b in db.query(Band).filter(Band.exempt.is_(False)).all():
+        st = billing.status(db, b)
+        if st["state"] != "trial":
+            continue
+        admins = (db.query(User.email).join(Membership, Membership.user_id == User.id)
+                  .filter(Membership.band_id == b.id, Membership.role == "admin").all())
+        last = db.query(func.max(Track.created_at)).filter_by(band_id=b.id).scalar()
+        trials.append({"band_id": b.id, "band": b.name, "plan": plans.get(b.plan_id), "created_at": b.created_at,
+                       "trial_ends_at": b.trial_ends_at, "days_left": st.get("days_left"),
+                       "provider": "polar" if b.pay_provider == "polar" else "mp",
+                       "usage": billing.usage(db, b.id), "limits": billing.limits(db, b),
+                       "tracks": db.query(Track).filter_by(band_id=b.id).count(),
+                       "last_activity": last, "emails": [e for (e,) in admins]})
+    trials.sort(key=lambda x: x["trial_ends_at"] or now())
+    sus = db.query(Signup).filter(Signup.created_at >= since).order_by(Signup.created_at.desc()).all()
+    # una persona que reintenta deja varias altas: se muestra solo la última por mail
+    seen, pending = set(), []
+    done_emails = {su.email.lower() for su in sus if su.status == "done"}
+    for su in sus:
+        e = su.email.lower()
+        if su.status == "done" or e in seen or e in done_emails:
+            continue
+        seen.add(e)
+        pending.append({"id": su.id, "band": su.band_name, "name": su.admin_name, "email": su.email,
+                        "plan": plans.get(su.plan_id, "-"), "provider": su.provider or "mp",
+                        "created_at": su.created_at, "attempts": sum(1 for x in sus if x.email.lower() == e)})
+    started = len({su.email.lower() for su in sus})
+    return {"days": days, "trials": trials, "pending": pending,
+            "funnel": {"started": started, "finished": len(done_emails), "abandoned": len(pending)}}
+
+
 @app.get("/admin/subscriptions")
 def admin_subscriptions(_: User = Depends(require_super), db: Session = Depends(get_db)):
     """Tablero de suscripciones: Mercado Pago (pesos) y Polar (dólares). Sin datos de pago de nadie."""

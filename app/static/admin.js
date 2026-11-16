@@ -2,7 +2,7 @@
 "use strict";
 
 const AD_TABS = [
-  ["resumen", "Resumen"], ["bandas", "Bandas"], ["cobros", "Cobros"], ["planes", "Planes"],
+  ["resumen", "Resumen"], ["bandas", "Bandas"], ["pruebas", "Pruebas gratis"], ["cobros", "Cobros"], ["planes", "Planes"],
   ["personas", "Personas"], ["referencias", "Referencias"], ["estilos", "Estilos"], ["mensajes", "Mensajes"],
 ];
 const AD_STATE = {
@@ -21,7 +21,7 @@ async function viewAdmin(nav, tab) {
       `<a href="#/admin/${k}" class="${k === tab ? "on" : ""}" ${k === tab ? 'aria-current="page"' : ""}>${l}<span class="ad-badge" id="adb-${k}" hidden></span></a>`).join("")}</nav>
     <div id="ad-body"><div class="card"><span class="spinner"></span> Cargando…</div></div>`);
   const body = $("#ad-body");
-  const fn = { resumen: adResumen, bandas: adBandas, cobros: adCobros, planes: adPlanes, personas: adPersonas, referencias: adRefs, estilos: adEstilos, mensajes: adMensajes }[tab];
+  const fn = { resumen: adResumen, bandas: adBandas, pruebas: adPruebas, cobros: adCobros, planes: adPlanes, personas: adPersonas, referencias: adRefs, estilos: adEstilos, mensajes: adMensajes }[tab];
   try { await fn(body, nav); } catch (e) { if (nav === state.nav) body.innerHTML = `<div class="card"><h2>No se pudo cargar</h2><p class="muted">${esc(e.message)}</p></div>`; }
   api("/admin/billing/summary").then((s) => {
     const b = $("#adb-mensajes"); if (b && s.unread_messages) { b.textContent = s.unread_messages; b.hidden = false; }
@@ -36,11 +36,13 @@ async function adResumen(body, nav) {
   const [ov, s] = await Promise.all([api("/admin/overview"), api("/admin/billing/summary")]);
   if (nav !== state.nav) return;
   const tile = (n, l, cls = "") => `<div class="stat ${cls}"><b>${n}</b><span>${l}</span></div>`;
+  const go = (n, l, cls, href, f = "") => `<a class="stat ${cls}" href="${href}" ${f ? `data-gof="${f}"` : ""}><b>${n}</b><span>${l}</span></a>`;
   const check = (ok, label, hint) => `<li class="${ok ? "ok" : "no"}">${ok ? "✓" : "✗"} <b>${label}</b>${ok ? "" : ` <span class="small muted">${hint}</span>`}</li>`;
   body.innerHTML = `
     <section class="stats">
-      ${tile(s.bands, "Bandas")}${tile(s.active, "Pagando", "ok")}${tile(s.trial, "En prueba gratis")}${tile(s.exempt, "Cortesía")}
-      ${tile(s.past_due + s.suspended, "Atrasadas o cortadas", s.past_due + s.suspended ? "bad" : "")}
+      ${go(s.bands, "Bandas", "", "#/admin/bandas", "all")}${go(s.active, "Pagando", "ok", "#/admin/bandas", "paying")}
+      ${go(s.trial, "En prueba gratis", s.trial ? "warn" : "", "#/admin/pruebas")}${go(s.exempt, "Cortesía", "", "#/admin/bandas", "courtesy")}
+      ${go(s.past_due + s.suspended, "Atrasadas o cortadas", s.past_due + s.suspended ? "bad" : "", "#/admin/bandas", "problem")}
       <a class="stat ${s.near_limit ? "warn" : ""}" href="#/admin/bandas" data-near><b>${s.near_limit}</b><span>Cerca del límite del plan</span></a>
     </section>
     <section class="card"><h2>Suscripciones</h2>
@@ -60,6 +62,7 @@ async function adResumen(body, nav) {
       </ul></section>`;
   const near = $("[data-near]", body);
   if (near) near.addEventListener("click", () => { state._adFilter = "limit"; });
+  $$("[data-gof]", body).forEach((a) => a.addEventListener("click", () => { state._adFilter = a.dataset.gof; }));
 }
 
 /* ---------- bandas ---------- */
@@ -240,6 +243,46 @@ async function adBandas(body, nav) {
     if (!confirm("¿Sacar a esta persona de la banda? Deja de ver sus temas.")) return;
     await api(`/admin/bands/${bid}/members/${uid}`, { method: "DELETE" }); toast("Listo", "ok"); reload();
   })));
+}
+
+/* ---------- pruebas gratis ---------- */
+async function adPruebas(body, nav) {
+  const days = state._adTrialDays || 90;
+  const d = await api(`/admin/trials?days=${days}`);
+  if (nav !== state.nav) return;
+  const f = d.funnel;
+  const usage = (t) => `${t.usage.masters_month} / ${t.limits.masters_month ?? "—"} masters · ${t.usage.ai_covers_month} / ${t.limits.ai_covers_month ?? "—"} tapas · ${t.tracks} temas`;
+  const mail = (p) => {
+    const en = p.provider === "polar";
+    const subj = en ? `Your Diablo Master Mix sign-up for ${p.band}` : `Tu alta en Diablo Master Mix: ${p.band}`;
+    const txt = en
+      ? `Hi ${p.name || ""},\n\nWe saw you started signing up "${p.band}" for Diablo Master Mix but the last step, confirming the subscription, wasn't completed. The ${p.plan} plan starts with free trial days, and nothing is charged until the trial ends.\n\nIf something went wrong with the payment page, reply to this email and we'll help you finish it.\n\nDiablo Master Mix\ndiablomastermix.com.ar`
+      : `Hola ${p.name || ""},\n\nVimos que empezaste el alta de "${p.band}" en Diablo Master Mix pero no se completó el último paso, la confirmación de la suscripción en Mercado Pago. El plan ${p.plan} arranca con días de prueba gratis y no se cobra nada hasta que termina la prueba.\n\nSi tuviste algún problema con la página de pago, respondé este mail y te ayudamos a terminarlo.\n\nDiablo Master Mix\ndiablomastermix.com.ar`;
+    return `mailto:${encodeURIComponent(p.email)}?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(txt)}`;
+  };
+  body.innerHTML = `
+    <section class="stats">
+      <div class="stat"><b>${f.started}</b><span>Empezaron el alta</span></div>
+      <div class="stat ok"><b>${f.finished}</b><span>Terminaron y probaron</span></div>
+      <div class="stat ${f.abandoned ? "warn" : ""}"><b>${f.abandoned}</b><span>Quedaron sin terminar</span></div>
+      <div class="stat"><b>${d.trials.length}</b><span>En prueba ahora</span></div>
+    </section>
+    <div class="ad-filters" role="group" aria-label="Período">${[[30, "Últimos 30 días"], [90, "Últimos 90 días"], [365, "Último año"]].map(([n, l]) =>
+      `<button type="button" class="chip-f ${days === n ? "on" : ""}" data-days="${n}">${l}</button>`).join("")}</div>
+    <section class="card"><h2>En prueba ahora</h2>
+      <p class="small muted">Bandas que confirmaron la suscripción y están en sus días gratis. Al terminar la prueba se les cobra el primer mes.</p>
+      ${d.trials.length ? `<ul class="upcoming">${d.trials.map((t) => `<li><div class="grow"><strong>${esc(t.band)}</strong> <span class="chip-st warn">${t.days_left === 0 ? "Termina hoy" : t.days_left === 1 ? "Queda 1 día" : `Quedan ${t.days_left} días`}</span>
+        <div class="small muted"><span>Plan ${esc(t.plan || "—")}</span> · <span>${t.provider === "polar" ? "Polar" : "Mercado Pago"}</span> · <span>desde ${adDay(t.created_at)}</span></div>
+        <div class="small"><span>${usage(t)}</span></div>
+        <div class="small muted">${t.emails.map((e) => `<a href="mailto:${esc(e)}">${esc(e)}</a>`).join(" · ")}</div></div></li>`).join("")}</ul>`
+        : `<p class="muted">Ninguna banda está en prueba en este momento.</p>`}</section>
+    <section class="card"><h2>Altas sin terminar</h2>
+      <p class="small muted">Completaron el formulario pero no confirmaron la suscripción, así que la cuenta no se creó y no llegaron a probar. Escribirles suele destrabar a la mayoría.</p>
+      ${d.pending.length ? `<ul class="upcoming">${d.pending.map((p) => `<li><div class="grow"><strong>${esc(p.band)}</strong> <span class="chip-st">${esc(p.plan)}</span>
+        <div class="small muted"><span>${esc(p.name || "—")}</span> · <span>${esc(p.email)}</span> · <span>${p.provider === "polar" ? "Polar" : "Mercado Pago"}</span> · <span>${adDay(p.created_at)}</span>${p.attempts > 1 ? ` · <span>${p.attempts} intentos</span>` : ""}</div></div>
+        <a class="btn small" href="${mail(p)}">${ic("chat")} Escribirle</a></li>`).join("")}</ul>`
+        : `<p class="muted">No hay altas sin terminar en este período.</p>`}</section>`;
+  $$("[data-days]", body).forEach((b) => b.addEventListener("click", () => { state._adTrialDays = Number(b.dataset.days); viewAdmin(nav, "pruebas"); }));
 }
 
 /* ---------- cobros ---------- */

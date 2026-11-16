@@ -361,6 +361,7 @@ function renderShell(active) {
     // el super admin solo administra: no tiene bandas propias ni herramientas musicales
     h += link("#/admin/resumen", "Resumen", "home", active.key === "admin" && (!active.sub || active.sub === "resumen"));
     h += link("#/admin/bandas", "Bandas", "users", active.sub === "bandas");
+    h += link("#/admin/pruebas", "Pruebas gratis", "flame", active.sub === "pruebas");
     h += link("#/admin/cobros", "Cobros", "card", active.sub === "cobros");
     h += link("#/admin/planes", "Planes", "rocket", active.sub === "planes");
     h += link("#/admin/personas", "Personas", "user", active.sub === "personas");
