@@ -355,7 +355,7 @@ function renderShell(active) {
   });
 
   const link = (hash, label, icon, on) =>
-    `<a class="nav-link ${on ? "active" : ""}" href="${hash}" ${on ? 'aria-current="page"' : ""}>${ic(icon)}${label}</a>`;
+    `<a class="nav-link ${on ? "active" : ""}" href="${hash}" ${on ? 'aria-current="page"' : ""}>${icon === "reaper" ? '<img class="i rp-ic" src="/reaper/reaper-logo.png" width="20" height="20" alt="">' : ic(icon)}${label}</a>`;
   let h = "";
   if (me.is_super) {
     // el super admin solo administra: no tiene bandas propias ni herramientas musicales
@@ -379,7 +379,7 @@ function renderShell(active) {
     }
     if (me.bands.length) {
       h += `</div><div class="side-sep"></div>`;
-      h += link("#/reaper", "Conectar Reaper", "headphones", active.key === "reaper");
+      h += link("#/reaper", "Conectar REAPER", "reaper", active.key === "reaper");
     }
   }
   h += link("#/account", "Tu cuenta", "user", active.key === "account");
@@ -1378,7 +1378,7 @@ async function viewRecordSection(band, nav, cfg) {
     ${bandHead(band, cfg.title, cfg.lead)}
     <div id="usage" class="stack" style="margin-bottom:1rem"></div>
     <section class="card" id="recorder" aria-label="Grabador"></section>
-    <p class="muted small" style="margin:-.2rem 0 .8rem">${ic("headphones")} ¿Grabás y mezclás en Reaper? <a href="#/reaper">Conectalo y subí desde ahí</a>.</p>
+    <p class="muted small rp-hint" style="margin:-.2rem 0 .8rem"><img class="rp-ic" src="/reaper/reaper-logo.png" width="20" height="20" alt=""> ¿Grabás y mezclás en REAPER? <a href="#/reaper">Conectalo y subí desde ahí</a>.</p>
     <details class="card"><summary>Subir un audio que ya tengo</summary>
       <form id="up" class="stack" style="margin-top:1rem">
         <div class="seg" role="radiogroup" aria-label="Qué vas a subir">
@@ -1626,7 +1626,7 @@ async function viewPractica(band, nav) {
         <button class="btn primary" data-prac="${t.id}">Practicar</button>
       </article>`).join("")}</div>`
     : `<div class="card empty">${ic("headphones")}Todavía no grabaste ninguna canción con pistas.<br>
-        <span class="small muted">Subí un tema en <a href="#/band/${band.id}/produccion">Producción</a> con la opción “Pistas separadas”, o exportalo desde Reaper, y va a aparecer acá.</span></div>`}`);
+        <span class="small muted">Subí un tema en <a href="#/band/${band.id}/produccion">Producción</a> con la opción “Pistas separadas”, o exportalo desde REAPER, y va a aparecer acá.</span></div>`}`);
   wireBandHead(band);
   $$("[data-prac]").forEach((b) => b.addEventListener("click", () => openMixer(Number(b.dataset.prac))));
 }
@@ -2324,39 +2324,39 @@ function mountDistro(box, band) {
   }).catch(() => { /* queda la suposición */ });
 }
 
-/* ===================== conectar con Reaper ===================== */
+/* ===================== conectar con REAPER ===================== */
 async function viewReaper(nav) {
   const site = location.origin;
   const band = currentBand();
   const mac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
   const save = mac ? "Cmd+S" : "Ctrl+S";
   setApp(`
-    <div class="page-head"><div class="grow"><p class="muted small" style="margin:0">Para quien graba y mezcla en Reaper</p>
-      <h1 style="margin:0">Conectar Reaper</h1>
-      <p class="lead" style="margin-top:.4rem">Mandá tu ensayo o tu mezcla a la banda sin salir de Reaper. Lo conectás una sola vez, en unos 5 minutos. Después, subir un tema son tres clics.</p></div></div>
+    <div class="page-head rp-head"><img class="rp-logo" src="/reaper/reaper-logo.png" width="64" height="64" alt="REAPER"><div class="grow"><p class="muted small" style="margin:0">Para quien graba y mezcla en REAPER</p>
+      <h1 style="margin:0">Conectar REAPER</h1>
+      <p class="lead" style="margin-top:.4rem">Mandá tu ensayo o tu mezcla a la banda sin salir de REAPER. Lo conectás una sola vez, en unos 5 minutos. Después, subir un tema son tres clics.</p></div></div>
 
     <section class="card"><h2>Qué vas a lograr</h2>
       <div class="dest">
-        <div><h3>Grabás y mezclás como siempre</h3><p class="muted">Tus pistas, tus efectos, tu mezcla. Reaper sigue siendo tu estudio.</p></div>
-        <div><h3>Apretás un botón y se sube</h3><p class="muted">Reaper arma el audio solo y lo manda a la banda. No tenés que exportar ni abrir el navegador.</p></div>
+        <div><h3>Grabás y mezclás como siempre</h3><p class="muted">Tus pistas, tus efectos, tu mezcla. REAPER sigue siendo tu estudio.</p></div>
+        <div><h3>Apretás un botón y se sube</h3><p class="muted">REAPER arma el audio solo y lo manda a la banda. No tenés que exportar ni abrir el navegador.</p></div>
         <div><h3>Toda la banda lo escucha</h3><p class="muted">Aparece acá con aviso a todos. Lo escuchan, lo bajan y lo pasan por el master con un clic.</p></div>
       </div></section>
 
     <section class="card"><h2>Parte 1: conectarlo (se hace una sola vez)</h2>
-      <p class="muted" style="margin-top:0">Vas a necesitar dos cosas: un archivito que le enseña a Reaper a hablar con esta web, y tu clave personal para que sepa que sos vos. Seguí los pasos en orden.</p>
+      <p class="muted" style="margin-top:0">Vas a necesitar dos cosas: un archivito que le enseña a REAPER a hablar con esta web, y tu clave personal para que sepa que sos vos. Seguí los pasos en orden.</p>
       <ol class="steps">
         <li><strong>Descargá el archivito.</strong>
           <div class="row" style="margin-top:.5rem"><a class="btn primary" href="/reaper/DiabloMaster_subir.lua" download="DiabloMaster_subir.lua">${ic("download")} Descargar el archivo</a></div>
-          <p class="muted small">Se llama <code>DiabloMaster_subir.lua</code>. Se guarda en la carpeta <em>Descargas</em>. Podés ignorar que dice "lua": es el tipo de archivo que lee Reaper.</p></li>
-        <li><strong>Pasalo a <em>Documentos</em>.</strong> Movelo de Descargas a Documentos y no lo borres, porque Reaper lo lee desde ahí cada vez. Si lo borrás, tenés que descargarlo de nuevo.</li>
+          <p class="muted small">Se llama <code>DiabloMaster_subir.lua</code>. Se guarda en la carpeta <em>Descargas</em>. Podés ignorar que dice "lua": es el tipo de archivo que lee REAPER.</p></li>
+        <li><strong>Pasalo a <em>Documentos</em>.</strong> Movelo de Descargas a Documentos y no lo borres, porque REAPER lo lee desde ahí cada vez. Si lo borrás, tenés que descargarlo de nuevo.</li>
         <li><strong>Generá tu clave personal.</strong> Es una clave larga que empieza con <code>pck_</code>. Es solo tuya: no la compartas.
           <div class="row" style="margin-top:.5rem"><button class="btn" id="mk-token">Generar mi clave</button></div>
           <div id="token-out" class="stack hidden" style="margin-top:.6rem"></div>
           <p class="muted small">Se muestra una sola vez. Tocá <em>Copiar</em> y pegala en un lugar seguro, por ejemplo una nota del celular. Si la perdés, generás otra.</p></li>
-        <li><strong>Abrí Reaper y buscá el menú <em>Actions</em></strong> (arriba, en la barra de menús). Tocá <em>Show action list…</em>. Se abre una ventana llamada <em>Actions</em> con una lista larga.</li>
+        <li><strong>Abrí REAPER y buscá el menú <em>Actions</em></strong> (arriba, en la barra de menús). Tocá <em>Show action list…</em>. Se abre una ventana llamada <em>Actions</em> con una lista larga.</li>
         <li><strong>Cargá el archivito.</strong> En esa ventana, abajo, tocá el botón <em>New action…</em> y elegí <em>Load ReaScript…</em>. Se abre un selector de archivos: andá a <em>Documentos</em>, elegí <code>DiabloMaster_subir.lua</code> y tocá <em>Abrir</em>.
           <p class="muted small" style="margin:.4rem 0 0">Cómo saber que salió bien: en la lista aparece una línea que dice <code>Script: DiabloMaster_subir.lua</code>.</p></li>
-        <li><strong>Ejecutalo por primera vez.</strong> Arriba de la lista hay un casillero que dice <em>Filter</em>: escribí <code>Diablo</code>. Tocá la línea del script y después el botón <em>Run</em>. Reaper te pide dos datos:
+        <li><strong>Ejecutalo por primera vez.</strong> Arriba de la lista hay un casillero que dice <em>Filter</em>: escribí <code>Diablo</code>. Tocá la línea del script y después el botón <em>Run</em>. REAPER te pide dos datos:
           <ul class="plain">
             <li><em>Dirección de la web:</em> copiá y pegá esta dirección:
               <div class="copybox" style="margin:.4rem 0"><span class="grow">${esc(site)}</span><button type="button" class="btn small" data-copy="${esc(site)}">Copiar</button></div></li>
@@ -2368,7 +2368,7 @@ async function viewReaper(nav) {
 
     <section class="card"><h2>Parte 2: subir un ensayo o un tema</h2>
       <ol class="steps">
-        <li><strong>Guardá el proyecto</strong> (${save}). Si el proyecto no tiene nombre, Reaper no puede exportarlo y el script te lo avisa.</li>
+        <li><strong>Guardá el proyecto</strong> (${save}). Si el proyecto no tiene nombre, REAPER no puede exportarlo y el script te lo avisa.</li>
         <li><strong>Ejecutá el script:</strong> con tu tecla, o desde <em>Actions &gt; Show action list…</em>, escribiendo <code>Diablo</code> en el filtro y tocando <em>Run</em>.</li>
         <li><strong>Completá la ventanita.</strong> Tiene tres casilleros:
           <ul class="plain">
@@ -2377,7 +2377,7 @@ async function viewReaper(nav) {
             <li><em>Dónde:</em> escribí <code>ensayo</code> para guardar cómo sonó el ensayo (se borra solo a los 30 días), <code>produccion</code> para una mezcla en la que seguís trabajando, o <code>master</code> si ya está lista para masterizar.</li>
           </ul>
           <p class="muted small" style="margin:.4rem 0 0">El cuarto casillero (<em>Cambiar</em>) dejalo en <code>no</code>. Tocá <em>OK</em>.</p></li>
-        <li><strong>Esperá sin cerrar Reaper.</strong> Reaper tarda un rato en preparar el audio y subirlo: más si el ensayo es largo. Si es muy grande, lo sube de a partes y en la ventana de mensajes ves el avance. Cuando termina, aparece un cartel que dice <em>Listo</em>.</li>
+        <li><strong>Esperá sin cerrar REAPER.</strong> REAPER tarda un rato en preparar el audio y subirlo: más si el ensayo es largo. Si es muy grande, lo sube de a partes y en la ventana de mensajes ves el avance. Cuando termina, aparece un cartel que dice <em>Listo</em>.</li>
       </ol>
       <h3>Dos ejemplos para copiar</h3>
       <div class="dest">
@@ -2396,20 +2396,21 @@ async function viewReaper(nav) {
     <section class="card"><h2>Si algo sale mal</h2>
       <ul class="plain">
         <li><strong>"Primero guardá el proyecto":</strong> apretá ${save}, poné un nombre y volvé a ejecutar el script.</li>
-        <li><strong>Tengo dos bandas:</strong> cada proyecto de Reaper se acuerda de su banda. La primera vez que lo corrés en un proyecto, el script te pregunta a cuál pertenece (escribís el número) y queda guardado cuando guardás el proyecto. Para cambiarla después, en el cuarto casillero (<em>Cambiar</em>) escribí <code>banda</code>.</li>
+        <li><strong>Tengo dos bandas:</strong> cada proyecto de REAPER se acuerda de su banda. La primera vez que lo corrés en un proyecto, el script te pregunta a cuál pertenece (escribís el número) y queda guardado cuando guardás el proyecto. Para cambiarla después, en el cuarto casillero (<em>Cambiar</em>) escribí <code>banda</code>.</li>
         <li><strong>"No pude conectar":</strong> revisá que la dirección sea exactamente <code>${esc(site)}</code> y que la clave esté completa, sin espacios de más. Para cambiarlas, ejecutá el script y en el cuarto casillero (<em>Cambiar</em>) escribí <code>conexion</code>.</li>
         <li><strong>"Todavía no estás en ninguna banda":</strong> pedile a quien administra la banda que te invite.</li>
-        <li><strong>La mezcla suena distinta a la tuya:</strong> el script sube lo que sale por el canal Master de Reaper. Si querés subirla sin masterizar, sacá del Master los limitadores y maximizadores antes de ejecutar.</li>
+        <li><strong>La mezcla suena distinta a la tuya:</strong> el script sube lo que sale por el canal Master de REAPER. Si querés subirla sin masterizar, sacá del Master los limitadores y maximizadores antes de ejecutar.</li>
         <li><strong>Subir solo un pedazo:</strong> marcá con el mouse un tramo del proyecto (selección de tiempo) y el script sube solo eso.</li>
         <li><strong>Pistas separadas:</strong> el script sube todas las pistas del proyecto. Silenciá las que no quieras mandar.</li>
         <li><strong>Calidad del audio:</strong> el script usa el último formato que hayas usado en <em>File &gt; Render</em>. Hacé un render de prueba una vez con <em>WAV 24 bit</em> o <em>FLAC</em>.</li>
-        <li><strong>Para sacar el archivito de Reaper:</strong> en la lista de Actions, seleccionalo y tocá <em>Delete</em>.</li>
-      </ul></section>`);
+        <li><strong>Para sacar el archivito de REAPER:</strong> en la lista de Actions, seleccionalo y tocá <em>Delete</em>.</li>
+      </ul></section>
+    <p class="rp-attr"><img src="/reaper/reaper-logo.png" width="22" height="22" alt=""><span>REAPER es una marca registrada de Cockos Incorporated, usada con permiso.</span></p>`);
   $$("[data-copy]").forEach((b) => b.addEventListener("click", () => copyText(b.dataset.copy)));
   $("#mk-token").addEventListener("click", async (ev) => {
     await withBusy(ev.currentTarget, async () => {
       try {
-        const r = await api("/me/api-tokens", { method: "POST", json: { label: "Reaper" } });
+        const r = await api("/me/api-tokens", { method: "POST", json: { label: "REAPER" } });
         const out = $("#token-out");
         out.classList.remove("hidden");
         out.innerHTML = `<div class="copybox"><span class="grow">${esc(r.token)}</span><button type="button" class="btn small" id="cp-token">Copiar</button></div>
@@ -2448,10 +2449,10 @@ async function viewAccount(nav) {
     </section>
     ${installCard()}
     ${pushCard()}
-    <section class="card"><h2>Conexión con Reaper</h2>
-      <p class="muted">Para subir tus renders directo desde Reaper hace falta un token personal. Es como una contraseña: no se lo des a nadie.</p>
+    <section class="card"><h2>Conexión con REAPER</h2>
+      <p class="muted">Para subir tus renders directo desde REAPER hace falta un token personal. Es como una contraseña: no se lo des a nadie.</p>
       <div id="newtok" class="hidden stack" style="margin-bottom:1rem"></div>
-      <form id="tf" class="row"><input id="tl" type="text" maxlength="80" value="Reaper de mi compu" aria-label="Nombre del token" class="grow"><button class="btn primary">Crear token</button></form>
+      <form id="tf" class="row"><input id="tl" type="text" maxlength="80" value="REAPER de mi compu" aria-label="Nombre del token" class="grow"><button class="btn primary">Crear token</button></form>
       ${tokens.length ? `<table class="table" style="margin-top:.75rem"><tbody>${tokens.map((t) => `
         <tr><td>${esc(t.label)}<div class="small muted">Creado ${fmtDate(t.created_at)}${t.last_used_at ? " · último uso " + fmtDate(t.last_used_at) : " · sin usar"}</div></td>
         <td style="text-align:right"><button class="btn small danger" data-rev="${t.id}">Revocar</button></td></tr>`).join("")}</tbody></table>` : ""}

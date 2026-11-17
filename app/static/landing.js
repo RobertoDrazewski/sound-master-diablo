@@ -6,6 +6,7 @@ const LAND_BLOCKS = [
   { k: "ensayos", desc: "Abre la plataforma en el teléfono, pulsa grabar y deja el móvil en la sala. Al terminar, el ensayo queda guardado y toda la banda lo puede escuchar desde su casa.", icon: "mic", t: "Ensayos", img: "/img/herramienta-ensayos.jpg", lead: "Graba el ensayo desde el teléfono y compártelo con toda la banda.",
     items: ["Graba desde el navegador o sube el archivo", "Ensayos ordenados por fecha y sesión", "Aviso automático a toda la banda"] },
   { k: "produccion", desc: "El lugar de trabajo de cada canción. Sube demos, tomas y mezclas, compara versiones y deja la letra lista antes de pasar al master.", icon: "music", t: "Producción", img: "/img/herramienta-produccion.jpg", lead: "Demos, tomas, mezclas y letras en un solo lugar, antes del master.",
+    compat: true,
     items: ["Subida desde REAPER con un script incluido", "Pistas separadas o mezcla completa", "Reproductor con loop A–B y control de velocidad",
       "La letra se lee desde tu propia canción: la corriges, la apruebas y queda sincronizada verso por verso para Spotify y Apple Music"] },
   { k: "master", icon: "sliders", t: "Master", img: "/img/herramienta-master.jpg", star: true, lead: "Deja tu mezcla lista para publicar y compara el antes y el después.",
@@ -54,6 +55,10 @@ function landLogoBar() {
 /* regla de diseño: el ícono va siempre a la izquierda y el texto a la derecha; nada de números en los bloques */
 function landHead(b) {
   return `<div class="l2-hd"><span class="l2-ibox">${ic(b.icon)}</span><div class="l2-ht"><h3>${b.t}</h3><p class="l2-lead">${b.lead}</p></div></div>`;
+}
+/* insignia de compatibilidad con REAPER (logo usado con permiso de Cockos) */
+function landCompat() {
+  return `<div class="rp-badge"><img src="/reaper/reaper-logo.png" width="40" height="40" alt="REAPER" loading="lazy"><div><b>Compatible con REAPER</b><small>REAPER es una marca registrada de Cockos Incorporated, usada con permiso.</small></div></div>`;
 }
 function landList(b) { return `<ul class="l2-list">${b.items.map((x) => `<li>${x}</li>`).join("")}</ul>`; }
 function landPic(b, cls = "") {
@@ -124,7 +129,7 @@ function viewLanding() {
             <div class="tc-track" id="tc-track" tabindex="0" role="group" aria-label="Herramientas">
               ${rest.map((b) => `<article class="l2-card tc-slide" data-glow id="f-${b.k}">
                 <div class="tc-pic" style="--img:url(${b.img})" role="img" aria-label="${b.t}"></div>
-                <div class="l2-body">${landHead(b)}<p class="tc-desc">${b.desc}</p>${landList(b)}${b.note ? `<small class="l2-trade">${b.note}</small>` : ""}${b.cta ? `<div class="l2-cta left"><a class="btn primary" href="${b.cta.href}">${b.cta.t}</a></div>` : ""}</div></article>`).join("")}
+                <div class="l2-body">${landHead(b)}<p class="tc-desc">${b.desc}</p>${landList(b)}${b.compat ? landCompat() : ""}${b.note ? `<small class="l2-trade">${b.note}</small>` : ""}${b.cta ? `<div class="l2-cta left"><a class="btn primary" href="${b.cta.href}">${b.cta.t}</a></div>` : ""}</div></article>`).join("")}
             </div>
             <div class="tc-ctl">
               <button type="button" class="tc-arrow" data-tc="-1" aria-label="Herramienta anterior">${ic("left")}</button>
@@ -160,7 +165,7 @@ function viewLanding() {
             <a class="l2-fig" href="https://www.facebook.com/DiabloMasterMix" target="_blank" rel="noopener" aria-label="Facebook Diablo Master Mix" title="Facebook"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h-2.5A3.5 3.5 0 0 0 9 6.5V21"/><path d="M6 10.5h8"/></svg></a>
           </div>
           <nav class="l2-flinks l2-flang" aria-label="Idioma">${I18N.inline()}</nav>
-          <small class="l2-trade">Compatible con REAPER. REAPER es una marca de Cockos Incorporated; Diablo Master Mix no está afiliado ni respaldado por Cockos.</small>
+          <a class="rp-foot" href="#/reaper" aria-label="Compatible con REAPER"><img src="/reaper/reaper-logo.png" width="22" height="22" alt="" loading="lazy"><small>Compatible con REAPER. REAPER es una marca registrada de Cockos Incorporated, usada con permiso.</small></a>
           ${legalFooterLinks()}
           <small>© ${new Date().getFullYear()} Diablo Master Mix. Todos los derechos reservados.</small>
         </div>

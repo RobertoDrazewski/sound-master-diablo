@@ -1184,3 +1184,24 @@ body:not(.public) .bc-photo { box-shadow: 0 0 24px -4px rgba(255, 90, 31, .7); b
 .l2-foot .lg-links { margin: .4rem 0 .2rem; }
 .sg-legal { margin: 0; }
 .sg-legal a { color: var(--amber); }
+
+/* ===================== REAPER (logo usado con permiso de Cockos) ===================== */
+.rp-badge { display: flex; align-items: center; gap: .8rem; margin-top: 1.1rem; padding: .7rem .9rem; border: 1px solid var(--line-2); border-radius: 14px; background: rgba(255, 255, 255, .03); max-width: 26rem; }
+.rp-badge img { flex: none; width: 40px; height: 40px; object-fit: contain; filter: drop-shadow(0 2px 8px rgba(0, 0, 0, .45)); }
+.rp-badge b { display: block; font-size: .95rem; color: var(--text); }
+.rp-badge small { display: block; font-size: .74rem; line-height: 1.35; color: var(--muted); }
+.tc-slide .rp-badge { opacity: 0; transform: translateY(14px); }
+.tc-slide.on .rp-badge { opacity: 1; transform: none; transition: opacity .55s .44s, transform .55s .44s cubic-bezier(.2, .8, .2, 1); }
+.rp-foot { display: inline-flex; align-items: center; justify-content: center; gap: .55rem; margin: .4rem auto; text-decoration: none; color: inherit; max-width: 34rem; }
+.rp-foot img { flex: none; width: 22px; height: 22px; object-fit: contain; }
+.rp-foot small { opacity: .75; text-align: left; }
+.rp-foot:hover small, .rp-foot:focus-visible small { opacity: 1; }
+.nav-link img.rp-ic { width: 20px; height: 20px; object-fit: contain; flex: none; }
+.rp-hint img.rp-ic { width: 18px; height: 18px; vertical-align: -4px; margin-right: .2rem; }
+.rp-head { align-items: center; gap: 1rem; flex-wrap: nowrap; }
+.rp-head .grow { min-width: 0; }
+.rp-head .rp-logo { flex: none; width: 64px; height: 64px; object-fit: contain; filter: drop-shadow(0 4px 14px rgba(0, 0, 0, .5)); }
+.rp-attr { display: flex; align-items: center; gap: .55rem; margin: 1rem 0 0; font-size: .8rem; color: var(--muted); }
+.rp-attr img { flex: none; width: 22px; height: 22px; object-fit: contain; }
+@media (max-width: 600px) { .rp-head { align-items: flex-start; gap: .75rem; } .rp-head .rp-logo { width: 46px; height: 46px; margin-top: .2rem; } }
+@media (prefers-reduced-motion: reduce) { .tc-slide .rp-badge { opacity: 1; transform: none; } }
