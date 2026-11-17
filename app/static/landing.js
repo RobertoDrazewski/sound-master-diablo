@@ -157,10 +157,11 @@ function viewLanding() {
           <div class="l2-fcontact">
             <a class="l2-fmail" href="mailto:diablomastermix@gmail.com">diablomastermix@gmail.com</a>
             <a class="l2-fig" href="https://www.instagram.com/diablomastermix/" target="_blank" rel="noopener" aria-label="Instagram @diablomastermix" title="Instagram"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.3" cy="6.7" r="1" fill="currentColor" stroke="none"/></svg></a>
-            <a class="l2-fig" href="https://www.facebook.com/profile.php?id=61596562985337" target="_blank" rel="noopener" aria-label="Facebook Diablo Master Mix" title="Facebook"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h-2.5A3.5 3.5 0 0 0 9 6.5V21"/><path d="M6 10.5h8"/></svg></a>
+            <a class="l2-fig" href="https://www.facebook.com/DiabloMasterMix" target="_blank" rel="noopener" aria-label="Facebook Diablo Master Mix" title="Facebook"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h-2.5A3.5 3.5 0 0 0 9 6.5V21"/><path d="M6 10.5h8"/></svg></a>
           </div>
           <nav class="l2-flinks l2-flang" aria-label="Idioma">${I18N.inline()}</nav>
           <small class="l2-trade">Compatible con REAPER. REAPER es una marca de Cockos Incorporated; Diablo Master Mix no está afiliado ni respaldado por Cockos.</small>
+          ${legalFooterLinks()}
           <small>© ${new Date().getFullYear()} Diablo Master Mix. Todos los derechos reservados.</small>
         </div>
         <a class="l2-fmid" href="https://www.puma-code.com" target="_blank" rel="noopener" aria-label="Puma Code"><img src="/img/puma-code.png" alt="Puma Code" width="72" height="72"></a>
@@ -489,6 +490,7 @@ async function openSignup(plan) {
       ${cfg.turnstile_site_key ? `<div id="sg-ts" class="ts-box"></div>` : ""}
       <p class="status error hidden" id="sg-err" role="alert"></p>
       ${trial ? `<p class="small muted sg-trialnote">${pm === "polar" ? "No se cobra nada hoy: la tarjeta se registra y el primer cobro es cuando termina la prueba." : "En Mercado Pago vas a ver el monto mensual, pero no se cobra nada hoy: el primer cobro es cuando termina la prueba."}</p>` : ""}
+      <p class="small muted sg-legal" translate="no">${legalConsent()}</p>
       <div class="row sg-actions"><button type="button" class="btn" id="sg-cancel">Cancelar</button><button class="btn primary" id="sg-go">${trial ? "Empezar prueba gratis" : "Suscribirme y pagar"}</button></div>
       <p class="small muted" style="margin:0">${pm === "polar" ? "El pago se realiza con tarjeta, de forma segura, a través de Polar. Al confirmarse, tu banda queda creada y recibirás el acceso por correo." : "El pago se realiza en Mercado Pago, de forma segura. Al confirmarse, tu banda queda creada y recibirás el acceso por correo."}</p>
     </form>`, (m) => {

@@ -470,6 +470,8 @@ async function router() {
   try {
     if (name === "invite") { setPublic(true); return viewInvite(arg); }
     if (name === "gracias" && arg) { setPublic(true); return viewThanks(arg); }
+    if (name === "privacidad" || name === "terminos") { setPublic(true); return viewLegal(name); }
+    if (name === "arrepentimiento") { setPublic(true); return await viewWithdrawal(); }
     if (name === "musico" && arg) { setPublic(true); return await viewMusicianConfirm(arg); }
     if (name === "musico" && !session.token) { setPublic(true); return await viewMusicianSignup(); }
     if (!session.token) {

@@ -16,6 +16,7 @@ async function viewMusicianSignup() {
       <div class="hp" aria-hidden="true"><label>No completar<input id="ms-web" type="text" tabindex="-1" autocomplete="off"></label></div>
       ${cfg.turnstile_site_key ? `<div id="ms-ts" class="ts-box"></div>` : ""}
       <p class="status error hidden" id="ms-err" role="alert"></p>
+      <p class="small muted sg-legal" translate="no">${legalConsent()}</p>
       <button class="btn primary block big" id="ms-go">Crear mi cuenta gratis</button>
       <p class="muted small" style="margin-top:1rem">¿Ya tenés cuenta? <a href="#/login">Entrar</a></p>
       <p class="small"><a href="#/">← Volver al inicio</a></p>

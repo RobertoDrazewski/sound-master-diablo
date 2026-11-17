@@ -2748,6 +2748,60 @@ def contact(body: ContactIn, request: Request, db: Session = Depends(get_db)):
     return {"ok": True}
 
 
+# ------------------------------------------------------------- botón de arrepentimiento y de baja (Ley 24.240, art. 34)
+
+_WD = {
+    "es": ("Recibimos tu solicitud de {kind}", "Hola {name},\n\nRecibimos tu solicitud de {kind} para Diablo Master Mix.\n\nCódigo de la solicitud: {code}\nBanda: {band}\n\nLa vamos a procesar y te vamos a responder a este mail. Guardá el código por cualquier consulta.\n\nDiablo Master Mix", {"arrepentimiento": "arrepentimiento", "baja": "baja del servicio"}),
+    "en": ("We received your {kind} request", "Hi {name},\n\nWe received your {kind} request for Diablo Master Mix.\n\nRequest code: {code}\nBand: {band}\n\nWe will process it and reply to this email. Keep the code for any follow-up.\n\nDiablo Master Mix", {"arrepentimiento": "withdrawal", "baja": "cancellation"}),
+    "pt": ("Recebemos sua solicitação de {kind}", "Olá {name},\n\nRecebemos sua solicitação de {kind} para o Diablo Master Mix.\n\nCódigo da solicitação: {code}\nBanda: {band}\n\nVamos processá-la e responder a este e-mail. Guarde o código para qualquer consulta.\n\nDiablo Master Mix", {"arrepentimiento": "arrependimento", "baja": "cancelamento do serviço"}),
+}
+
+
+class WithdrawalIn(BaseModel):
+    kind: str = Field(pattern="^(arrepentimiento|baja)$")
+    name: str = Field(min_length=2, max_length=120)
+    email: str = Field(min_length=5, max_length=255)
+    band: str = Field("", max_length=120)
+    message: str = Field("", max_length=2000)
+    website: str = ""
+    turnstile_token: str = ""
+
+
+_wd_hits: dict[str, list[float]] = {}
+
+
+@app.post("/public/withdrawal")
+def withdrawal(body: WithdrawalIn, request: Request, db: Session = Depends(get_db)):
+    """Solicitud de arrepentimiento (10 días desde la contratación) o de baja. Se registra, se le da un código
+    a la persona y nos llega por mail para procesarla."""
+    ip = _client_ip(request)
+    if body.website.strip():
+        return {"ok": True, "code": ""}
+    if not _rate(_wd_hits, ip, 5):
+        raise HTTPException(429, "Hiciste varios intentos seguidos. Probá de nuevo en un rato.")
+    if not mail.verify_turnstile(body.turnstile_token, ip):
+        raise HTTPException(400, "No pudimos verificar que no sos un robot. Marcá la casilla e intentá de nuevo.")
+    email = body.email.strip().lower()
+    if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+        raise HTTPException(422, "Revisá el email")
+    label = "BOTÓN DE ARREPENTIMIENTO" if body.kind == "arrepentimiento" else "BOTÓN DE BAJA"
+    m = ContactMessage(name=body.name.strip(), email=email, band=body.band.strip(),
+                       message=f"[{label}]\n{body.message.strip() or '(sin comentarios)'}")
+    db.add(m)
+    db.commit()
+    code = f"{'ARR' if body.kind == 'arrepentimiento' else 'BAJ'}-{m.id:06d}"
+    m.message = f"[{label} {code}]\n{body.message.strip() or '(sin comentarios)'}"
+    m.emailed = mail.send_mail(f"[Diablo Master Mix] {label} {code}: {m.band or m.name}",
+                               f"Código: {code}\nNombre: {m.name}\nEmail: {m.email}\nBanda: {m.band or '-'}\n\n{m.message}\n\n"
+                               "Responder dentro de las 24 horas confirmando la recepción.", reply_to=m.email)
+    db.commit()
+    lg = config.REQ_LANG.get()
+    subj, txt, kinds = _WD.get(lg, _WD["es"])
+    k = kinds[body.kind]
+    mail.send_customer(email, subj.format(kind=k), txt.format(kind=k, name=m.name, code=code, band=m.band or "-"))
+    return {"ok": True, "code": code}
+
+
 # ------------------------------------------------------------- alta automatica (compra desde la portada)
 _signup_hits: dict[str, list[float]] = {}
 _sync_hits: dict[str, list[float]] = {}
