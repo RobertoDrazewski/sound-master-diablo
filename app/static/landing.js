@@ -157,6 +157,7 @@ function viewLanding() {
           <div class="l2-fcontact">
             <a class="l2-fmail" href="mailto:diablomastermix@gmail.com">diablomastermix@gmail.com</a>
             <a class="l2-fig" href="https://www.instagram.com/diablomastermix/" target="_blank" rel="noopener" aria-label="Instagram @diablomastermix" title="Instagram"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.3" cy="6.7" r="1" fill="currentColor" stroke="none"/></svg></a>
+            <a class="l2-fig" href="https://www.facebook.com/profile.php?id=61596562985337" target="_blank" rel="noopener" aria-label="Facebook Diablo Master Mix" title="Facebook"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h-2.5A3.5 3.5 0 0 0 9 6.5V21"/><path d="M6 10.5h8"/></svg></a>
           </div>
           <nav class="l2-flinks l2-flang" aria-label="Idioma">${I18N.inline()}</nav>
           <small class="l2-trade">Compatible con REAPER. REAPER es una marca de Cockos Incorporated; Diablo Master Mix no está afiliado ni respaldado por Cockos.</small>
