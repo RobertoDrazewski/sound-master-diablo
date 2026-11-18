@@ -1205,3 +1205,8 @@ body:not(.public) .bc-photo { box-shadow: 0 0 24px -4px rgba(255, 90, 31, .7); b
 .rp-attr img { flex: none; width: 22px; height: 22px; object-fit: contain; }
 @media (max-width: 600px) { .rp-head { align-items: flex-start; gap: .75rem; } .rp-head .rp-logo { width: 46px; height: 46px; margin-top: .2rem; } }
 @media (prefers-reduced-motion: reduce) { .tc-slide .rp-badge { opacity: 1; transform: none; } }
+
+/* distribuidora recomendada (gratis) */
+.distro-item.distro-top{border-color:var(--ember);box-shadow:0 0 0 1px var(--ember) inset}
+.distro-badge{display:inline-block;align-self:flex-start;margin:.2rem 0 .15rem;padding:.12rem .55rem;border-radius:999px;font-size:.72rem;font-weight:700;background:var(--ember);color:#fff}
+.distro-ref{margin:.6rem 0 0}

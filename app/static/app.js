@@ -2215,6 +2215,23 @@ async function viewRelease(band, nav) {
 /* Guía de distribución: antes de publicar (registro de obras) y cómo subir con cada distribuidora.
    Argentina: SADAIC, ISRC por CAPIF, INAMU y AMA. Otro país: cada uno tiene su sociedad de autores. */
 const DISTRO = {
+  routenote: {
+    name: "RouteNote", ico: "upload",
+    tag: "Gratis para subir · te quedás con el 85%",
+    cost: "En el plan gratuito no cobra por subir: se queda con el 15% de lo que generan tus temas y te paga el 85% por PayPal. Si preferís quedarte con el 100%, tiene un plan Premium pago.",
+    steps: [
+      "Creá tu cuenta gratis en RouteNote con el botón de abajo y confirmá tu mail.",
+      "Tocá Create a Release y elegí single o álbum.",
+      "Completá los datos: banda, títulos, compositores, idioma, género y fecha de salida.",
+      "Subí los WAV del paquete y la tapa de 3000 px.",
+      "Si tenés ISRC cargalos; si no, RouteNote los asigna solo. En los créditos de mastering poné: Diablo Master Mix.",
+      "Elegí el plan gratuito (Free) y enviá. RouteNote revisa cada lanzamiento antes de publicarlo, así que dejá un par de semanas antes de la fecha de salida.",
+      "En Payout Settings cargá tu PayPal para cobrar.",
+    ],
+    files: "El paquete de arriba ya cumple lo que pide RouteNote: WAV y tapa de 3000 x 3000 px.",
+    url: "https://www.routenote.com/rn/referral/2fd44a5c",
+    ref: true, top: true,
+  },
   ama: {
     name: "AMA · Agregadora de Música Argentina (INAMU)", ico: "flame", only: "AR",
     tag: "Gratis para subir · te quedás con el 85%",
@@ -2298,12 +2315,13 @@ function mountDistro(box, band) {
       ${before}
       <h3 class="st-sub">Elegí tu distribuidora</h3>
       <div class="dest-acc">${list.map(([k, d]) => `
-        <details class="dest-item distro-item" data-d="${k}">
-          <summary><span class="dest-ico">${ic(d.ico)}</span><span class="grow distro-sum"><strong>${esc(d.name)}</strong><span class="small muted">${esc(d.tag)}</span></span><span class="dest-go">Cómo se hace</span></summary>
+        <details class="dest-item distro-item${d.top ? " distro-top" : ""}" data-d="${k}" ${d.top ? "open" : ""}>
+          <summary><span class="dest-ico">${ic(d.ico)}</span><span class="grow distro-sum"><strong>${esc(d.name)}</strong>${d.top ? `<span class="distro-badge">Recomendada · gratis</span>` : ""}<span class="small muted">${esc(d.tag)}</span></span><span class="dest-go">Cómo se hace</span></summary>
           <p class="muted">${esc(d.cost)}</p>
           <ol class="dest-steps">${d.steps.map((x) => `<li>${esc(x)}</li>`).join("")}</ol>
           <p class="small distro-files">${ic("check")}<span>${esc(d.files)}</span></p>
-          <a class="btn small" href="${d.url}" target="_blank" rel="noopener">Ir a ${esc(d.name.split(" · ")[0])}</a>
+          <a class="btn small" href="${d.url}" target="_blank" rel="${d.ref ? "noopener sponsored" : "noopener"}">Ir a ${esc(d.name.split(" · ")[0])}</a>
+          ${d.ref ? `<p class="small muted distro-ref">Es un link de referido: si creás tu cuenta con él, RouteNote le paga una pequeña comisión a Diablo Master Mix. Sale de la parte de RouteNote; a la banda no se le descuenta nada.</p>` : ""}
         </details>`).join("")}</div>
       <h3 class="st-sub">Después de publicar: la letra en Spotify</h3>
       <p class="muted">Spotify muestra las letras que le llegan de Musixmatch. Reclamá el perfil de la banda en Musixmatch for Artists (es gratis) y cargá la letra de cada tema, si podés sincronizada línea por línea.</p>`;
