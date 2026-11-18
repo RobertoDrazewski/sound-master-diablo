@@ -2223,7 +2223,7 @@ async function viewRelease(band, nav) {
    Argentina: SADAIC, ISRC por CAPIF, INAMU y AMA. Otro país: cada uno tiene su sociedad de autores. */
 const DISTRO = {
   routenote: {
-    name: "RouteNote", ico: "upload",
+    name: "RouteNote", ico: "upload", logo: "/brands/routenote-white.png",
     tag: "Gratis para subir · te quedás con el 85%",
     cost: "En el plan gratuito no cobra por subir: se queda con el 15% de lo que generan tus temas y te paga el 85% por PayPal. Si preferís quedarte con el 100%, tiene un plan Premium pago.",
     steps: [
@@ -2323,7 +2323,7 @@ function mountDistro(box, band) {
       <h3 class="st-sub">Elegí tu distribuidora</h3>
       <div class="dest-acc">${list.map(([k, d]) => `
         <details class="dest-item distro-item${d.top ? " distro-top" : ""}" data-d="${k}" ${d.top ? "open" : ""}>
-          <summary><span class="dest-ico">${ic(d.ico)}</span><span class="grow distro-sum"><strong>${esc(d.name)}</strong>${d.top ? `<span class="distro-badge">Recomendada · gratis</span>` : ""}<span class="small muted">${esc(d.tag)}</span></span><span class="dest-go">Cómo se hace</span></summary>
+          <summary><span class="dest-ico${d.logo ? " has-logo" : ""}">${d.logo ? `<img src="${d.logo}" width="28" height="28" alt="${esc(d.name)}">` : ic(d.ico)}</span><span class="grow distro-sum"><strong>${esc(d.name)}</strong>${d.top ? `<span class="distro-badge">Recomendada · gratis</span>` : ""}<span class="small muted">${esc(d.tag)}</span></span><span class="dest-go">Cómo se hace</span></summary>
           <p class="muted">${esc(d.cost)}</p>
           <ol class="dest-steps">${d.steps.map((x) => `<li>${esc(x)}</li>`).join("")}</ol>
           <p class="small distro-files">${ic("check")}<span>${esc(d.files)}</span></p>

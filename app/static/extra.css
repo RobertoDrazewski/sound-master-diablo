@@ -1220,3 +1220,8 @@ button svg, button > span, button > b, button > small, button > i { pointer-even
 .cp-prog { height: 6px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
 .cp-prog i { display: block; height: 100%; width: 0; border-radius: inherit; background: var(--ember); transition: width .2s linear; }
 #cp-play:disabled { opacity: .45; cursor: wait; }
+
+/* logo de RouteNote en la guía de distribuidoras */
+.dest-ico.has-logo { background: transparent; }
+.dest-ico.has-logo img { width: 28px; height: 28px; object-fit: contain; display: block; }
+.rn-badge { margin-top: .7rem; }

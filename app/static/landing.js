@@ -20,9 +20,10 @@ const LAND_BLOCKS = [
     items: ["Orden final de los temas por arrastre", "Portada con tu foto, estilos prediseñados o inteligencia artificial", "Archivo a 3000 px, el tamaño que piden las plataformas"] },
   { k: "lanzamiento", desc: "Cuando el disco está terminado, descargas un paquete con todo lo que pide una distribuidora. Lo subes tal cual y sigues la guía hasta verlo publicado.", icon: "rocket", t: "Lanzamiento", img: "/img/herramienta-lanzamiento.jpg", lead: "Descarga el álbum listo para cada plataforma.",
     items: ["WAV 24 bits, MP3 320, portada y letras en un solo paquete", "Título, artista, álbum, créditos y letra guardados dentro de cada archivo",
-      "Guía paso a paso para publicar con AMA (INAMU), DistroKid o CD Baby, con costos y requisitos de cada una",
+      "Guía paso a paso para publicar gratis con RouteNote, o con AMA (INAMU), DistroKid o CD Baby, con costos y requisitos de cada una",
       "Spotify, Apple Music y YouTube Music mediante la distribuidora que elijas, y Bandcamp de forma directa", "También preparado para vinilo y CD"],
-    note: "AMA, INAMU, DistroKid y CD Baby son marcas de sus respectivos titulares; Diablo Master Mix no está afiliado ni respaldado por ellos." },
+    rn: true,
+    note: "RouteNote, AMA, INAMU, DistroKid y CD Baby son marcas de sus respectivos titulares; Diablo Master Mix no está afiliado ni respaldado por ellos." },
   { k: "calendario", desc: "Una agenda compartida para que nadie falte. Cada fecha nueva le llega a toda la banda y aparece en el inicio.", icon: "calendar", t: "Calendario", img: "/img/herramienta-calendario.jpg", lead: "Ensayos y presentaciones con aviso a toda la banda.",
     items: ["Agenda de ensayos, shows y grabaciones", "Aviso automático a los integrantes", "Próximos eventos visibles en el inicio"] },
   { k: "musicos", desc: "Si falta un integrante, la banda publica la búsqueda. Los músicos se registran gratis, se postulan y la audición se agenda desde la misma plataforma.", icon: "users", t: "Banco de músicos", img: "/img/herramienta-musicos.jpg", lead: "Las bandas encuentran integrantes y los músicos encuentran banda.",
@@ -59,6 +60,10 @@ function landHead(b) {
 /* insignia de compatibilidad con REAPER (logo usado con permiso de Cockos) */
 function landCompat() {
   return `<div class="rp-badge"><img src="/reaper/reaper-logo.png" width="40" height="40" alt="REAPER" loading="lazy"><div><b>Compatible con REAPER</b><small>REAPER es una marca registrada de Cockos Incorporated, usada con permiso.</small></div></div>`;
+}
+/* distribución gratis con RouteNote (logo según sus pautas de marca: blanco sobre fondo oscuro) */
+function landRn() {
+  return `<div class="rp-badge rn-badge"><img src="/brands/routenote-white.png" width="40" height="40" alt="RouteNote" loading="lazy"><div><b>Distribución gratis con RouteNote</b><small>Sube el paquete a Spotify, Apple Music y más sin pagar por publicar.</small></div></div>`;
 }
 function landList(b) { return `<ul class="l2-list">${b.items.map((x) => `<li>${x}</li>`).join("")}</ul>`; }
 function landPic(b, cls = "") {
@@ -129,7 +134,7 @@ function viewLanding() {
             <div class="tc-track" id="tc-track" tabindex="0" role="group" aria-label="Herramientas">
               ${rest.map((b) => `<article class="l2-card tc-slide" data-glow id="f-${b.k}">
                 <div class="tc-pic" style="--img:url(${b.img})" role="img" aria-label="${b.t}"></div>
-                <div class="l2-body">${landHead(b)}<p class="tc-desc">${b.desc}</p>${landList(b)}${b.compat ? landCompat() : ""}${b.note ? `<small class="l2-trade">${b.note}</small>` : ""}${b.cta ? `<div class="l2-cta left"><a class="btn primary" href="${b.cta.href}">${b.cta.t}</a></div>` : ""}</div></article>`).join("")}
+                <div class="l2-body">${landHead(b)}<p class="tc-desc">${b.desc}</p>${landList(b)}${b.compat ? landCompat() : ""}${b.rn ? landRn() : ""}${b.note ? `<small class="l2-trade">${b.note}</small>` : ""}${b.cta ? `<div class="l2-cta left"><a class="btn primary" href="${b.cta.href}">${b.cta.t}</a></div>` : ""}</div></article>`).join("")}
             </div>
             <div class="tc-ctl">
               <button type="button" class="tc-arrow" data-tc="-1" aria-label="Herramienta anterior">${ic("left")}</button>
