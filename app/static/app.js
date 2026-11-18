@@ -1173,7 +1173,8 @@ async function openLyrics(trackId) {
       const d = A.duration || 0;
       $("#ly-cur", m).textContent = plFmt(A.currentTime); $("#ly-dur", m).textContent = plFmt(d);
       if (d && !m._seeking) $("#ly-seek", m).value = (A.currentTime / d) * 1000;
-      $("#ly-play", m).innerHTML = plIcon(A.paused ? "play" : "pause");
+      const lp = $("#ly-play", m), st = A.paused ? "play" : "pause";
+      if (lp.dataset.st !== st) { lp.dataset.st = st; lp.innerHTML = plIcon(st); }
     };
     let lastActive = -2;
     const tick = () => { showTime(); const a = active(); if (a !== lastActive) { lastActive = a; paintList(); } raf = requestAnimationFrame(tick); };
@@ -2185,7 +2186,13 @@ async function viewRelease(band, nav) {
   mountDistro($("#distro"), band);
   let timer = null;
   const stop = () => { if (timer) { clearInterval(timer); timer = null; } };
-  const paint = () => { if (nav !== state.nav) return stop(); $("#rel").innerHTML = list.length ? list.map(card).join("") : $("#rel").innerHTML; };
+  let relHtml = list.map(card).join("");
+  const paint = () => {
+    if (nav !== state.nav) return stop();
+    if (!list.length) return;
+    const html = list.map(card).join("");
+    if (html !== relHtml) { relHtml = html; $("#rel").innerHTML = html; }   // sin cambios no se toca: no se pierden clics
+  };
   const poll = () => {
     if (timer || !list.some((r) => r.build && r.build.status === "building")) return;
     timer = setInterval(async () => {

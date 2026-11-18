@@ -91,8 +91,13 @@ function plPaint() {
   $q("pl-track").setAttribute("aria-valuetext", `${plFmt(t)} de ${plFmt(d)}`);
   const play = $q("pl-play");
   const playing = !a.paused && !a.ended;
-  play.innerHTML = plIcon(playing ? "pause" : "play");
-  play.setAttribute("aria-label", playing ? "Pausar" : "Reproducir");
+  // solo se redibuja cuando cambia: si se reemplaza el ícono en cada cuadro, el clic se pierde
+  const st = playing ? "pause" : "play";
+  if (play.dataset.st !== st) {
+    play.dataset.st = st;
+    play.innerHTML = plIcon(st);
+    play.setAttribute("aria-label", playing ? "Pausar" : "Reproducir");
+  }
   // tramo A–B
   const ma = $q("pl-ma"), mb = $q("pl-mb"), zone = $q("pl-zone");
   ma.hidden = PL.A == null; mb.hidden = PL.B == null;

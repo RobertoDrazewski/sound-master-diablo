@@ -218,7 +218,8 @@ async function mxMesa(m, track, stems, plan) {
 
   function paint() {
     const t = here();
-    $("#mx-play", m).innerHTML = (playing ? ic("pause") : ic("play")) + `<span>${playing ? "Pausa" : "Tocar"}</span>`;
+    const mp = $("#mx-play", m), st = playing ? "pause" : "play";
+    if (mp.dataset.st !== st) { mp.dataset.st = st; mp.innerHTML = ic(st) + `<span>${playing ? "Pausa" : "Tocar"}</span>`; }
     $("#mx-play", m).setAttribute("aria-label", playing ? "Pausa" : "Reproducir");
     $("#mx-cur", m).textContent = mxFmt(t);
     if (!drag) $("#mx-seek", m).value = String(total ? (t / total) * 1000 : 0);

@@ -419,13 +419,18 @@ async function openMasterReport(versionId, title) {
 }
 
 /* ---------------------------------------------------------------- comparar A/B a igual volumen */
+let cmpBusy = false;
 async function openCompare(trackId, masterId, report) {
+  if (cmpBusy) return;   // un solo comparador a la vez, aunque se toque varias veces
+  cmpBusy = true;
   stopPlayer();
+  // El AudioContext se crea acá, dentro del clic: así el navegador deja que suene solo cuando termine de cargar.
+  const AC = window.AudioContext || window.webkitAudioContext;
+  let ctx = null;
+  try { ctx = AC ? new AC() : null; } catch { ctx = null; }
   // A = exactamente lo que entró a este master (la mezcla, o la suma de las pistas tal cual la armó el motor),
   // nunca una pista suelta. El servidor lo resuelve desde el propio master.
   let urlA, urlB;
-  try { [urlA, urlB] = (await Promise.all([api(`/versions/${masterId}/link?fmt=input`), api(`/versions/${masterId}/link?fmt=preview`)])).map((x) => x.url); }
-  catch (e) { return toast(e.message, "err"); }
   const la = report.before.lufs, lb = report.after.lufs;
   const diff = lb - la; // dB que el master está más fuerte
   openModal(`
@@ -440,8 +445,11 @@ async function openCompare(trackId, masterId, report) {
         <span class="pl-time" id="cp-cur">0:00</span>
         <input type="range" id="cp-seek" min="0" max="1000" value="0" aria-label="Posición">
         <span class="pl-time" id="cp-dur">0:00</span></div>
+      <div class="cp-loading" id="cp-load" role="status" aria-live="polite">
+        <div class="cp-prog"><i id="cp-progbar"></i></div>
+        <span class="small muted" id="cp-loadtxt">Preparando el original…</span>
+      </div>
       <label class="check"><input type="checkbox" id="cp-match" checked> Igualar el volumen (el master es ${stNum(Math.abs(diff))} dB ${diff >= 0 ? "más fuerte" : "más suave"})</label>
-      <p class="small muted" id="cp-load">Preparando los audios para comparar…</p>
       <p class="small muted">Atajos: <kbd>A</kbd> / <kbd>B</kbd> cambian de versión, <kbd>espacio</kbd> reproduce.</p>
     </div>`, (m) => {
     m.classList.remove("rp-full", "st-full");
@@ -462,18 +470,42 @@ async function openCompare(trackId, masterId, report) {
       const d = P.duration() || 0, c = Math.min(P.time(), d);
       $("#cp-cur", m).textContent = plFmt(c); $("#cp-dur", m).textContent = plFmt(d);
       if (!seeking && d) seek.value = (c / d) * 1000;
-      playBtn.innerHTML = plIcon(P.playing() ? "pause" : "play");
+      const st = P.playing() ? "pause" : "play";
+      if (playBtn.dataset.st !== st) { playBtn.dataset.st = st; playBtn.innerHTML = plIcon(st); playBtn.setAttribute("aria-label", st === "pause" ? "Pausar" : "Reproducir"); }
     };
     const tick = () => { show(); rafId = requestAnimationFrame(tick); };
 
-    let ctx = null;
+    const bar = $("#cp-progbar", m), txt = $("#cp-loadtxt", m);
+    const prog = { a: [0, 0], b: [0, 0] };
+    const paintProg = () => {
+      const got = prog.a[0] + prog.b[0], tot = prog.a[1] + prog.b[1];
+      const pct = tot ? Math.min(100, Math.round((got / tot) * 100)) : 0;
+      bar.style.width = pct + "%";
+      txt.textContent = tot ? `Cargando el audio… ${pct}%` : "Cargando el audio…";
+    };
+    // descarga leyendo de a partes para mostrar cuánto falta
+    const grab = async (url, k) => {
+      const r = await fetch(url);
+      if (!r.ok) throw new Error("descarga");
+      const total = Number(r.headers.get("content-length")) || 0;
+      if (!r.body || !r.body.getReader || !total) return r.arrayBuffer();
+      prog[k] = [0, total]; paintProg();
+      const rd = r.body.getReader(), parts = [];
+      let got = 0;
+      for (;;) {
+        const { done, value } = await rd.read();
+        if (done) break;
+        parts.push(value); got += value.length; prog[k][0] = got; paintProg();
+      }
+      const out = new Uint8Array(got); let o = 0;
+      for (const p of parts) { out.set(p, o); o += p.length; }
+      return out.buffer;
+    };
     const setupWA = async () => {
-      const AC = window.AudioContext || window.webkitAudioContext;
-      if (!AC) throw new Error("sin WebAudio");
-      const [ra, rb] = await Promise.all([fetch(urlA), fetch(urlB)]);
-      if (!ra.ok || !rb.ok) throw new Error("descarga");
-      const [ba, bb] = await Promise.all([ra.arrayBuffer(), rb.arrayBuffer()]);
-      ctx = new AC();
+      if (!ctx) throw new Error("sin WebAudio");
+      const [ba, bb] = await Promise.all([grab(urlA, "a"), grab(urlB, "b")]);
+      if (!m.open) throw new Error("cerrado");
+      bar.style.width = "100%"; txt.textContent = "Preparando la comparación…";
       const [bufA, bufB] = await Promise.all([ctx.decodeAudioData(ba), ctx.decodeAudioData(bb)]);
       const gA = ctx.createGain(), gB = ctx.createGain();
       gA.connect(ctx.destination); gB.connect(ctx.destination);
@@ -533,8 +565,24 @@ async function openCompare(trackId, masterId, report) {
     };
     const toggle = () => { if (!P) return; (P.playing() ? P.pause() : P.play()); show(); };
     playBtn.disabled = true;
-    setupWA().catch(() => { if (ctx) { ctx.close().catch(() => { /* nada */ }); ctx = null; } setupEl(); })
-      .then(() => { if (!m.open) { P && P.stop(); return; } P.apply(); loadEl.hidden = true; playBtn.disabled = false; show(); });
+    (async () => {
+      try {
+        // la primera vez el servidor puede tardar unos segundos en preparar el original
+        [urlA, urlB] = (await Promise.all([api(`/versions/${masterId}/link?fmt=input`), api(`/versions/${masterId}/link?fmt=preview`)])).map((x) => x.url);
+      } catch (e) { toast(e.message, "err"); closeModal(); return; }
+      if (!m.open) return;
+      paintProg();
+      try { await setupWA(); }
+      catch {
+        if (!m.open) return;
+        if (ctx) { ctx.close().catch(() => { /* nada */ }); ctx = null; }
+        setupEl();
+      }
+      if (!m.open) { P && P.stop(); return; }
+      P.apply(); loadEl.hidden = true; playBtn.disabled = false;
+      await P.play();   // listo: arranca solo, y se puede pausar
+      show();
+    })();
     playBtn.addEventListener("click", toggle);
     $$(".cp-btn", m).forEach((b) => b.addEventListener("click", () => pick(b.dataset.v)));
     $("#cp-match", m).addEventListener("change", () => P && P.apply());
@@ -548,7 +596,10 @@ async function openCompare(trackId, masterId, report) {
     };
     document.addEventListener("keydown", key);
     rafId = requestAnimationFrame(tick);
-    m.addEventListener("close", () => { cancelAnimationFrame(rafId); P && P.stop(); document.removeEventListener("keydown", key); }, { once: true });
+    m.addEventListener("close", () => {
+      cmpBusy = false; cancelAnimationFrame(rafId); document.removeEventListener("keydown", key);
+      if (P) P.stop(); else if (ctx) ctx.close().catch(() => { /* cerrado */ });
+    }, { once: true });
     $("#cp-x", m).addEventListener("click", closeModal);
     pick("a");
   });
