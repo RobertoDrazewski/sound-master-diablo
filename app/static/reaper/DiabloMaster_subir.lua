@@ -1,15 +1,18 @@
--- Diablo Master - subir a la web desde Reaper
+-- DiabloMaster_subir.lua (en el paquete de scripts: 06_DiabloMaster_Subir.lua)
+-- Diablo Master Mix by Puma Code - diablomastermix.com.ar
+-- Subir a la web desde REAPER
 -- Renderiza el proyecto (cancion completa o pistas sueltas) y lo sube a tu banda.
 -- Uso: Actions > Show action list > New action > Load ReaScript... y elegir este archivo.
 -- La primera vez pide la direccion de la web y tu token personal (Cuenta > Token para Reaper).
--- Usa el ultimo formato de render que hayas configurado en Reaper (recomendado: WAV 24 bit).
+-- Usa el ultimo formato de render que hayas configurado en Reaper (lo deja listo el script 05_DiabloMaster_Preparar_Export: WAV 24 bit).
 
 local SEC = "DiabloMaster"
-local VERSION = "2026-11-12 d"
+local VERSION = "2026-11-19"
 local WIN = reaper.GetOS():find("Win") ~= nil
 local SEP = WIN and "\\" or "/"
 
-local function msg(t) reaper.ShowMessageBox(t, "Diablo Master", 0) end
+local TITLE = "Diablo Master Mix by Puma Code"
+local function msg(t) reaper.ShowMessageBox(t, TITLE, 0) end
 local function get(k) return reaper.GetExtState(SEC, k) end
 local function set(k, v) reaper.SetExtState(SEC, k, v, true) end
 
@@ -53,9 +56,9 @@ end
 
 -- ---------------------------------------------------------------- configuracion
 local function configure()
-  local ok, vals = reaper.GetUserInputs("Diablo Master - conectar", 2,
+  local ok, vals = reaper.GetUserInputs("Diablo Master Mix - conectar", 2,
     "Direccion de la web,Token personal (pck_...),extrawidth=260",
-    (get("url") ~= "" and get("url") or "http://localhost:8010") .. "," .. get("token"))
+    (get("url") ~= "" and get("url") or "https://diablomastermix.com.ar") .. "," .. get("token"))
   if not ok then return false end
   local url, token = vals:match("^(.-),(.*)$")
   url = clean(url):gsub("/+$", "")
@@ -84,7 +87,7 @@ local function choose_band()
     local lista = {}
     for i, b in ipairs(bands) do lista[#lista + 1] = i .. " = " .. b.name end
     msg("Tus bandas:\n\n" .. table.concat(lista, "\n") .. "\n\nEn la siguiente ventana escribi el numero.")
-    local ok, n = reaper.GetUserInputs("Diablo Master - banda", 1, "Numero de banda", "1")
+    local ok, n = reaper.GetUserInputs("Diablo Master Mix - banda", 1, "Numero de banda", "1")
     if not ok then return false end
     chosen = bands[tonumber(n) or 0]
     if not chosen then msg("Numero invalido.") return false end
@@ -115,7 +118,7 @@ local function main()
   local pname = (type(r2) == "string" and r2) or (type(r1) == "string" and r1) or ""
   pname = pname:gsub("%.[Rr][Pp][Pp]$", "")
   if pname == "" then
-    msg("Primero guarda el proyecto (Cmd+S en Mac, Ctrl+S en Windows) y volve a ejecutar el script.\n\nReaper no puede exportar un proyecto que todavia no tiene nombre.")
+    msg("Primero guarda el proyecto (Cmd+S en Mac, Ctrl+S en Windows) y volve a ejecutar el script.\n\nREAPER no puede exportar un proyecto que todavia no tiene nombre.")
     return
   end
 
@@ -127,7 +130,7 @@ local function main()
   end
   local def_what = with_audio > 1 and "pistas" or "cancion"
 
-  local ok, vals = reaper.GetUserInputs("Diablo Master - subir a " .. get("band_name") .. " (v" .. VERSION .. ")", 4,
+  local ok, vals = reaper.GetUserInputs("Diablo Master Mix - subir a " .. get("band_name") .. " (v" .. VERSION .. ")", 4,
     "Nombre del tema o ensayo,Que subir (cancion / pistas),Donde (ensayo / produccion / master),Cambiar (no / banda / conexion),extrawidth=220",
     pname .. "," .. def_what .. "," .. (get("section") ~= "" and get("section") or "ensayo") .. ",no")
   if not ok then return end
@@ -233,10 +236,10 @@ local function main()
     local names = {}
     for _, f in ipairs(files) do names[#names + 1] = f:match("[^/\\]+$") or f end
     clear_dir(dir)
-    msg("No se subio nada: se esperaban " .. with_audio .. " pistas y Reaper genero " .. #files ..
+    msg("No se subio nada: se esperaban " .. with_audio .. " pistas y REAPER genero " .. #files ..
         " archivo(s) (" .. table.concat(names, ", ") .. ").\n\nVersion del script: " .. VERSION ..
         "\nPruebas (ajuste=archivos): " .. table.concat(tried, ", ") ..
-        "\n\nMandame este mensaje y lo resuelvo. Mientras tanto subi las pistas a mano desde la web.")
+        "\n\nMandanos este mensaje desde Contacto en la web y lo resolvemos. Mientras tanto subi las pistas a mano desde la web.")
     return
   end
   if #files == 0 then
@@ -269,7 +272,7 @@ local function main()
   if not big then
     local args = { "-m 7200", "-w " .. q("\nHTTP:%{http_code}"), "-F " .. q("title=" .. title), "-F " .. q("mode=" .. mode), "-F " .. q("section=" .. section) }
     for _, f in ipairs(files) do args[#args + 1] = "-F " .. q("files=@" .. f) end
-    reaper.ShowConsoleMsg("Diablo Master: subiendo " .. #files .. " archivo(s)...\n")
+    reaper.ShowConsoleMsg("Diablo Master Mix: subiendo " .. #files .. " archivo(s)...\n")
     code, body = with_auth(base .. "/tracks", get("token"), table.concat(args, " "))
     http = tostring(body):match("HTTP:(%d+)")
   else
@@ -297,7 +300,7 @@ local function main()
         if not okp then break end
         failed = nil
         idx = idx + 1
-        reaper.ShowConsoleMsg(("Diablo Master: %s, parte %d de %d\n"):format(f:match("[^/\\]+$") or f, idx, math.ceil(total / PART)))
+        reaper.ShowConsoleMsg(("Diablo Master Mix: %s, parte %d de %d\n"):format(f:match("[^/\\]+$") or f, idx, math.ceil(total / PART)))
       end
       fh:close()
       if failed then break end

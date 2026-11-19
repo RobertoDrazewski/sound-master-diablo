@@ -497,7 +497,7 @@ async function router() {
       case "refs": // las referencias viven dentro de Master
         if (state.me.is_super) { location.hash = "#/admin/referencias"; return; }
         { const b = currentBand(); location.hash = b ? `#/band/${b.id}/master` : "#/"; return; }
-      case "reaper": renderShell({ key: "reaper" }); return await viewReaper(nav);
+      case "reaper": renderShell({ key: "reaper" }); return arg === "scripts" ? await viewReaperScripts(nav) : await viewReaper(nav);
       case "admin": renderShell({ key: "admin", sub: arg }); return await viewAdmin(nav, arg);
       case "account": renderShell({ key: "account" }); return await viewAccount(nav);
       default: renderShell({ key: "" }); return notFound();
@@ -2359,6 +2359,8 @@ async function viewReaper(nav) {
     <div class="page-head rp-head"><img class="rp-logo" src="/reaper/reaper-logo.png" width="64" height="64" alt="REAPER"><div class="grow"><p class="muted small" style="margin:0">Para quien graba y mezcla en REAPER</p>
       <h1 style="margin:0">Conectar REAPER</h1>
       <p class="lead" style="margin-top:.4rem">Mandá tu ensayo o tu mezcla a la banda sin salir de REAPER. Lo conectás una sola vez, en unos 5 minutos. Después, subir un tema son tres clics.</p></div></div>
+    ${reaperTabs("connect")}
+    <a class="card rs-promo" href="#/reaper/scripts"><span class="rs-ico">${ic("sliders")}</span><span class="grow"><strong>Nuevo: scripts para dejar el proyecto listo antes de subir</strong><span class="muted small">Diagnóstico, sincronizar, ajustar al tempo, pre-mezcla y export con margen para el master.</span></span>${ic("right")}</a>
 
     <section class="card"><h2>Qué vas a lograr</h2>
       <div class="dest">
@@ -2424,10 +2426,10 @@ async function viewReaper(nav) {
         <li><strong>Tengo dos bandas:</strong> cada proyecto de REAPER se acuerda de su banda. La primera vez que lo corrés en un proyecto, el script te pregunta a cuál pertenece (escribís el número) y queda guardado cuando guardás el proyecto. Para cambiarla después, en el cuarto casillero (<em>Cambiar</em>) escribí <code>banda</code>.</li>
         <li><strong>"No pude conectar":</strong> revisá que la dirección sea exactamente <code>${esc(site)}</code> y que la clave esté completa, sin espacios de más. Para cambiarlas, ejecutá el script y en el cuarto casillero (<em>Cambiar</em>) escribí <code>conexion</code>.</li>
         <li><strong>"Todavía no estás en ninguna banda":</strong> pedile a quien administra la banda que te invite.</li>
-        <li><strong>La mezcla suena distinta a la tuya:</strong> el script sube lo que sale por el canal Master de REAPER. Si querés subirla sin masterizar, sacá del Master los limitadores y maximizadores antes de ejecutar.</li>
+        <li><strong>La mezcla suena distinta a la tuya:</strong> el script sube lo que sale por el canal Master de REAPER. Si querés subirla sin masterizar, sacá del Master los limitadores y maximizadores antes de ejecutar (el script <a href="#/reaper/scripts">Preparar export</a> lo hace por vos).</li>
         <li><strong>Subir solo un pedazo:</strong> marcá con el mouse un tramo del proyecto (selección de tiempo) y el script sube solo eso.</li>
         <li><strong>Pistas separadas:</strong> el script sube todas las pistas del proyecto. Silenciá las que no quieras mandar.</li>
-        <li><strong>Calidad del audio:</strong> el script usa el último formato que hayas usado en <em>File &gt; Render</em>. Hacé un render de prueba una vez con <em>WAV 24 bit</em> o <em>FLAC</em>.</li>
+        <li><strong>Calidad del audio:</strong> el script usa el último formato que hayas usado en <em>File &gt; Render</em>. El script <a href="#/reaper/scripts">Preparar export</a> lo deja en WAV 24 bit con el margen justo para masterizar.</li>
         <li><strong>Para sacar el archivito de REAPER:</strong> en la lista de Actions, seleccionalo y tocá <em>Delete</em>.</li>
       </ul></section>
     <p class="rp-attr"><img src="/reaper/reaper-logo.png" width="22" height="22" alt=""><span>REAPER es una marca registrada de Cockos Incorporated, usada con permiso.</span></p>`);

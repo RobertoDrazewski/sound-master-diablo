@@ -211,6 +211,19 @@ class ContactMessage(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
 
+class ScriptReview(Base):
+    """Valoracion (1 a 5) y comentario de un usuario sobre un script de REAPER. Uno por usuario y script."""
+    __tablename__ = "script_reviews"
+    __table_args__ = (UniqueConstraint("script", "user_id"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    script: Mapped[str] = mapped_column(String(40), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    rating: Mapped[int] = mapped_column(Integer)
+    comment: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
 class Album(Base):
     __tablename__ = "albums"
     id: Mapped[int] = mapped_column(primary_key=True)

@@ -24,7 +24,8 @@ from .config import (ASSISTANT_DAILY_LIMIT, COVER_AI_DAILY_LIMIT, LYRICS_DAILY_L
                      REFERENCE_SECONDS, SUPERADMIN_EMAIL, SUPERADMIN_PASSWORD, CHAT_ENABLED, TRIAL_DAYS,
                      TURNSTILE_SITE_KEY, PURGE_HOURS)
 from .db import (Album, ApiToken, Application, Band, Cancellation, ContactMessage, Event, Genre, Invite, Job, Membership, MusicianRequest,
-                 Notification, Payment, Plan, PushSubscription, Reference, SessionLocal, Signup, Track, User, Version, init_db, now)
+                 Notification, Payment, Plan, PushSubscription, Reference, ScriptReview, SessionLocal, Signup, Track, User, Version,
+                 init_db, now)
 from .notify import notify_band
 from .security import (create_media_token, create_session_jwt, create_signup_token, decode_signup_token,
                        decode_media_token, decode_session_jwt, hash_password,
@@ -3331,6 +3332,126 @@ def delete_me(body: DeleteMeIn, user: User = Depends(current_user), db: Session 
         u.bio = u.styles = u.instruments = u.equipment = u.city = u.country = u.contact_kind = u.contact_value = ""
         u.sings = u.has_transport = u.has_rehearsal_space = False
         db.commit()
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------- scripts de REAPER
+# Orden de uso. "file" es el nombre dentro del zip; "src" el archivo publicado en /reaper/.
+REAPER_SCRIPTS = [
+    {"key": "diagnostico", "file": "01_DiabloMaster_Diagnostico.lua", "src": "scripts/01_DiabloMaster_Diagnostico.lua"},
+    {"key": "sincronizar", "file": "02_DiabloMaster_Sincronizar_Pistas.lua", "src": "scripts/02_DiabloMaster_Sincronizar_Pistas.lua"},
+    {"key": "tempo", "file": "03_DiabloMaster_Ajustar_Tempo.lua", "src": "scripts/03_DiabloMaster_Ajustar_Tempo.lua"},
+    {"key": "premezcla", "file": "04_DiabloMaster_PreMezcla.lua", "src": "scripts/04_DiabloMaster_PreMezcla.lua"},
+    {"key": "export", "file": "05_DiabloMaster_Preparar_Export.lua", "src": "scripts/05_DiabloMaster_Preparar_Export.lua"},
+    {"key": "subir", "file": "06_DiabloMaster_Subir.lua", "src": "DiabloMaster_subir.lua"},
+]
+SCRIPT_KEYS = {x["key"] for x in REAPER_SCRIPTS}
+_SCRIPTS_README = """Diablo Master Mix by Puma Code - Scripts para REAPER
+https://diablomastermix.com.ar/#/reaper/scripts
+
+Usalos en este orden, antes de renderizar y subir tu tema:
+
+01 Diagnostico ............ revisa el proyecto sin cambiar nada y te dice que corregir
+02 Sincronizar pistas ..... (opcional) si grabaron por separado y quedaron corridas
+03 Ajustar al tempo ....... (opcional) solo si grabaron con metronomo
+04 Pre-mezcla ............. nivela, pone volumen y paneo de partida, recorta silencios
+05 Preparar export ........ WAV 24 bit sin limitar y con margen para el master
+06 Subir a Diablo Master .. renderiza y sube a tu banda
+
+Como instalarlos:
+1. Descomprimi esta carpeta en Documentos y no la borres (REAPER lee los scripts desde ahi).
+2. En REAPER: Actions > Show action list...
+3. Abajo: New action... > Load ReaScript... y elegi los seis archivos .lua (podes seleccionarlos juntos).
+4. Para ejecutar uno: escribi "DiabloMaster" en el filtro, elegilo y toca Run.
+Todo lo que hacen se deshace con Ctrl+Z / Cmd+Z.
+
+REAPER es una marca registrada de Cockos Incorporated, usada con permiso.
+"""
+_scripts_zip_cache: dict = {}
+
+
+@app.get("/reaper/scripts.zip")
+def reaper_scripts_zip():
+    """Todos los scripts en un zip, numerados en el orden de uso (se arma al vuelo desde los archivos publicados)."""
+    import zipfile
+    base = Path(__file__).parent / "static" / "reaper"
+    paths = [base / x["src"] for x in REAPER_SCRIPTS]
+    stamp = tuple(int(p.stat().st_mtime) for p in paths if p.exists())
+    if _scripts_zip_cache.get("stamp") != stamp:
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+            z.writestr("DiabloMaster_Scripts_REAPER/LEEME.txt", _SCRIPTS_README)
+            for x, p in zip(REAPER_SCRIPTS, paths):
+                if p.exists():
+                    z.write(p, f"DiabloMaster_Scripts_REAPER/{x['file']}")
+        _scripts_zip_cache.update(stamp=stamp, data=buf.getvalue())
+    return Response(_scripts_zip_cache["data"], media_type="application/zip",
+                    headers={"Content-Disposition": 'attachment; filename="DiabloMaster_Scripts_REAPER.zip"',
+                             "Cache-Control": "no-cache"})
+
+
+def _review_name(u: User) -> str:
+    # solo el primer nombre: no se muestran mails ni apellidos
+    n = (u.name or "").strip().split()
+    return n[0][:30] if n else "Músico"
+
+
+@app.get("/reaper/scripts/reviews")
+def reaper_script_reviews(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    rows = (db.query(ScriptReview, User).join(User, User.id == ScriptReview.user_id)
+            .filter(User.active.is_(True)).order_by(ScriptReview.updated_at.desc()).all())
+    out = {k: {"avg": 0, "count": 0, "reviews": [], "mine": None} for k in SCRIPT_KEYS}
+    sums = {k: 0 for k in SCRIPT_KEYS}
+    for r, u in rows:
+        if r.script not in out:
+            continue
+        o = out[r.script]
+        o["count"] += 1
+        sums[r.script] += r.rating
+        item = {"id": r.id, "name": _review_name(u), "rating": r.rating, "comment": r.comment,
+                "date": r.updated_at.isoformat(), "mine": u.id == user.id}
+        if u.id == user.id:
+            o["mine"] = {"rating": r.rating, "comment": r.comment}
+        if len(o["reviews"]) < 30 and (r.comment or u.id == user.id):
+            o["reviews"].append(item)
+    for k, o in out.items():
+        o["avg"] = round(sums[k] / o["count"], 1) if o["count"] else 0
+    return {"scripts": out, "can_moderate": bool(user.is_super)}
+
+
+class ScriptReviewIn(BaseModel):
+    rating: int = Field(ge=1, le=5)
+    comment: str = Field(default="", max_length=1000)
+
+
+_review_hits: dict = {}
+
+
+@app.post("/reaper/scripts/{key}/review")
+def reaper_script_review(key: str, body: ScriptReviewIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    if key not in SCRIPT_KEYS:
+        raise HTTPException(404, "Ese script no existe")
+    if not _rate(_review_hits, f"u{user.id}", 30):
+        raise HTTPException(429, "Demasiadas valoraciones seguidas. Probá en un rato.")
+    comment = " ".join((body.comment or "").split())[:1000]
+    r = db.query(ScriptReview).filter(ScriptReview.script == key, ScriptReview.user_id == user.id).first()
+    if r:
+        r.rating, r.comment, r.updated_at = body.rating, comment, now()
+    else:
+        db.add(ScriptReview(script=key, user_id=user.id, rating=body.rating, comment=comment))
+    db.commit()
+    return {"ok": True}
+
+
+@app.delete("/reaper/scripts/reviews/{rid}")
+def reaper_script_review_delete(rid: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    r = db.get(ScriptReview, rid)
+    if not r:
+        raise HTTPException(404, "No existe")
+    if r.user_id != user.id and not user.is_super:
+        raise HTTPException(403, "Solo podés borrar tu propia valoración")
+    db.delete(r)
+    db.commit()
     return {"ok": True}
 
 
