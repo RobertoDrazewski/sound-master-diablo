@@ -1736,12 +1736,23 @@ async function viewAlbums(band, nav) {
   wireBandHead(band);
 
   let current = d;
+  // estado de master de cada tema: listo, en proceso o pendiente
+  const mStatus = (t) => {
+    if (t.versions.some((v) => v.kind === "master" && v.status === "ready")) return "done";
+    if (t.versions.some((v) => v.kind === "master" && v.status === "processing")) return "busy";
+    return primarySource(t) ? "todo" : "none";
+  };
+  const mBadge = (t) => ({
+    done: `<span class="badge master">Masterizado</span>`,
+    busy: `<span class="badge m-busy">Masterizando…</span>`,
+    todo: `<span class="badge m-todo">Sin masterizar</span>`,
+    none: "",
+  })[mStatus(t)];
   const trackRow = (t, i, a, total) => {
     const v = bestPlayable(t);
-    const master = v && v.kind === "master";
-    return `<li><span class="n">${i + 1}</span>
-      <span class="grow">${esc(t.title)} ${master ? `<span class="badge master">Master</span>` : (v ? `<span class="badge">${esc(KIND[v.kind] || v.kind)}</span>` : "")}</span>
-      ${v ? `<button class="btn small" data-act="play" data-id="${v.id}" data-title="${esc(t.title)}">${ic("play")}</button>
+    return `<li ${v ? `data-vid="${v.id}"` : ""}><span class="n">${i + 1}</span>
+      <span class="grow">${esc(t.title)} ${mBadge(t)}</span>
+      ${v ? `<button class="btn small" data-act="play" data-album="${a.id}" data-id="${v.id}" data-title="${esc(t.title)}" aria-label="Escuchar ${esc(t.title)}">${ic("play")}</button>
         <button class="btn small" data-act="dl" data-id="${v.id}" data-fmt="wav">WAV</button>
         <button class="btn small" data-act="dl" data-id="${v.id}" data-fmt="mp3">MP3</button>` : `<span class="small muted">Sin audio listo</span>`}
       <button class="icon-btn" data-act="up" data-album="${a.id}" data-id="${t.id}" aria-label="Subir de lugar" ${i === 0 ? "disabled" : ""}>${ic("up")}</button>
@@ -1749,13 +1760,20 @@ async function viewAlbums(band, nav) {
       <button class="icon-btn" data-act="remove" data-album="${a.id}" data-id="${t.id}" aria-label="Sacar del álbum" title="Sacar del álbum">${ic("x")}</button></li>`;
   };
   const albumCard = (a) => `
-    <article class="card"><div class="album">
-      <div><div class="cover">${a.photo ? `<img src="${esc(a.photo)}" alt="Tapa de ${esc(a.title)}">` : `<img src="/img/album-sin-tapa.jpg" alt="">`}
-        <button type="button" data-act="cover" data-album="${a.id}" aria-label="Cambiar la tapa de ${esc(a.title)}" title="Cambiar la tapa">${ic("camera")}</button></div></div>
+    <article class="card"><div class="album has-vy">
+      ${vinylHTML(a)}
       <div>
         <div class="row between"><div><h3 style="margin:0">${esc(a.title)}</h3><p class="muted small" style="margin:0">${a.year ? a.year + " · " : ""}${a.tracks.length} ${a.tracks.length === 1 ? "tema" : "temas"}</p></div>
           <div class="row" style="gap:.2rem"><button class="btn small" data-act="cover-maker" data-album="${a.id}">${ic("spark")} Crear tapa</button><button class="icon-btn" data-act="edit-album" data-album="${a.id}" aria-label="Editar ${esc(a.title)}" title="Editar">${ic("edit")}</button>
             <button class="icon-btn" data-act="del-album" data-album="${a.id}" aria-label="Borrar el álbum ${esc(a.title)}" title="Borrar álbum">${ic("trash")}</button></div></div>
+        ${(() => {
+          const todo = a.tracks.filter((t) => mStatus(t) === "todo").length;
+          const done = a.tracks.filter((t) => mStatus(t) === "done").length;
+          const busy = a.tracks.filter((t) => mStatus(t) === "busy").length;
+          if (!a.tracks.length) return "";
+          return `<div class="m-sum"><span class="small muted">${done} de ${a.tracks.length} masterizados${busy ? ` · ${busy} en proceso` : ""}</span>
+            ${todo ? `<button class="btn small primary" data-act="master-missing" data-album="${a.id}">${ic("sliders")} Masterizar los que faltan (${todo})</button>` : ""}</div>`;
+        })()}
         ${a.tracks.length ? `<ol class="tracklist" style="list-style:none">${a.tracks.map((t, i) => trackRow(t, i, a, a.tracks.length)).join("")}</ol>` : `<p class="muted" style="margin-top:.8rem">Todavía no tiene temas.</p>`}
         ${current.loose.length ? `<div class="row" style="margin-top:.9rem"><select class="mini-sel" id="add-${a.id}" aria-label="Tema para agregar">${current.loose.map((t) => `<option value="${t.id}">${esc(t.title)}</option>`).join("")}</select>
           <button class="btn small" data-act="add" data-album="${a.id}">Agregar al álbum</button></div>` : ""}
@@ -1770,9 +1788,50 @@ async function viewAlbums(band, nav) {
           ${current.albums.length ? `<select class="mini-sel" data-act="to-album" data-id="${t.id}" aria-label="Agregar ${esc(t.title)} a un álbum"><option value="">Agregar a un álbum…</option>${current.albums.map((a) => `<option value="${a.id}">${esc(a.title)}</option>`).join("")}</select>` : ""}</li>`;
       }).join("")}</ul></section>` : "");
   }
-  const reload = async () => { current = await load(); if (nav === state.nav) paint(); };
+  const anyBusy = () => current.albums.some((a) => a.tracks.some((t) => mStatus(t) === "busy"));
+  const reload = async () => {
+    current = await load();
+    if (nav !== state.nav) return;
+    paint(); vyPaint();
+    clearTimeout(state.timer);
+    if (anyBusy()) state.timer = setTimeout(() => { if (nav === state.nav) reload(); }, 4000);   // se actualiza solo mientras masteriza
+  };
   state.refresh = reload;
   paint();
+  if (anyBusy()) state.timer = setTimeout(reload, 4000);
+
+  async function masterMissing(a) {
+    const todo = a.tracks.filter((t) => mStatus(t) === "todo");
+    if (!todo.length) return;
+    let genres;
+    try { genres = await getGenres(); } catch (e) { return toast(e.message, "err"); }
+    openModal(`
+      <form id="mmf" class="stack"><h2>Masterizar los que faltan</h2>
+        <p class="muted" style="margin:0">Se masterizan ${todo.length} ${todo.length === 1 ? "tema" : "temas"} de "${esc(a.title)}" con el mismo estilo, así el disco suena parejo:</p>
+        <ul class="small" style="margin:.2rem 0 0 1.1rem">${todo.map((t) => `<li>${esc(t.title)}</li>`).join("")}</ul>
+        <div class="field" style="margin:0"><label for="mmg">Estilo</label><select id="mmg">${genreOptions(genres, defaultGenreId(genres))}</select></div>
+        <p class="small muted" style="margin:0">Cada tema cuenta como un master de tu plan. Si querés ajustar uno en detalle, usá el Estudio de master en la sección Master.</p>
+        <div class="row" style="justify-content:flex-end"><button type="button" class="btn" id="mmc">Cancelar</button><button class="btn primary" id="mmok">Masterizar ${todo.length}</button></div>
+      </form>`, (m) => {
+      $("#mmc", m).addEventListener("click", closeModal);
+      $("#mmf", m).addEventListener("submit", async (ev) => {
+        ev.preventDefault();
+        const gid = Number($("#mmg", m).value);
+        await withBusy($("#mmok", m), async () => {
+          let ok = 0, err = "";
+          for (const t of todo) {
+            try { await api(`/tracks/${t.id}/master`, { method: "POST", json: { genre_id: gid } }); ok++; }
+            catch (e) { err = e.message; break; }   // tope del plan u otro error: se frena y avisa
+          }
+          pref.set("style", gid);
+          closeModal();
+          if (ok) toast(`Masterizando ${ok} ${ok === 1 ? "tema" : "temas"}. Se actualiza solo cuando terminen.`, "ok");
+          if (err) toast(err, "err");
+          await reload();
+        });
+      });
+    });
+  }
 
   const ids = (a) => a.tracks.map((t) => t.id);
   const setOrder = async (aid, list) => { await api(`/albums/${aid}/order`, { method: "PUT", json: { track_ids: list } }); await reload(); };
@@ -1900,6 +1959,7 @@ async function viewAlbums(band, nav) {
   }
   $("#new-album").addEventListener("click", () => albumForm(null));
   const box = $("#albums");
+  vinylWire(box, (id) => current.albums.find((x) => x.id === id));
   box.addEventListener("change", async (ev) => {
     const el = ev.target;
     if (el.dataset.act === "to-album" && el.value) {
@@ -1914,7 +1974,12 @@ async function viewAlbums(band, nav) {
     const a = current.albums.find((x) => x.id === aid);
     try {
       switch (act) {
-        case "play": return playVersion(tid, b.dataset.title);
+        case "play": {
+          // desde el álbum: arranca el disco en ese tema y sigue con los demás
+          if (a) { const i = vyPlayable(a).findIndex((x) => x.vid === tid); if (i >= 0) return vyStart(a, i); }
+          VY.album = null;
+          return playVersion(tid, b.dataset.title);
+        }
         case "dl": return download(tid, b.dataset.fmt);
         case "cover": return pickImage(async (f) => {
           const fd = new FormData(); fd.append("file", f);
@@ -1922,6 +1987,7 @@ async function viewAlbums(band, nav) {
           catch (e) { toast(e.message, "err"); }
         });
         case "cover-maker": return coverMaker(a);
+        case "master-missing": return masterMissing(a);
         case "edit-album": return albumForm(a);
         case "del-album":
           if (!confirm(`¿Borrar el álbum "${a.title}"? Los temas no se borran, quedan sin álbum.`)) return;

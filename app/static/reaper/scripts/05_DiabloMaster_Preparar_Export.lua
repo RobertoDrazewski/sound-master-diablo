@@ -23,10 +23,30 @@ local function lin2db(v) if v <= 1e-7 then return -140 end return 20 * math.log(
 
 local LIMITERS = { "limit", "maxim", "pro-l", "ozone", "clipper", "loudmax" }
 
+-- busca por nombre la accion "Calculate loudness of master mix ... via dry run render"
+-- (los numeros cambian entre versiones; la de "selected tracks" mediria una sola pista)
+local function master_dryrun_action(use_ts)
+  local sec = reaper.SectionFromUniqueID and reaper.SectionFromUniqueID(0) or 0
+  local plain, with_ts
+  for id = 42400, 42520 do
+    local ok, txt = pcall(reaper.kbd_getTextFromCmd, id, sec)
+    if ok and type(txt) == "string" then
+      local l = txt:lower()
+      if l:find("loudness", 1, true) and l:find("master mix", 1, true) and l:find("dry run", 1, true) then
+        if l:find("time selection", 1, true) then with_ts = with_ts or id else plain = plain or id end
+      end
+    end
+  end
+  if use_ts then return with_ts or plain end
+  return plain or with_ts
+end
+
 -- render de prueba del Master para medir pico y loudness; si la version de REAPER no lo
 -- permite, devuelve nil y no se toca nada
-local function measure_master()
-  local ok, ret, stats = pcall(reaper.GetSetProjectInfo_String, 0, "RENDER_STATS", "42438", false)
+local function measure_master(use_ts)
+  local action = master_dryrun_action(use_ts)
+  if not action then return nil end
+  local ok, ret, stats = pcall(reaper.GetSetProjectInfo_String, 0, "RENDER_STATS", tostring(action), false)
   if not ok or not ret or type(stats) ~= "string" or stats == "" then return nil end
   local up = ";" .. stats:upper()
   local peak = tonumber(up:match(";PEAK:(%-?[%d%.]+)")) or tonumber(up:match(";TRUEPEAK:(%-?[%d%.]+)"))
@@ -78,7 +98,7 @@ local function main()
   if te > ts then notes[#notes + 1] = "- Se renderiza solo la seleccion de tiempo (sacala si queres el tema entero)" end
 
   -- medicion y margen
-  local peak, lufs = measure_master()
+  local peak, lufs = measure_master(te > ts)
   if peak then
     local line = ("- Pico de la mezcla: %.1f dBFS"):format(peak)
     if lufs then line = line .. (" | Loudness: %.1f LUFS"):format(lufs) end

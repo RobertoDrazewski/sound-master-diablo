@@ -1276,3 +1276,59 @@ button svg, button > span, button > b, button > small, button > i { pointer-even
   .rs-tabs a span { overflow: hidden; text-overflow: ellipsis; }
   .rs-tabs a .i { display: none; }
 }
+
+/* ===================== tocadiscos de los álbumes ===================== */
+.album.has-vy { grid-template-columns: minmax(280px, 380px) 1fr; align-items: start; }
+.vinyl { width: 100%; }
+.vy-deck { position: relative; width: 100%; aspect-ratio: 1.5 / 1; border-radius: 18px; padding: 0;
+  background: radial-gradient(120% 90% at 30% 0%, rgba(255, 138, 42, .14), transparent 60%), linear-gradient(160deg, #2a1f19, #140e0b);
+  border: 1px solid var(--line-2); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06), 0 14px 30px rgba(0, 0, 0, .45); overflow: hidden; }
+.vy-sleeve.cover { position: absolute; left: 4%; top: 6%; width: auto; height: 88%; aspect-ratio: 1; max-width: none; z-index: 3;
+  border-radius: 6px; box-shadow: 8px 0 18px rgba(0, 0, 0, .6); }
+.vy-disc { position: absolute; top: 8%; height: 84%; aspect-ratio: 1; left: 22%; z-index: 2; border-radius: 50%;
+  transition: left .7s cubic-bezier(.2, .8, .2, 1); filter: drop-shadow(0 6px 14px rgba(0, 0, 0, .6)); }
+.vinyl.is-active .vy-disc { left: 40%; }
+.vy-spin { position: absolute; inset: 0; border-radius: 50%; animation: vy-rot 1.8s linear infinite; animation-play-state: paused; }
+.vinyl.is-playing .vy-spin { animation-play-state: running; }
+@keyframes vy-rot { to { transform: rotate(360deg); } }
+.vy-grooves { position: absolute; inset: 0; border-radius: 50%;
+  background: repeating-radial-gradient(circle at 50% 50%, #0b0b0b 0 1.2px, #1a1a1a 1.2px 2.6px), #111;
+  box-shadow: inset 0 0 0 3px #050505, inset 0 0 0 6px #1e1e1e; }
+.vy-label { position: absolute; left: 31%; top: 31%; width: 38%; height: 38%; border-radius: 50%; object-fit: cover; box-shadow: 0 0 0 3px #0a0a0a; }
+.vy-hole { position: absolute; left: 50%; top: 50%; width: 4.5%; height: 4.5%; transform: translate(-50%, -50%); border-radius: 50%; background: #e9e1d8; box-shadow: inset 0 1px 2px rgba(0, 0, 0, .6); }
+.vy-sheen { position: absolute; inset: 0; border-radius: 50%; pointer-events: none;
+  background: conic-gradient(from 210deg, transparent 0 8%, rgba(255, 255, 255, .13) 12%, transparent 18% 50%, rgba(255, 255, 255, .09) 62%, transparent 68%); }
+.vy-arm { position: absolute; right: 2.5%; top: 3%; height: 82%; width: auto; z-index: 4; transform-origin: 50% 11%;
+  transform: rotate(-4deg); transition: transform .9s cubic-bezier(.3, .7, .2, 1); filter: drop-shadow(0 4px 6px rgba(0, 0, 0, .6)); }
+.vinyl.is-active .vy-arm { transform: rotate(13deg); }
+.vy-arm-base { fill: #3a2c24; stroke: #5a4436; stroke-width: 2; }
+.vy-arm-pin { fill: #c9b8a8; }
+.vy-arm-bar { fill: none; stroke: #d8cbbd; stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; }
+.vy-arm-head { fill: #ff8a2a; }
+.vy-ctrl { display: flex; align-items: center; justify-content: space-between; gap: .5rem; margin-top: .75rem; flex-wrap: wrap; }
+.vy-main { display: flex; align-items: center; gap: .35rem; }
+.vy-btn { display: inline-flex; align-items: center; justify-content: center; gap: .35rem; min-width: 40px; height: 40px; padding: 0 .55rem;
+  border-radius: 12px; border: 1px solid var(--line-2); background: var(--surface-2); color: var(--text); cursor: pointer; font: inherit; font-size: .85rem; font-weight: 600; }
+.vy-btn .i { width: 18px; height: 18px; }
+.vy-btn:hover { border-color: var(--ember); color: var(--amber); }
+.vy-btn:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+.vy-btn:disabled { opacity: .4; cursor: not-allowed; }
+.vy-play { width: 54px; height: 54px; border-radius: 50%; border: 0; color: #1c0c04; background: linear-gradient(180deg, #ffb347, #ff6a1f); box-shadow: 0 0 24px rgba(255, 90, 31, .45); }
+.vy-play .i { width: 24px; height: 24px; }
+.vy-play:hover { color: #1c0c04; filter: brightness(1.08); }
+.vy-shuffle.on { color: var(--amber); border-color: rgba(255, 138, 42, .6); background: rgba(255, 138, 42, .12); }
+.vy-now { margin: .5rem 0 0; text-align: center; min-height: 1.2em; }
+.vinyl.is-active .vy-now { color: var(--amber); font-weight: 600; }
+.tracklist li.vy-cur { background: rgba(255, 138, 42, .1); border-radius: 10px; }
+.tracklist li.vy-cur .grow { color: var(--amber); }
+@media (max-width: 760px) { .album.has-vy { grid-template-columns: 1fr; } }
+@media (prefers-reduced-motion: reduce) { .vy-spin { animation: none; } .vy-disc, .vy-arm { transition: none; } }
+/* estado de master en los álbumes */
+.badge.m-todo { background: transparent; color: var(--muted); border: 1px dashed var(--line-2); }
+.badge.m-busy { color: var(--amber); border: 1px solid rgba(255, 138, 42, .45); background: rgba(255, 138, 42, .1); }
+.m-sum { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem; margin: .7rem 0 .2rem; }
+/* filas del álbum más compactas para que entren junto al tocadiscos */
+.album.has-vy .tracklist li { gap: .35rem; padding: .45rem .3rem; }
+.album.has-vy .tracklist li .grow { flex: 1 1 10rem; min-width: 0; }
+.album.has-vy .tracklist li .btn.small { padding: .35rem .55rem; }
+.album.has-vy .tracklist li .icon-btn { width: 30px; height: 30px; }
