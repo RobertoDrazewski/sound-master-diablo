@@ -88,6 +88,7 @@ async function adBandas(body, nav) {
       </form>
       <div id="nb-out" class="stack hidden" style="margin-top:1rem"></div>
     </details>
+    <p class="small muted" style="margin:.2rem 0 .6rem">Tocá una banda para ver y editar sus integrantes, su plan y sus datos.</p>
     <div class="ad-filters" role="group" aria-label="Filtrar bandas">${[["all", "Todas"], ["limit", "Cerca del límite"], ["paying", "Pagando"], ["trial", "En prueba"], ["courtesy", "Cortesía"], ["problem", "Atrasadas o cortadas"]].map(([k, l]) =>
       `<button type="button" class="chip-f ${(state._adFilter || "all") === k ? "on" : ""}" data-f="${k}">${l}</button>`).join("")}</div>
     <div class="ad-grid">
@@ -127,6 +128,7 @@ async function adBandas(body, nav) {
             <b class="u-val">${k === "storage" ? fmtGB(u) : u} <span class="muted">/ ${cap == null ? "sin tope" : k === "storage" ? fmtGB(cap) : cap}</span></b>
             ${al && !b.exempt ? `<button type="button" class="btn small" data-upsell="${k}" title="Le manda al admin de la banda el aviso con el plan que le conviene, en su idioma">Mandar aviso</button>` : ""}</div>`;
         }).join("")}</div>
+        <h3 class="ab-h">${ic("card")} Plan y cobro</h3>
         <div class="ad-actions">
           <label class="check"><input type="checkbox" data-exempt ${b.exempt ? "checked" : ""}> Cortesía (no paga)</label>
           ${b.exempt ? `<button class="btn small" data-act="courtesy" title="Motivo y vencimiento de la cortesía">Motivo y vencimiento</button>` : ""}
@@ -134,15 +136,21 @@ async function adBandas(body, nav) {
           <button class="btn small" data-act="paid30" title="Registrar un pago manual (transferencia, efectivo) y sumar 30 días">+30 días pagados</button>
           <button class="btn small" data-act="trial" title="Darle una prueba gratis nueva">Prueba gratis…</button>
           ${b.mp_status ? `<button class="btn small" data-act="sync" title="Preguntar a Mercado Pago el estado">Sincronizar MP</button>` : ""}`}
-          <button class="btn small ${b.blocked ? "primary" : "danger"}" data-act="block">${b.blocked ? "Reactivar servicio" : "Cortar servicio"}</button>
-          <button class="btn small" data-bren="${b.id}" data-name="${esc(b.name)}">Cambiar nombre</button>
-          <button class="btn small danger" data-bdel="${b.id}" data-name="${esc(b.name)}">Borrar banda</button>
         </div>
-        ${b.members.length ? `<table class="table" style="margin-top:.5rem"><tbody>${b.members.map((m) => `
-          <tr><td>${esc(m.name || "—")}<div class="small muted">${esc(m.email)}</div></td>
-          <td><select class="mini-sel" data-role="${b.id}:${m.user_id}" aria-label="Rol de ${esc(m.name || m.email)}"><option value="member" ${m.role === "member" ? "selected" : ""}>Integrante</option><option value="admin" ${m.role === "admin" ? "selected" : ""}>Admin de banda</option></select></td>
-          <td style="text-align:right"><button class="icon-btn" data-rm="${b.id}:${m.user_id}" aria-label="Sacar a ${esc(m.name || m.email)} de ${esc(b.name)}" title="Sacar de la banda">${ic("x")}</button></td></tr>`).join("")}</tbody></table>`
-          : `<p class="small muted" style="margin-top:.5rem">Sin integrantes todavía. Invitá a su admin desde Personas.</p>`}
+        <h3 class="ab-h">${ic("users")} Integrantes <span class="muted small">(${b.members.length})</span></h3>
+        ${b.members.length ? `<ul class="ab-members">${b.members.map((m) => `
+          <li><span class="grow"><b>${esc(m.name || "—")}</b>${m.user_id === state.me.id ? ` <span class="badge">Vos</span>` : ""}<span class="small muted">${esc(m.email)}</span></span>
+          <select class="mini-sel" data-role="${b.id}:${m.user_id}" aria-label="Rol de ${esc(m.name || m.email)}"><option value="member" ${m.role === "member" ? "selected" : ""}>Integrante</option><option value="admin" ${m.role === "admin" ? "selected" : ""}>Admin de banda</option></select>
+          <button class="btn small" data-rm="${b.id}:${m.user_id}" data-who="${esc(m.name || m.email)}">${ic("x")} Sacar de la banda</button>
+          ${m.user_id === state.me.id ? "" : `<button class="btn small danger" data-udel="${m.user_id}" data-email="${esc(m.email)}" data-who="${esc(m.name || m.email)}">${ic("trash")} Borrar cuenta</button>`}</li>`).join("")}</ul>`
+          : `<p class="small muted" style="margin:.3rem 0">Sin integrantes todavía.</p>`}
+        <div class="ad-actions"><button class="btn small primary" data-addm="${b.id}" data-name="${esc(b.name)}">${ic("plus")} Sumar integrante</button></div>
+        <h3 class="ab-h">${ic("edit")} Banda</h3>
+        <div class="ad-actions">
+          <button class="btn small" data-bren="${b.id}" data-name="${esc(b.name)}">Editar nombre</button>
+          <button class="btn small ${b.blocked ? "primary" : "danger"}" data-act="block">${b.blocked ? "Reactivar servicio" : "Limitar: cortar servicio"}</button>
+          <button class="btn small danger" data-bdel="${b.id}" data-name="${esc(b.name)}">${ic("trash")} Borrar banda</button>
+        </div>
         </div>
       </section>`;
     }).join("") || `<div class="card empty">Todavía no hay bandas.</div>`}
@@ -213,7 +221,7 @@ async function adBandas(body, nav) {
       } else if (a === "paid30") { if (!confirm("¿Registrar un pago manual y sumar 30 días de servicio?")) return; await put(bid, { add_paid_days: 30 }); toast("30 días sumados", "ok"); }
       else if (a === "trial") { const d = prompt("¿Cuántos días de prueba gratis?", "14"); if (d === null) return; await put(bid, { trial_days: Number(d) || 0 }); toast("Prueba actualizada", "ok"); }
       else if (a === "sync") { await api(`/admin/bands/${bid}/billing/sync`, { method: "POST" }); toast("Sincronizado con Mercado Pago", "ok"); }
-      else if (a === "block") { const bl = btn.textContent.includes("Cortar"); if (bl && !confirm("¿Cortar el servicio? La banda sigue viendo y bajando su material, pero no puede subir ni masterizar.")) return; await put(bid, { blocked: bl }); toast(bl ? "Servicio cortado" : "Servicio reactivado", "ok"); }
+      else if (a === "block") { const bl = !btn.textContent.includes("Reactivar"); if (bl && !confirm("¿Cortar el servicio? La banda sigue viendo y bajando su material, pero no puede subir ni masterizar.")) return; await put(bid, { blocked: bl }); toast(bl ? "Servicio cortado" : "Servicio reactivado", "ok"); }
       reload();
     })));
   });
@@ -228,10 +236,11 @@ async function adBandas(body, nav) {
   $$("[data-bdel]", body).forEach((b) => b.addEventListener("click", () => {
     openModal(`<form id="bdf" class="stack"><h2>Borrar "${esc(b.dataset.name)}"</h2>
       <p class="callout">Se borran <strong>todos</strong> sus ensayos, temas, masters, álbumes, eventos y avisos. No se puede deshacer. Las personas no se borran. Si tiene una suscripción activa en Mercado Pago, cancelala antes.</p>
+      <label class="check"><input type="checkbox" id="bdu"> Borrar también las cuentas de sus integrantes que no estén en otra banda</label>
       <div class="field"><label for="bdn">Para confirmar, escribí el nombre de la banda</label><input id="bdn" type="text" autocomplete="off" required></div>
       <div class="row" style="justify-content:flex-end"><button type="button" class="btn" id="bdc">Cancelar</button><button class="btn danger">Borrar para siempre</button></div></form>`, (m) => {
       $("#bdc", m).addEventListener("click", closeModal);
-      $("#bdf", m).addEventListener("submit", adGuard(async (ev) => { ev.preventDefault(); await api(`/admin/bands/${b.dataset.bdel}?confirm_name=${encodeURIComponent($("#bdn", m).value)}`, { method: "DELETE" }); closeModal(); toast("Banda borrada", "ok"); reload(); }));
+      $("#bdf", m).addEventListener("submit", adGuard(async (ev) => { ev.preventDefault(); const r = await api(`/admin/bands/${b.dataset.bdel}?confirm_name=${encodeURIComponent($("#bdn", m).value)}&with_users=${$("#bdu", m).checked}`, { method: "DELETE" }); closeModal(); toast(r.users_removed ? `Banda borrada y ${r.users_removed} cuenta(s) borradas` : "Banda borrada", "ok"); reload(); }));
     });
   }));
   $$("[data-role]", body).forEach((s) => s.addEventListener("change", adGuard(async () => {
@@ -240,9 +249,49 @@ async function adBandas(body, nav) {
   })));
   $$("[data-rm]", body).forEach((b) => b.addEventListener("click", adGuard(async () => {
     const [bid, uid] = b.dataset.rm.split(":");
-    if (!confirm("¿Sacar a esta persona de la banda? Deja de ver sus temas.")) return;
-    await api(`/admin/bands/${bid}/members/${uid}`, { method: "DELETE" }); toast("Listo", "ok"); reload();
+    if (!confirm(`¿Sacar a ${b.dataset.who} de la banda? Deja de ver sus temas. Su cuenta sigue existiendo.`)) return;
+    await api(`/admin/bands/${bid}/members/${uid}`, { method: "DELETE" }); toast("Lo sacaste de la banda", "ok"); reload();
   })));
+  $$("[data-udel]", body).forEach((b) => b.addEventListener("click", () => adDeleteUser(b.dataset.udel, b.dataset.email, b.dataset.who, reload)));
+  $$("[data-addm]", body).forEach((b) => b.addEventListener("click", () => adAddMember(b.dataset.addm, b.dataset.name)));
+}
+
+/* borrar la cuenta de una persona (desde Bandas o Personas) */
+function adDeleteUser(uid, email, who, after) {
+  openModal(`<form id="udf" class="stack"><h2>Borrar la cuenta de ${esc(who)}</h2>
+    <p class="callout">Se borra la cuenta y sus datos personales, y sale de todas sus bandas. Lo que subió a una banda queda en la banda, sin su nombre. No se puede deshacer.</p>
+    <div class="field"><label for="udn">Para confirmar, escribí su email: <strong>${esc(email)}</strong></label><input id="udn" type="email" autocomplete="off" required></div>
+    <div class="row" style="justify-content:flex-end"><button type="button" class="btn" id="udc">Cancelar</button><button class="btn danger">Borrar cuenta</button></div></form>`, (m) => {
+    $("#udc", m).addEventListener("click", closeModal);
+    $("#udf", m).addEventListener("submit", adGuard(async (ev) => {
+      ev.preventDefault();
+      await api(`/admin/users/${uid}?confirm_email=${encodeURIComponent($("#udn", m).value)}`, { method: "DELETE" });
+      closeModal(); toast("Cuenta borrada", "ok"); after();
+    }));
+  });
+}
+
+/* sumar a alguien a una banda: genera la invitación para esa banda */
+function adAddMember(bid, bandName) {
+  openModal(`<form id="amf" class="stack"><h2>Sumar integrante a ${esc(bandName)}</h2>
+    <div class="field" style="margin:0"><label for="ame">Email de la persona</label><input id="ame" type="email" required></div>
+    <div class="field" style="margin:0"><label for="amr">Rol</label><select id="amr"><option value="member">Integrante</option><option value="admin">Admin de la banda</option></select></div>
+    <div id="amo" class="stack" hidden></div>
+    <div class="row" style="justify-content:flex-end"><button type="button" class="btn" id="amc">Cerrar</button><button class="btn primary" id="amok">Crear invitación</button></div></form>`, (m) => {
+    $("#amc", m).addEventListener("click", closeModal);
+    $("#amf", m).addEventListener("submit", adGuard(async (ev) => {
+      ev.preventDefault();
+      const email = $("#ame", m).value.trim();
+      const r = await api("/admin/invites", { method: "POST", json: { email, band_id: Number(bid), role: $("#amr", m).value } });
+      const link = r.link_hint || `${location.origin}/#/invite/${r.invite_token}`;
+      const wa = `https://wa.me/?text=${encodeURIComponent(`Te invité a la banda "${bandName}" en Diablo Master Mix. Entrá acá y creá tu cuenta: ${link}`)}`;
+      const out = $("#amo", m); out.hidden = false; $("#amok", m).hidden = true;
+      out.innerHTML = `<p>Pasale este link a <strong>${esc(email)}</strong> (sirve una sola vez y vence en ${esc(r.expires_in_days)} días). Si ya tiene cuenta, con el link entra directo a la banda.</p>
+        <div class="copybox"><span class="grow">${esc(link)}</span><button type="button" class="btn small" id="amcp">Copiar</button></div>
+        <a class="btn" href="${esc(wa)}" target="_blank" rel="noopener">Mandar por WhatsApp</a>`;
+      $("#amcp", m).addEventListener("click", () => copyText(link));
+    }));
+  });
 }
 
 /* ---------- pruebas gratis ---------- */
@@ -367,7 +416,8 @@ async function adPersonas(body, nav) {
           <div><strong>${esc(u.name || "—")}</strong> ${u.is_super ? `<span class="badge">Super admin</span>` : ""}${u.active ? "" : ` <span class="badge raw">Desactivado</span>`}
           <div class="small muted">${esc(u.email)}</div><div class="small muted">${u.bands.length ? u.bands.map((b) => esc(b.name) + (b.role === "admin" ? " (admin)" : "")).join(" · ") : "Sin banda"}</div></div></div></td>
           <td style="text-align:right;white-space:nowrap"><button class="btn small" data-reset="${u.id}" data-who="${esc(u.name || u.email)}">${ic("key")} Nueva contraseña</button>
-          ${u.id === state.me.id ? "" : `<button class="btn small ${u.active ? "danger" : ""}" data-active="${u.id}" data-to="${u.active ? "0" : "1"}">${u.active ? "Desactivar" : "Activar"}</button>`}</td></tr>`).join("")}
+          ${u.id === state.me.id ? "" : `<button class="btn small ${u.active ? "danger" : ""}" data-active="${u.id}" data-to="${u.active ? "0" : "1"}">${u.active ? "Desactivar" : "Activar"}</button>`}
+          ${u.id === state.me.id || u.is_super ? "" : `<button class="btn small danger" data-udel="${u.id}" data-email="${esc(u.email)}" data-who="${esc(u.name || u.email)}">${ic("trash")} Borrar cuenta</button>`}</td></tr>`).join("")}
       </tbody></table></div></section>`;
   const inv = $("#inv");
   if (inv) inv.addEventListener("submit", adGuard(async (ev) => {
@@ -400,6 +450,7 @@ async function adPersonas(body, nav) {
     await api(`/admin/users/${b.dataset.active}`, { method: "PUT", json: { active: to } });
     toast(to ? "Cuenta activada" : "Cuenta desactivada", "ok"); viewAdmin(nav, "personas");
   })));
+  $$("[data-udel]", body).forEach((b) => b.addEventListener("click", () => adDeleteUser(b.dataset.udel, b.dataset.email, b.dataset.who, () => viewAdmin(nav, "personas"))));
 }
 
 /* ---------- referencias globales ---------- */

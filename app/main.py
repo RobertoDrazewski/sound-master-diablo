@@ -874,15 +874,16 @@ def admin_set_role(band_id: int, user_id: int, body: RoleIn, _: User = Depends(r
 
 
 @app.delete("/admin/bands/{band_id}")
-def admin_delete_band(band_id: int, confirm_name: str = "", _: User = Depends(require_super),
+def admin_delete_band(band_id: int, confirm_name: str = "", with_users: bool = False, _: User = Depends(require_super),
                       db: Session = Depends(get_db)):
+    """Borra la banda y todo su material. Con with_users también borra las cuentas que no tengan otra banda."""
     b = db.get(Band, band_id)
     if not b:
         raise HTTPException(404, "Banda inexistente")
     if confirm_name.strip() != b.name:
         raise HTTPException(422, "Escribí el nombre exacto de la banda para confirmar")
-    purge.delete_band(db, b)
-    return {"ok": True}
+    removed = purge.delete_band(db, b, delete_orphan_users=with_users)
+    return {"ok": True, "users_removed": removed}
 
 
 
@@ -3303,7 +3304,6 @@ class DeleteMeIn(BaseModel):
 @app.post("/me/delete")
 def delete_me(body: DeleteMeIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
     """Cancela la cuenta y elimina los datos personales. El material que subió a una banda es de la banda y queda ahí, sin su nombre."""
-    from sqlalchemy.exc import IntegrityError
     if user.is_super:
         raise HTTPException(403, "La cuenta del super admin no se elimina desde acá")
     if not verify_password(body.password, user.password_hash):
@@ -3311,6 +3311,13 @@ def delete_me(body: DeleteMeIn, user: User = Depends(current_user), db: Session 
     if db.query(Membership).filter_by(user_id=user.id, role="admin").count():
         raise HTTPException(409, "Administrás una banda. Antes de eliminar tu cuenta, dá de baja la banda desde la sección Plan "
                                  "o escribinos desde Contacto para pasarle la administración a otra persona.")
+    _erase_user(db, user)
+    return {"ok": True}
+
+
+def _erase_user(db: Session, user: User) -> None:
+    """Borra la cuenta y sus datos personales. Si subió material a una banda, ese material queda sin ningún dato suyo."""
+    from sqlalchemy.exc import IntegrityError
     uid = user.id
     for a in db.query(Application).filter_by(user_id=uid).all():
         _drop_audition_event(db, a)
@@ -3332,6 +3339,20 @@ def delete_me(body: DeleteMeIn, user: User = Depends(current_user), db: Session 
         u.bio = u.styles = u.instruments = u.equipment = u.city = u.country = u.contact_kind = u.contact_value = ""
         u.sings = u.has_transport = u.has_rehearsal_space = False
         db.commit()
+
+
+@app.delete("/admin/users/{user_id}")
+def admin_delete_user(user_id: int, confirm_email: str = "", me: User = Depends(require_super),
+                      db: Session = Depends(get_db)):
+    """El super admin borra la cuenta de cualquier persona (no la suya ni la de otro super admin)."""
+    u = db.get(User, user_id)
+    if not u:
+        raise HTTPException(404, "Usuario inexistente")
+    if u.id == me.id or u.is_super:
+        raise HTTPException(403, "La cuenta del super admin no se puede borrar")
+    if confirm_email.strip().lower() != (u.email or "").lower():
+        raise HTTPException(422, "Escribí el email exacto de la persona para confirmar")
+    _erase_user(db, u)
     return {"ok": True}
 
 

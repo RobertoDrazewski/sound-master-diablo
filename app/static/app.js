@@ -2225,7 +2225,7 @@ async function viewRelease(band, nav) {
       `<li class="${r.cover ? "ok" : "no"}">${r.cover ? "✓" : "✗"} Tapa${r.cover ? ` <span class="muted small">${r.cover_px} px${r.cover_px < 3000 ? " (se agranda a 3000 px)" : ""}</span>` : ` <span class="small">falta la tapa, agregala en Álbumes</span>`}</li>`,
     ].join("");
     return `<article class="card release" data-album="${r.album_id}">
-      <div class="album"><div><div class="cover">${r.cover ? `<img src="${esc(r.cover)}" alt="Tapa de ${esc(r.title)}">` : `<img src="/img/album-sin-tapa.jpg" alt="">`}</div></div>
+      <div class="album"><div><div class="cover">${r.cover ? `<img src="${esc(r.cover)}" alt="Tapa de ${esc(r.title)}">` : `<img src="/img/tapa-diablo.jpg" alt="">`}</div></div>
       <div>
         <h3 style="margin:0">${esc(r.title)}</h3>
         <p class="muted small" style="margin:0 0 .6rem">${r.year ? r.year + " · " : ""}${r.tracks.length} ${r.tracks.length === 1 ? "tema" : "temas"}${r.total_seconds ? " · " + mins(r.total_seconds) : ""}</p>

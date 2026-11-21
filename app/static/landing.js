@@ -72,7 +72,7 @@ function landPic(b, cls = "") {
 
 /* tocadiscos de muestra para el carrusel: el disco sale de la funda, gira y vuelve, en loop (sin audio) */
 function landVinyl() {
-  const cover = `<span class="lv-art"><img src="/logo-hero.png" alt="" loading="lazy"><b>Tu disco</b></span>`;
+  const cover = `<img class="lv-img" src="/img/tapa-diablo.jpg" alt="" loading="lazy">`;
   return `<div class="tc-pic lv" role="img" aria-label="Tocadiscos de Álbumes: el disco de la banda sale de la funda y gira">
     <div class="lv-deck">
       <div class="lv-disc"><div class="lv-spin"><div class="lv-grooves"></div><span class="lv-label">${cover}</span><i class="lv-hole"></i></div><i class="lv-sheen"></i></div>

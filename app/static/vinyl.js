@@ -129,7 +129,7 @@ document.addEventListener("ended", (e) => {
 }, true);
 
 function vinylHTML(a) {
-  const cover = a.photo ? esc(a.photo) : "/img/album-sin-tapa.jpg";
+  const cover = a.photo ? esc(a.photo) : "/img/tapa-diablo.jpg";
   const playable = a.tracks.some((t) => bestPlayable(t));
   return `<div class="vinyl" data-album="${a.id}">
     <div class="vy-deck">
