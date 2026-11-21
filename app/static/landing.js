@@ -17,7 +17,7 @@ const LAND_BLOCKS = [
   { k: "asistente", desc: "Antes de masterizar, el asistente escucha la mezcla y te dice qué conviene corregir. Sin tecnicismos: qué pasa, por qué importa y cómo se arregla.", icon: "spark", t: "Asistente", img: "/img/herramienta-asistente.jpg", lead: "Analiza el audio y explica qué corregir, en lenguaje simple.",
     items: ["Medición de volumen, picos, saturación y compatibilidad estéreo", "Veredicto claro y consejos priorizados", "Chat con un ingeniero de audio para consultas de mezcla y master"] },
   { k: "albumes", desc: "Reúne los temas terminados en un disco, define el orden y crea la portada. Todo queda preparado para el lanzamiento.", icon: "disc", t: "Álbumes", img: "/img/herramienta-albumes.jpg", lead: "Ordena los temas y diseña la portada del disco.",
-    items: ["Orden final de los temas por arrastre", "Portada con tu foto, estilos prediseñados o inteligencia artificial", "Archivo a 3000 px, el tamaño que piden las plataformas"] },
+    items: ["Orden final de los temas por arrastre", "Portada con tu foto, estilos prediseñados o inteligencia artificial", "Archivo a 3000 px, el tamaño que piden las plataformas", "Tocadiscos para escuchar el disco completo, en orden o aleatorio"] },
   { k: "lanzamiento", desc: "Cuando el disco está terminado, descargas un paquete con todo lo que pide una distribuidora. Lo subes tal cual y sigues la guía hasta verlo publicado.", icon: "rocket", t: "Lanzamiento", img: "/img/herramienta-lanzamiento.jpg", lead: "Descarga el álbum listo para cada plataforma.",
     items: ["WAV 24 bits, MP3 320, portada y letras en un solo paquete", "Título, artista, álbum, créditos y letra guardados dentro de cada archivo",
       "Guía paso a paso para publicar gratis con RouteNote, o con AMA (INAMU), DistroKid o CD Baby, con costos y requisitos de cada una",
@@ -70,6 +70,26 @@ function landPic(b, cls = "") {
   return `<div class="l2-pic ${cls}" style="background-image:url(${b.img});--pos:${b.pos || "50% 50%"}" role="img" aria-label="${b.t}"></div>`;
 }
 
+/* tocadiscos de muestra para el carrusel: el disco sale de la funda, gira y vuelve, en loop (sin audio) */
+function landVinyl() {
+  const cover = `<span class="lv-art"><img src="/logo-hero.png" alt="" loading="lazy"><b>Tu disco</b></span>`;
+  return `<div class="tc-pic lv" role="img" aria-label="Tocadiscos de Álbumes: el disco de la banda sale de la funda y gira">
+    <div class="lv-deck">
+      <div class="lv-disc"><div class="lv-spin"><div class="lv-grooves"></div><span class="lv-label">${cover}</span><i class="lv-hole"></i></div><i class="lv-sheen"></i></div>
+      <div class="lv-sleeve">${cover}</div>
+      <svg class="lv-arm" viewBox="0 0 60 200" aria-hidden="true"><circle cx="30" cy="22" r="17" class="a1"/><circle cx="30" cy="22" r="7" class="a2"/>
+        <path d="M30 22 L30 150 L20 178" class="a3"/><rect x="11" y="172" width="16" height="22" rx="3" class="a4" transform="rotate(22 19 183)"/></svg>
+    </div></div>`;
+}
+/* herramientas destacadas: bloque grande propio, imagen y texto lado a lado */
+function landFeat(b, i) {
+  return `<article class="l2-card l2-feat ${i % 2 ? "rev" : ""}" data-glow id="f-${b.k}">
+    <div class="l2-feat-pic" style="--img:url(${b.img})" role="img" aria-label="${b.t}"></div>
+    <div class="l2-body">${landHead(b)}<p class="tc-desc">${b.desc}</p>${landList(b)}${b.compat ? landCompat() : ""}${b.rn ? landRn() : ""}${b.note ? `<small class="l2-trade">${b.note}</small>` : ""}${b.cta ? `<div class="l2-cta left"><a class="btn primary" href="${b.cta.href}">${b.cta.t}</a></div>` : ""}</div>
+  </article>`;
+}
+const LAND_FEAT = ["produccion", "lanzamiento", "musicos"];
+
 function landGo(id) {
   const el = document.getElementById(id);
   if (!el) return false;
@@ -80,7 +100,8 @@ function landGo(id) {
 
 function viewLanding() {
   const master = LAND_BLOCKS.find((b) => b.star);
-  const rest = LAND_BLOCKS.filter((b) => !b.star);
+  const feat = LAND_FEAT.map((k) => LAND_BLOCKS.find((b) => b.k === k));
+  const rest = LAND_BLOCKS.filter((b) => !b.star && !LAND_FEAT.includes(b.k));
   setApp(`
     <div class="l2-page">
       <div class="l2-photo" aria-hidden="true"></div>
@@ -128,12 +149,19 @@ function viewLanding() {
 
         ${ekg()}
 
+        <section class="l2-sec" id="l2-key" aria-label="Herramientas destacadas">
+          <h2 class="l2-h">Del primer demo al lanzamiento</h2>
+          <div class="l2-feats">${feat.map(landFeat).join("")}</div>
+        </section>
+
+        ${ekg()}
+
         <section class="l2-sec" id="l2-features" aria-label="Herramientas">
-          <h2 class="l2-h">Herramientas para cada etapa de tu banda</h2>
+          <h2 class="l2-h">Y todo lo que la banda usa en el día a día</h2>
           <div class="tc" id="tc">
             <div class="tc-track" id="tc-track" tabindex="0" role="group" aria-label="Herramientas">
               ${rest.map((b) => `<article class="l2-card tc-slide" data-glow id="f-${b.k}">
-                <div class="tc-pic" style="--img:url(${b.img})" role="img" aria-label="${b.t}"></div>
+                ${b.k === "albumes" ? landVinyl() : `<div class="tc-pic" style="--img:url(${b.img})" role="img" aria-label="${b.t}"></div>`}
                 <div class="l2-body">${landHead(b)}<p class="tc-desc">${b.desc}</p>${landList(b)}${b.compat ? landCompat() : ""}${b.rn ? landRn() : ""}${b.note ? `<small class="l2-trade">${b.note}</small>` : ""}${b.cta ? `<div class="l2-cta left"><a class="btn primary" href="${b.cta.href}">${b.cta.t}</a></div>` : ""}</div></article>`).join("")}
             </div>
             <div class="tc-ctl">

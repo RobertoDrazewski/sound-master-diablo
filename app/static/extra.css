@@ -1332,3 +1332,65 @@ button svg, button > span, button > b, button > small, button > i { pointer-even
 .album.has-vy .tracklist li .grow { flex: 1 1 10rem; min-width: 0; }
 .album.has-vy .tracklist li .btn.small { padding: .35rem .55rem; }
 .album.has-vy .tracklist li .icon-btn { width: 30px; height: 30px; }
+
+/* ===================== landing: herramientas destacadas ===================== */
+.l2-feats { display: grid; gap: 1.4rem; }
+.l2-feat { display: flex; flex-direction: column; overflow: hidden; padding: 0; }
+.l2-feat-pic { position: relative; aspect-ratio: 16 / 10; overflow: hidden; background: #120d0a; }
+.l2-feat-pic::before { content: ""; position: absolute; inset: 0; background: var(--img) 50% 50% / cover no-repeat; transition: transform 1.2s cubic-bezier(.2, .8, .2, 1); }
+.l2-feat-pic::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(10, 9, 8, 0) 50%, rgba(21, 18, 16, .97)); }
+.l2-feat:hover .l2-feat-pic::before { transform: scale(1.04); }
+.l2-feat .l2-body { padding: 0 1.15rem 1.4rem; margin-top: -2.4rem; position: relative; }
+.l2-feat .l2-body h3 { font-size: 2.5rem; }
+.l2-feat .l2-cta .btn { white-space: normal; text-align: center; justify-content: center; }
+@media (min-width: 900px) {
+  .l2-feats { gap: 2rem; }
+  .l2-feat { flex-direction: row; min-height: 560px; }
+  .l2-feat.rev { flex-direction: row-reverse; }
+  .l2-feat-pic { flex: 0 0 50%; aspect-ratio: auto; }
+  .l2-feat-pic::after { background: linear-gradient(90deg, rgba(10, 9, 8, 0) 55%, rgba(21, 18, 16, .98)); }
+  .l2-feat.rev .l2-feat-pic::after { background: linear-gradient(270deg, rgba(10, 9, 8, 0) 55%, rgba(21, 18, 16, .98)); }
+  .l2-feat .l2-body { flex: 1 1 50%; margin: 0; padding: 2.6rem 2.6rem 2.6rem 1.6rem; display: flex; flex-direction: column; justify-content: center; }
+  .l2-feat.rev .l2-body { padding: 2.6rem 1.6rem 2.6rem 2.6rem; }
+  .l2-feat .l2-body h3 { font-size: 3.4rem; }
+  .l2-feat .l2-lead { font-size: 1.15rem; }
+  .l2-feat .l2-ibox { width: 62px; height: 62px; } .l2-feat .l2-ibox .i { width: 33px; height: 33px; }
+  .l2-feat .tc-desc { font-size: 1.08rem; }
+  .l2-feat .l2-list li { font-size: 1.02rem; }
+  .l2-feat .l2-cta .btn { white-space: nowrap; }
+}
+/* carrusel: las tarjetas toman su propia altura, sin huecos */
+.tc-track { align-items: flex-start; }
+@media (min-width: 900px) { .tc-slide { min-height: 440px; align-self: stretch; } }
+
+/* ===================== landing: tocadiscos de muestra (Álbumes) ===================== */
+.tc-pic.lv { display: grid; place-items: center; background:
+  radial-gradient(70% 70% at 50% 40%, rgba(255, 110, 30, .22), transparent 70%), linear-gradient(180deg, rgba(10, 9, 8, .55), rgba(10, 9, 8, .8)), url(/img/herramienta-albumes.jpg) 50% 50% / cover no-repeat; }
+.tc-pic.lv::before { display: none; }
+.lv-deck { position: relative; width: 84%; max-width: 560px; aspect-ratio: 1.55 / 1; border-radius: 20px; overflow: hidden;
+  background: radial-gradient(120% 90% at 30% 0%, rgba(255, 138, 42, .16), transparent 60%), linear-gradient(160deg, #2a1f19, #140e0b);
+  border: 1px solid rgba(255, 150, 70, .35); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06), 0 20px 50px rgba(0, 0, 0, .6); }
+.lv-art { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4%;
+  background: radial-gradient(80% 70% at 50% 35%, #ff7a2a, #7a1d08 62%, #1c0805); }
+.lv-art img { width: 62%; filter: drop-shadow(0 4px 10px rgba(0, 0, 0, .5)); }
+.lv-art b { font-family: var(--display); font-weight: 800; color: #fff3e6; font-size: clamp(.7rem, 2.6vw, 1.5rem); letter-spacing: .02em; }
+.lv-sleeve { position: absolute; left: 4%; top: 6%; height: 88%; aspect-ratio: 1; z-index: 3; border-radius: 6px; overflow: hidden; box-shadow: 8px 0 18px rgba(0, 0, 0, .6); }
+.lv-disc { position: absolute; top: 8%; height: 84%; aspect-ratio: 1; left: 22%; z-index: 2; border-radius: 50%; filter: drop-shadow(0 6px 14px rgba(0, 0, 0, .6));
+  animation: lvOut 9s cubic-bezier(.3, .7, .2, 1) infinite; }
+.lv-spin { position: absolute; inset: 0; border-radius: 50%; animation: vy-rot 1.8s linear infinite; }
+.lv-grooves { position: absolute; inset: 0; border-radius: 50%; background: repeating-radial-gradient(circle at 50% 50%, #0b0b0b 0 1.2px, #1a1a1a 1.2px 2.6px), #111;
+  box-shadow: inset 0 0 0 3px #050505, inset 0 0 0 6px #1e1e1e; }
+.lv-label { position: absolute; left: 31%; top: 31%; width: 38%; height: 38%; border-radius: 50%; overflow: hidden; box-shadow: 0 0 0 3px #0a0a0a; }
+.lv-label .lv-art b { display: none; }
+.lv-label .lv-art img { width: 80%; }
+.lv-hole { position: absolute; left: 50%; top: 50%; width: 4.5%; height: 4.5%; transform: translate(-50%, -50%); border-radius: 50%; background: #e9e1d8; }
+.lv-sheen { position: absolute; inset: 0; border-radius: 50%; pointer-events: none;
+  background: conic-gradient(from 210deg, transparent 0 8%, rgba(255, 255, 255, .13) 12%, transparent 18% 50%, rgba(255, 255, 255, .09) 62%, transparent 68%); }
+.lv-arm { position: absolute; right: 2.5%; top: 3%; height: 82%; width: auto; z-index: 4; transform-origin: 50% 11%; filter: drop-shadow(0 4px 6px rgba(0, 0, 0, .6));
+  animation: lvArm 9s cubic-bezier(.3, .7, .2, 1) infinite; }
+.lv-arm .a1 { fill: #3a2c24; stroke: #5a4436; stroke-width: 2; } .lv-arm .a2 { fill: #c9b8a8; }
+.lv-arm .a3 { fill: none; stroke: #d8cbbd; stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; } .lv-arm .a4 { fill: #ff8a2a; }
+/* 9 s: guardado, sale de la funda, baja el brazo, suena, sube el brazo y vuelve */
+@keyframes lvOut { 0%, 8% { left: 22%; } 20%, 84% { left: 40%; } 96%, 100% { left: 22%; } }
+@keyframes lvArm { 0%, 20% { transform: rotate(-4deg); } 30%, 76% { transform: rotate(13deg); } 84%, 100% { transform: rotate(-4deg); } }
+@media (prefers-reduced-motion: reduce) { .lv-disc { animation: none; left: 40%; } .lv-arm { animation: none; transform: rotate(13deg); } .lv-spin { animation: none; } }
